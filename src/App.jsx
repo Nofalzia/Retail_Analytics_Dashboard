@@ -1,29 +1,27 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { ThemeProvider } from './context/ThemeContext';
 import DashboardShell from './components/layout/DashboardShell';
-import LaymanOverview from './components/dashboard/LaymanOverview';
-import ManagerAnalytics from './components/dashboard/ManagerAnalytics';
+import BusinessOwnerDashboard from './components/dashboard/BusinessOwnerDashboard';
+import StoreManagerDashboard from './components/dashboard/StoreManagerDashboard';
 import DataIngestionHub from './components/ingestion/DataIngestionHub';
 
 export default function App() {
-  // Must match the `id` values in DashboardShell's NAV_ITEMS, not the labels
-  const [activeView, setActiveView] = useState('overview');
-
-  const renderView = () => {
-    switch (activeView) {
-      case 'overview':
-        return <LaymanOverview />;
-      case 'deep-analytics':
-        return <ManagerAnalytics />;
-      case 'data-ingestion':
-        return <DataIngestionHub />;
-      default:
-        return <LaymanOverview />;
-    }
-  };
-
   return (
-    <DashboardShell activeView={activeView} onNavigate={setActiveView}>
-      {renderView()}
-    </DashboardShell>
+    <ThemeProvider>
+      <DashboardShell>
+        {(activeView, activeRole) => {
+          switch (activeView) {
+            case 'overview':
+              return <BusinessOwnerDashboard activeRole={activeRole} />;
+            case 'deep-analytics':
+              return <StoreManagerDashboard activeRole={activeRole} />;
+            case 'data-ingestion':
+              return <DataIngestionHub />;
+            default:
+              return <BusinessOwnerDashboard activeRole={activeRole} />;
+          }
+        }}
+      </DashboardShell>
+    </ThemeProvider>
   );
 }

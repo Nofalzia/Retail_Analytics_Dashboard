@@ -1,35 +1,154 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 /**
  * ============================================================================
- * DashboardShell
- * ----------------------------------------------------------------------------
- * Foundational layout shell for the multi-tenant Retail Analytics Dashboard.
- *
- * Responsibilities:
- *  - Renders a permanently docked sidebar on desktop (lg breakpoint and up).
- *  - Renders a slide-out drawer + hamburger trigger on mobile/tablet.
- *  - Displays a context-aware greeting panel with a live date/time readout.
- *  - Provides a content window that renders whatever view is passed in as
- *    `children` (e.g. the Overview tab or Deep Analytics tab).
- *
- * Design system: Warm Euro-Asian Minimalist
- *  - Background: bg-stone-50 (soft off-white/cream)
- *  - Panels: bg-white / bg-stone-100 with border-stone-200
- *  - Typography: text-stone-800 (headings), text-stone-500 (secondary)
- *  - No external icon or component libraries — icons are hand-rolled inline
- *    SVGs using a consistent minimalist stroke style.
+ * DashboardShell  —  Global layout shell & design tokens with theme support
  * ============================================================================
  */
 
-// ----------------------------------------------------------------------------
-// Icon primitives
-// ----------------------------------------------------------------------------
-// Kept intentionally lightweight and stroke-based (1.5px) to match the calm,
-// paper-like aesthetic of the rest of the interface. Centralizing them here
-// means swapping the icon style later only requires editing this block.
+// Theme-aware token factory
+const createDesignTokens = (theme) => ({
+  PALETTE: {
+    cream: theme.cream,
+    sand: theme.sand,
+    sandBorder: theme.sandBorder,
+    charcoal: theme.charcoal,
+    charcoalMuted: theme.charcoalMuted,
+    bottleGreen: theme.bottleGreen,
+    bottleGreenHover: theme.bottleGreenHover,
+    bottleGreenSoft: theme.bottleGreenSoft,
+    bottleGreenSoftStrong: theme.bottleGreenSoftStrong,
+  },
+  CARD_SURFACE: {
+    backgroundColor: theme.cardBg,
+    border: `1px solid ${theme.cardBorder}`,
+    boxShadow: theme.cardShadow,
+  },
+  PANEL_SURFACE: {
+    backgroundColor: theme.panelBg,
+    border: `1px solid ${theme.panelBorder}`,
+    boxShadow: theme.panelShadow,
+  },
+  EARTH: {
+    sage: theme.sage,
+    sageSoft: theme.sageSoft,
+    sand: theme.sand_accent,
+    sandSoft: theme.sandSoft,
+    terracotta: theme.terracotta,
+    terracottaSoft: theme.terracottaSoft,
+    ochre: theme.ochre,
+    ochreSoft: theme.ochreSoft,
+  },
+  CHART_AXIS: {
+    grid: theme.chartGrid,
+    border: theme.chartBorder,
+  },
+  INSET_SURFACE: {
+    backgroundColor: theme.panelBg,
+    border: `1px solid ${theme.panelBorder}`,
+    boxShadow: `0 2px 8px ${theme.panelShadow.split(',')[0].includes('rgba') ? 'rgba(0,0,0,0.03)' : 'rgba(36, 31, 26, 0.03)'}`,
+  },
+  ALERT_SURFACE: {
+    critical: {
+      backgroundColor: theme.errorSoft,
+      borderColor: theme.error,
+    },
+    warning: {
+      backgroundColor: theme.warningSoft,
+      borderColor: theme.ochre,
+    },
+  },
+});
 
-const iconStrokeProps = {
+// Legacy exports for backward compatibility
+export const PALETTE = {
+  cream: '#FAF7F1',
+  sand: '#F3EDE4',
+  sandBorder: 'rgba(36, 31, 26, 0.07)',
+  charcoal: '#241F1A',
+  charcoalMuted: '#57534E',
+  bottleGreen: '#1E362D',
+  bottleGreenHover: '#294A3D',
+  bottleGreenSoft: 'rgba(30, 54, 45, 0.08)',
+  bottleGreenSoftStrong: 'rgba(30, 54, 45, 0.14)',
+};
+
+/** Shared card containment — ultra-crisp border with sophisticated depth */
+export const CARD_SURFACE = {
+  backgroundColor: '#FFFFFF',
+  border: '1px solid rgba(120, 113, 104, 0.24)',
+  boxShadow:
+    '0 2px 8px -3px rgba(0,0,0,0.05), 0 8px 24px -4px rgba(0,0,0,0.03)',
+};
+
+/** Elevated panel on sand-tinted canvas */
+export const PANEL_SURFACE = {
+  backgroundColor: PALETTE.sand,
+  border: `1px solid rgba(120, 113, 104, 0.18)`,
+  boxShadow: '0 4px 20px rgba(36, 31, 26, 0.04)',
+};
+
+/** Earth-tone accents — charts, urgency states, slider fills */
+export const EARTH = {
+  sage: '#7C9473',
+  sageSoft: 'rgba(124, 148, 115, 0.14)',
+  sand: '#C9A87C',
+  sandSoft: 'rgba(201, 168, 124, 0.16)',
+  terracotta: '#BE6A4B',
+  terracottaSoft: 'rgba(190, 106, 75, 0.10)',
+  ochre: '#B8863B',
+  ochreSoft: 'rgba(184, 134, 59, 0.10)',
+};
+
+/** Ultra-faded chart grid / axis lines — maximizes data-ink ratio */
+export const CHART_AXIS = {
+  grid: 'rgba(87, 83, 78, 0.08)',
+  border: 'rgba(87, 83, 78, 0.08)',
+};
+
+/** Nested inset panel within card surfaces */
+export const INSET_SURFACE = {
+  backgroundColor: PALETTE.sand,
+  border: `1px solid ${PALETTE.sandBorder}`,
+  boxShadow: '0 2px 8px rgba(36, 31, 26, 0.03)',
+};
+
+/** Desaturated alert badge fills — pair with PALETTE.charcoalMuted for label text */
+export const ALERT_SURFACE = {
+  critical: {
+    backgroundColor: 'rgba(190, 106, 75, 0.08)',
+    borderColor: EARTH.terracotta,
+  },
+  warning: {
+    backgroundColor: 'rgba(184, 134, 59, 0.08)',
+    borderColor: EARTH.ochre,
+  },
+};
+
+/** Local commercial currency — returns prefix + formatted value for typographic hierarchy */
+export const formatLocalCurrency = (amount) => ({
+  prefix: 'Rs.',
+  value: Math.round(amount).toLocaleString('en-PK'),
+});
+
+// ----------------------------------------------------------------------------
+// Navigation & role configuration — the single source of truth
+// ----------------------------------------------------------------------------
+
+export const NAV_ITEMS = [
+  { id: 'overview', label: 'Overview', Icon: (p) => <OverviewIcon {...p} /> },
+  { id: 'deep-analytics', label: 'Deep Analytics', Icon: (p) => <AnalyticsIcon {...p} /> },
+  { id: 'data-ingestion', label: 'Data Ingestion', Icon: (p) => <IngestionIcon {...p} /> },
+];
+
+export const ROLES = ['Owner', 'Manager', 'System Administrator'];
+
+// ----------------------------------------------------------------------------
+// Icon primitives (hand-rolled, consistent 1.5px stroke — no icon packages)
+// ----------------------------------------------------------------------------
+
+const strokeProps = {
   fill: 'none',
   stroke: 'currentColor',
   strokeWidth: 1.5,
@@ -37,135 +156,143 @@ const iconStrokeProps = {
   strokeLinejoin: 'round',
 };
 
-const OverviewIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...iconStrokeProps}>
-    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
-    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
-    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
-    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
-  </svg>
-);
+function OverviewIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
 
-const AnalyticsIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...iconStrokeProps}>
-    <path d="M4 19V5" />
-    <path d="M4 19h16" />
-    <path d="M8 15v-4" />
-    <path d="M12.5 15V7" />
-    <path d="M17 15v-6.5" />
-  </svg>
-);
+function AnalyticsIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M4 19V5" />
+      <path d="M4 19h16" />
+      <path d="M8 15v-4" />
+      <path d="M12.5 15V7" />
+      <path d="M17 15v-6.5" />
+    </svg>
+  );
+}
 
-const IngestionIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...iconStrokeProps}>
-    <path d="M12 4v11" />
-    <path d="M7.5 10.5 12 15l4.5-4.5" />
-    <path d="M4.5 17.5v1.5A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5v-1.5" />
-  </svg>
-);
+function IngestionIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M12 4v11" />
+      <path d="M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M4.5 17.5v1.5A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5v-1.5" />
+    </svg>
+  );
+}
 
-const HamburgerIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...iconStrokeProps}>
-    <path d="M4 6h16" />
-    <path d="M4 12h16" />
-    <path d="M4 18h16" />
-  </svg>
-);
+function StoreMarkIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M4 9.5 5.2 4.5h13.6L20 9.5" />
+      <path d="M4.5 9.5v9.5A1 1 0 0 0 5.5 20h13a1 1 0 0 0 1-1V9.5" />
+      <path d="M9.5 20v-5.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V20" />
+    </svg>
+  );
+}
 
-const CloseIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...iconStrokeProps}>
-    <path d="M6 6l12 12" />
-    <path d="M18 6L6 18" />
-  </svg>
-);
+function ChevronDownIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M6 9.5 12 15l6-5.5" />
+    </svg>
+  );
+}
 
-const StoreMarkIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...iconStrokeProps}>
-    <path d="M4 9.5 5.2 4.5h13.6L20 9.5" />
-    <path d="M4.5 9.5v9.5A1 1 0 0 0 5.5 20h13a1 1 0 0 0 1-1V9.5" />
-    <path d="M9.5 20v-5.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V20" />
-  </svg>
-);
+function CheckIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M5 12.5 9.5 17 19 6.5" />
+    </svg>
+  );
+}
+
+function SunIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 1v6M12 17v6M23 12h-6M7 12H1M20.485 3.515 16.97 7.03M7.03 16.97 3.515 20.485M20.485 20.485 16.97 16.97M7.03 7.03 3.515 3.515" />
+    </svg>
+  );
+}
+
+function MoonIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+    </svg>
+  );
+}
 
 // ----------------------------------------------------------------------------
-// Navigation configuration
+// Sidebar (desktop, persistent)
 // ----------------------------------------------------------------------------
-// Centralized so the sidebar and the mobile drawer stay in sync automatically.
-// `id` is a generic slug — consumers (parent router / tab state) decide what
-// each id actually renders, keeping this shell business-agnostic.
 
-const NAV_ITEMS = [
-  { id: 'overview', label: 'Overview', Icon: OverviewIcon },
-  { id: 'deep-analytics', label: 'Deep Analytics', Icon: AnalyticsIcon },
-  { id: 'data-ingestion', label: 'Data Ingestion Hub', Icon: IngestionIcon },
-];
-
-/**
- * NavLink — a single sidebar/drawer navigation entry.
- */
-const NavLink = ({ item, isActive, onSelect }) => {
+const SidebarNavLink = ({ item, isActive, onSelect }) => {
   const { label, Icon } = item;
 
   return (
     <button
       type="button"
       onClick={() => onSelect(item.id)}
-      className={`
-        group flex w-full items-center gap-3 rounded-xl px-4 py-2.5
-        text-sm font-medium transition-colors duration-150
-        ${
-          isActive
-            ? 'bg-stone-800 text-stone-50 shadow-sm'
-            : 'text-stone-500 hover:bg-stone-100 hover:text-stone-800'
-        }
-      `}
+      className="group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors duration-150"
+      style={
+        isActive
+          ? { backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }
+          : { color: PALETTE.charcoalMuted }
+      }
+      onMouseEnter={(e) => {
+        if (!isActive) e.currentTarget.style.backgroundColor = PALETTE.sand;
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+      }}
     >
-      <Icon
-        className={`h-4.5 w-4.5 shrink-0 ${
-          isActive ? 'text-stone-50' : 'text-stone-400 group-hover:text-stone-600'
-        }`}
-      />
+      <Icon className="h-4.5 w-4.5 shrink-0" />
       <span className="truncate">{label}</span>
     </button>
   );
 };
 
-/**
- * SidebarContent — shared markup rendered both inside the permanent desktop
- * sidebar and inside the mobile slide-out drawer, so the two never drift
- * out of sync.
- */
-const SidebarContent = ({ activeView, onSelect, onRequestClose }) => (
-  <div className="flex h-full flex-col">
-    {/* Brand mark */}
+const Sidebar = ({ activeView, onSelect }) => (
+  <aside
+    className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col"
+    style={{
+      backgroundColor: '#FFFFFF',
+      borderRight: `1px solid ${PALETTE.sandBorder}`,
+      boxShadow: '4px 0 24px rgba(36, 31, 26, 0.03)',
+    }}
+  >
     <div className="flex items-center gap-3 px-6 py-6">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-stone-800 text-stone-50">
+      <div
+        className="flex h-9 w-9 items-center justify-center rounded-lg"
+        style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
+      >
         <StoreMarkIcon className="h-4.5 w-4.5" />
       </div>
       <div className="leading-tight">
-        <p className="text-sm font-semibold text-stone-800">Retail Analytics</p>
-        <p className="text-xs text-stone-400">Store Intelligence</p>
+        <p className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
+          Retail Analytics
+        </p>
+        <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+          Store Intelligence
+        </p>
       </div>
-
-      {/* Close control only visible inside the mobile drawer */}
-      {onRequestClose && (
-        <button
-          type="button"
-          onClick={onRequestClose}
-          aria-label="Close navigation menu"
-          className="ml-auto rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700 lg:hidden"
-        >
-          <CloseIcon className="h-5 w-5" />
-        </button>
-      )}
     </div>
 
-    <div className="mx-6 h-px bg-stone-200" />
+    <div className="mx-6 h-px" style={{ backgroundColor: PALETTE.sandBorder }} />
 
-    {/* Navigation */}
     <nav className="flex-1 space-y-1 px-4 py-6" aria-label="Primary">
       {NAV_ITEMS.map((item) => (
-        <NavLink
+        <SidebarNavLink
           key={item.id}
           item={item}
           isActive={activeView === item.id}
@@ -174,151 +301,305 @@ const SidebarContent = ({ activeView, onSelect, onRequestClose }) => (
       ))}
     </nav>
 
-    {/* Footer / tenant reminder */}
     <div className="px-6 py-6">
-      <div className="rounded-xl border border-stone-200 bg-stone-100 px-4 py-3">
-        <p className="text-xs leading-relaxed text-stone-500">
-          Data shown is scoped to your connected store. Switch stores from
-          account settings.
+      <div
+        className="rounded-xl p-4"
+        style={{
+          backgroundColor: PALETTE.sand,
+          border: `1px solid rgba(120, 113, 104, 0.16)`,
+          boxShadow: '0 2px 8px rgba(36, 31, 26, 0.03)',
+        }}
+      >
+        <p className="text-xs leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+          Data shown is scoped to your connected store.
         </p>
       </div>
     </div>
-  </div>
+  </aside>
 );
 
-/**
- * GreetingPanel — context-aware header shown above the content window.
- * Time is kept live via a lightweight interval so the readout stays fresh
- * without requiring a page refresh.
- */
-const GreetingPanel = ({ onOpenDrawer }) => {
-  const [now, setNow] = useState(() => new Date());
+// ----------------------------------------------------------------------------
+// Bottom navigation dock (mobile only)
+// ----------------------------------------------------------------------------
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000); // refresh every 30s
-    return () => clearInterval(timer);
-  }, []);
-
-  const formattedDate = now.toLocaleDateString(undefined, {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
-  const formattedTime = now.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const DockNavLink = ({ item, isActive, onSelect }) => {
+  const { label, Icon } = item;
 
   return (
-    <div className="mb-6 flex items-start gap-4 rounded-2xl border border-stone-200 bg-white px-5 py-5 sm:px-8 sm:py-6">
-      {/* Mobile-only hamburger trigger lives inside the greeting panel so it
-          stays visible regardless of scroll position within the content area. */}
+    <button
+      type="button"
+      onClick={() => onSelect(item.id)}
+      className="flex flex-1 flex-col items-center gap-1 py-2.5"
+      style={{ color: isActive ? PALETTE.bottleGreen : PALETTE.charcoalMuted }}
+    >
+      <span
+        className="flex h-8 w-10 items-center justify-center rounded-full transition-colors duration-200"
+        style={{ backgroundColor: isActive ? PALETTE.bottleGreenSoft : 'transparent' }}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className={`text-[11px] ${isActive ? 'font-semibold' : 'font-medium'}`}>{label}</span>
+    </button>
+  );
+};
+
+const BottomDock = ({ activeView, onSelect }) => (
+  <nav
+    className="fixed inset-x-0 bottom-0 z-30 flex lg:hidden"
+    style={{
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderTop: `1px solid ${PALETTE.sandBorder}`,
+      boxShadow: '0 -4px 24px rgba(36, 31, 26, 0.04)',
+      backdropFilter: 'blur(8px)',
+    }}
+    aria-label="Primary"
+  >
+    {NAV_ITEMS.map((item) => (
+      <DockNavLink
+        key={item.id}
+        item={item}
+        isActive={activeView === item.id}
+        onSelect={onSelect}
+      />
+    ))}
+  </nav>
+);
+
+// ----------------------------------------------------------------------------
+// Role switcher
+// ----------------------------------------------------------------------------
+
+const RoleSwitcher = ({ activeRole, onSelect }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  // Close on outside click.
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={onOpenDrawer}
-        aria-label="Open navigation menu"
-        className="mt-1 shrink-0 rounded-lg p-1.5 text-stone-500 hover:bg-stone-100 lg:hidden"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors"
+        style={{
+          ...CARD_SURFACE,
+          color: PALETTE.charcoal,
+          backgroundColor: isOpen ? PALETTE.sand : '#FFFFFF',
+        }}
       >
-        <HamburgerIcon className="h-5 w-5" />
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: PALETTE.bottleGreen }}
+        />
+        {activeRole}
+        <ChevronDownIcon
+          className={`h-3.5 w-3.5 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
+          style={{ color: PALETTE.charcoalMuted }}
+        />
       </button>
 
-      <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-stone-800 sm:text-xl">
-          Assalam-o-Alaikum, Manager.
-        </h1>
-        <p className="mt-1 text-sm text-stone-500">
-          Here is your store&apos;s health today.
-        </p>
-        <p className="mt-3 text-xs font-medium uppercase tracking-wide text-stone-400">
-          {formattedDate} &middot; {formattedTime}
-        </p>
-      </div>
+      {isOpen && (
+        <div
+          role="listbox"
+          className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl bg-white"
+          style={CARD_SURFACE}
+        >
+          <p
+            className="border-b px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide"
+            style={{ borderColor: PALETTE.sandBorder, color: PALETTE.charcoalMuted }}
+          >
+            Preview as
+          </p>
+          {ROLES.map((role) => {
+            const isSelected = role === activeRole;
+            return (
+              <button
+                key={role}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onSelect(role);
+                  setIsOpen(false);
+                }}
+                className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors"
+                style={{
+                  color: PALETTE.charcoal,
+                  backgroundColor: isSelected ? PALETTE.bottleGreenSoft : 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = PALETTE.sand;
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                {role}
+                {isSelected && (
+                  <CheckIcon className="h-4 w-4" style={{ color: PALETTE.bottleGreen }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
 
-/**
- * DashboardShell — top-level layout export.
- *
- * Props:
- *  - children: React.ReactNode — the active view (Overview / Deep Analytics /
- *    Data Ingestion Hub) rendered inside the content window.
- *  - activeView: string — id of the currently selected nav item, used to
- *    highlight the matching NavLink. Defaults to 'overview'.
- *  - onNavigate: (id: string) => void — callback fired when a nav item is
- *    selected, letting the parent own routing/tab state.
- */
-const DashboardShell = ({ children, activeView = 'overview', onNavigate = () => {} }) => {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+// ----------------------------------------------------------------------------
+// Top header
+// ----------------------------------------------------------------------------
 
-  // Close the mobile drawer automatically whenever the active view changes,
-  // so selecting a link doesn't leave the drawer covering the new content.
-  useEffect(() => {
-    setIsDrawerOpen(false);
-  }, [activeView]);
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+};
 
-  const handleSelect = (id) => {
+const TopHeader = ({ userName, activeRole, onRoleSelect }) => {
+  const { isDark, theme, toggleTheme } = useTheme();
+  const tokens = createDesignTokens(theme);
+  const { PALETTE: pal } = tokens;
+
+  return (
+    <header
+      className="sticky top-0 z-20 flex items-center justify-between px-4 py-4 sm:px-6 lg:px-8"
+      style={{
+        backgroundColor: theme.background,
+        borderBottom: `1px solid ${theme.sandBorder}`,
+        boxShadow: isDark
+          ? '0 4px 12px rgba(0,0,0,0.3)'
+          : '0 2px 12px rgba(36, 31, 26, 0.03)',
+      }}
+    >
+      <div className="min-w-0">
+        <h1
+          className="truncate text-base font-semibold sm:text-lg"
+          style={{ color: theme.charcoal }}
+        >
+          {getGreeting()}, {userName}.
+        </h1>
+        <p className="mt-0.5 text-xs" style={{ color: theme.charcoalMuted }}>
+          Viewing as <span style={{ color: theme.bottleGreen, fontWeight: 600 }}>{activeRole}</span>
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="flex h-9 w-9 items-center justify-center rounded-xl transition-colors"
+          style={{
+            backgroundColor: theme.panelBg,
+            border: `1px solid ${theme.sandBorder}`,
+            color: theme.charcoal,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = isDark ? '#3d3935' : '#e8e3da';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = theme.panelBg;
+          }}
+        >
+          {isDark ? (
+            <SunIcon className="h-4 w-4" />
+          ) : (
+            <MoonIcon className="h-4 w-4" />
+          )}
+        </button>
+        <RoleSwitcher activeRole={activeRole} onSelect={onRoleSelect} />
+      </div>
+    </header>
+  );
+};
+
+// ----------------------------------------------------------------------------
+// DashboardShell — top-level export
+// ----------------------------------------------------------------------------
+
+const DashboardShell = ({
+  children,
+  userName = 'Ayesha',
+  initialView = 'overview',
+  initialRole = 'Owner',
+  onNavigate = () => {},
+  onRoleChange = () => {},
+}) => {
+  const { theme } = useTheme();
+  const [activeView, setActiveView] = useState(initialView);
+  const [activeRole, setActiveRole] = useState(initialRole);
+
+  const handleNavigate = (id) => {
+    setActiveView(id);
     onNavigate(id);
   };
 
+  const handleRoleChange = (role) => {
+    setActiveRole(role);
+    onRoleChange(role);
+  };
+
+  const content = typeof children === 'function' ? children(activeView, activeRole) : children;
+
   return (
-    <div className="min-h-screen bg-stone-50">
-      {/* ------------------------------------------------------------------
-          Desktop sidebar — permanently docked at the lg breakpoint and up.
-      ------------------------------------------------------------------- */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-stone-200 lg:bg-white">
-        <SidebarContent activeView={activeView} onSelect={handleSelect} />
-      </aside>
+    <div className="min-h-screen" style={{ backgroundColor: theme.background }}>
+      <Sidebar activeView={activeView} onSelect={handleNavigate} />
 
-      {/* ------------------------------------------------------------------
-          Mobile drawer — slide-out panel + backdrop, hidden on lg+.
-      ------------------------------------------------------------------- */}
-      <div
-        className={`fixed inset-0 z-40 lg:hidden ${
-          isDrawerOpen ? 'pointer-events-auto' : 'pointer-events-none'
-        }`}
-        aria-hidden={!isDrawerOpen}
-      >
-        {/* Backdrop */}
-        <div
-          onClick={() => setIsDrawerOpen(false)}
-          className={`absolute inset-0 bg-stone-900/30 transition-opacity duration-300 ${
-            isDrawerOpen ? 'opacity-100' : 'opacity-0'
-          }`}
-        />
+      {/* Main column — offset for the docked sidebar on lg+ */}
+      <div className="lg:ml-64">
+        <TopHeader userName={userName} activeRole={activeRole} onRoleSelect={handleRoleChange} />
 
-        {/* Sliding panel */}
-        <div
-          className={`absolute inset-y-0 left-0 w-72 max-w-[80vw] transform bg-white shadow-xl transition-transform duration-300 ease-out ${
-            isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-        >
-          <SidebarContent
-            activeView={activeView}
-            onSelect={handleSelect}
-            onRequestClose={() => setIsDrawerOpen(false)}
-          />
-        </div>
+        <main className="p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">
+          <div className="mx-auto max-w-6xl">{content}</div>
+        </main>
       </div>
 
-      {/* ------------------------------------------------------------------
-          Main workspace — offset for the docked sidebar on lg+, scaled
-          padding on smaller viewports per the responsiveness spec.
-      ------------------------------------------------------------------- */}
-      <main className="p-4 sm:p-6 lg:ml-64 lg:p-8">
-        <div className="mx-auto max-w-6xl">
-          <GreetingPanel onOpenDrawer={() => setIsDrawerOpen(true)} />
-
-          {/* Content window — renders whatever view is currently active. */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-6 lg:p-8">
-            {children}
-          </div>
-        </div>
-      </main>
+      <BottomDock activeView={activeView} onSelect={handleNavigate} />
     </div>
   );
 };
+
+// ----------------------------------------------------------------------------
+// Role-based access gate — shared by Owner / Manager dashboard scaffolds
+// ----------------------------------------------------------------------------
+
+export const AdminRestrictedAccess = () => (
+  <div className="flex min-h-[400px] items-center justify-center px-4 py-12">
+    <div
+      className="max-w-md rounded-2xl border border-stone-200 bg-white px-8 py-12 text-center"
+      style={{
+        boxShadow: '0 8px 24px -4px rgba(0,0,0,0.04), 0 2px 8px -3px rgba(0,0,0,0.05)',
+        backgroundColor: '#FFFFFF',
+      }}
+    >
+      <span
+        className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl text-2xl font-semibold"
+        style={{ backgroundColor: PALETTE.bottleGreenSoft, color: PALETTE.bottleGreen }}
+      >
+        !
+      </span>
+      <h2 className="mt-6 text-lg font-semibold" style={{ color: PALETTE.charcoal }}>
+        Restricted Access
+      </h2>
+      <p className="mt-3 text-sm leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+        Financial metrics and deep simulation pipelines are hidden for System Administrators.
+      </p>
+    </div>
+  </div>
+);
 
 export default DashboardShell;
