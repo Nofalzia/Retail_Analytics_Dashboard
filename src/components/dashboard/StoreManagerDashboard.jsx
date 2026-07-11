@@ -24,22 +24,17 @@ const strokeProps = {
   strokeLinejoin: 'round',
 };
 
-const AlertIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
-    <path d="M12 4 21 19.5H3L12 4Z" />
-    <path d="M12 10v4" />
-    <path d="M12 16.8v.2" />
-  </svg>
-);
-
-const CheckIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+// All icon primitives now accept an optional `style` prop and forward it —
+// previously `style` was silently dropped, so per-instance icon coloring
+// (e.g. the terracotta trend-down icon) never actually rendered.
+const CheckIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} {...strokeProps}>
     <path d="M5 12.5 9.5 17 19 6.5" />
   </svg>
 );
 
-const SlidersIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+const SlidersIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} {...strokeProps}>
     <path d="M5 6h9" />
     <path d="M17 6h2" />
     <circle cx="16" cy="6" r="2" />
@@ -52,10 +47,35 @@ const SlidersIcon = ({ className }) => (
   </svg>
 );
 
-const TrendDownIcon = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+const TrendDownIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} {...strokeProps}>
     <path d="M4 8 9.5 13.5 13.5 9.5 20 16" />
     <path d="M14.5 16H20v-5.5" />
+  </svg>
+);
+
+// Severity icons are shape-distinct, not just color-distinct — a triangle
+// with a dot (Critical) vs. a plain circle (Warning) reads correctly for
+// colorblind users even if the accent hue is hard to tell apart.
+const CriticalIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} {...strokeProps}>
+    <path d="M12 4 21 19.5H3L12 4Z" />
+    <path d="M12 10v4" />
+    <circle cx="12" cy="16.8" r="0.6" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+const WarningIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} {...strokeProps}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 8v5" />
+  </svg>
+);
+
+const CheckAllIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} {...strokeProps}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M8.5 12.3 11 14.8 15.5 9.8" />
   </svg>
 );
 
@@ -106,28 +126,28 @@ const CurrencyFigure = ({ amount, size = 'md' }) => {
 };
 
 const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
-  const { ALERT_SURFACE, CARD_SURFACE, PALETTE } = useDesignTokens();
+  const { ALERT_SURFACE, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
   const styles = ALERT_SURFACE[alert.severity.toLowerCase()];
-  const borderAccent = styles?.borderColor || (alert.severity === 'Critical' ? '#DC2626' : '#B8863B');
+  const SeverityIcon = alert.severity === 'Critical' ? CriticalIcon : WarningIcon;
 
   return (
     <div
       className={`flex gap-4 rounded-xl p-5 transition-all duration-200 ease-out ${
         isAcknowledged ? 'opacity-50' : 'opacity-100'
       }`}
-      style={{ ...CARD_SURFACE, borderLeft: `4px solid ${borderAccent}` }}
+      style={{ ...CARD_SURFACE, borderLeft: `4px solid ${styles.borderColor}` }}
     >
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-        style={{ backgroundColor: styles?.backgroundColor, color: PALETTE.charcoalMuted }}
+        style={{ backgroundColor: styles.backgroundColor, color: PALETTE.charcoalMuted }}
       >
-        <AlertIcon className="h-4.5 w-4.5" />
+        <SeverityIcon className="h-4.5 w-4.5" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
-            style={{ backgroundColor: styles?.backgroundColor, color: PALETTE.charcoalMuted }}
+            style={{ backgroundColor: styles.backgroundColor, color: PALETTE.charcoalMuted }}
           >
             {alert.severity}
           </span>
@@ -152,13 +172,42 @@ const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
             type="button"
             onClick={() => onAcknowledge(alert.id)}
             disabled={isAcknowledged}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-stone-600 bg-stone-100 hover:bg-stone-200/80 transition-all duration-150 ease-out disabled:cursor-default disabled:opacity-70 disabled:hover:bg-stone-100"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all duration-150 ease-out disabled:cursor-default disabled:opacity-70"
+            style={{ backgroundColor: PANEL_SURFACE.backgroundColor, color: PALETTE.charcoalMuted }}
+            onMouseEnter={(e) => {
+              if (!isAcknowledged) e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
+            }}
           >
             <CheckIcon className="h-3.5 w-3.5" />
             {isAcknowledged ? 'Acknowledged' : 'Acknowledge'}
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+// Shown once every alert has been acknowledged — previously the panel just
+// left dimmed, opacity-50 cards on screen with no sense of closure.
+const AllClearState = () => {
+  const { PALETTE, theme } = useDesignTokens();
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl px-5 py-8 text-center">
+      <span
+        className="flex h-10 w-10 items-center justify-center rounded-full"
+        style={{ backgroundColor: PALETTE.bottleGreenSoft, color: PALETTE.bottleGreen }}
+      >
+        <CheckAllIcon className="h-5 w-5" />
+      </span>
+      <p className="text-sm font-medium" style={{ color: PALETTE.charcoal }}>
+        All caught up
+      </p>
+      <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+        No open threshold alerts right now.
+      </p>
     </div>
   );
 };
@@ -187,14 +236,18 @@ const AnomalyDetectionPanel = () => {
         </span>
       </div>
       <div className="mt-6 space-y-3">
-        {INITIAL_ALERTS.map((alert) => (
-          <AlertCard
-            key={alert.id}
-            alert={alert}
-            onAcknowledge={(id) => setAcknowledgedIds((prev) => new Set(prev).add(id))}
-            isAcknowledged={acknowledgedIds.has(alert.id)}
-          />
-        ))}
+        {openCount === 0 ? (
+          <AllClearState />
+        ) : (
+          INITIAL_ALERTS.map((alert) => (
+            <AlertCard
+              key={alert.id}
+              alert={alert}
+              onAcknowledge={(id) => setAcknowledgedIds((prev) => new Set(prev).add(id))}
+              isAcknowledged={acknowledgedIds.has(alert.id)}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -250,7 +303,7 @@ const BASELINE = {
 };
 
 const ScenarioSimulationPanel = () => {
-  const { CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE } = useDesignTokens();
+  const { CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE, PANEL_SURFACE } = useDesignTokens();
   const [supplyCostIncrease, setSupplyCostIncrease] = useState(BASELINE_SLIDER_VALUES.supplyCostIncrease);
   const [priceAdjustment, setPriceAdjustment] = useState(BASELINE_SLIDER_VALUES.priceAdjustment);
 
@@ -278,6 +331,7 @@ const ScenarioSimulationPanel = () => {
   }, [supplyCostIncrease, priceAdjustment]);
 
   const isMarginDown = projection.marginPercent < projection.baselineMarginPercent;
+  const isMarginWipedOut = projection.marginPercent <= 0;
   const profitDeltaPositive = projection.profitDelta >= 0;
 
   return (
@@ -302,7 +356,14 @@ const ScenarioSimulationPanel = () => {
         <button
           type="button"
           onClick={handleResetToBaseline}
-          className="shrink-0 rounded-full px-3 py-1 text-xs font-medium text-stone-600 bg-stone-100 hover:bg-stone-200/80 transition-all duration-150 ease-out"
+          className="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all duration-150 ease-out"
+          style={{ backgroundColor: PANEL_SURFACE.backgroundColor, color: PALETTE.charcoalMuted }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
+          }}
         >
           Reset to Base Tenant Baseline
         </button>
@@ -343,6 +404,13 @@ const ScenarioSimulationPanel = () => {
           <p className="mt-1.5 text-3xl font-bold tracking-tight" style={{ color: PALETTE.charcoal }}>
             {projection.marginPercent.toFixed(1)}%
           </p>
+
+          {isMarginWipedOut && (
+            <p className="mt-2 text-xs font-medium" style={{ color: EARTH.terracotta }}>
+              This combination would eliminate your margin entirely — consider a smaller price cut or cost increase.
+            </p>
+          )}
+
           <p className="mt-1 flex items-center gap-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
             {isMarginDown && (
               <TrendDownIcon className="h-3.5 w-3.5" style={{ color: EARTH.terracotta }} />

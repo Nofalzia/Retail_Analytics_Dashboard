@@ -33,9 +33,9 @@ const createDesignTokens = (theme) => ({
     boxShadow: theme.panelShadow,
   },
   EARTH: {
-    sage: theme.sage,
-    sageSoft: theme.sageSoft,
-    sand: theme.sand_accent,
+  sage: theme.sage,
+  sageSoft: theme.sageSoft,
+  tan: theme.sand_accent,
     sandSoft: theme.sandSoft,
     terracotta: theme.terracotta,
     terracottaSoft: theme.terracottaSoft,
@@ -111,7 +111,7 @@ const LIGHT_THEME = {
   // Status colors
   success: '#3F6B4A',
   successSoft: 'rgba(63, 107, 74, 0.10)',
-  warning: '#8A6A2B',
+  warning: '#7A5A22',
   warningSoft: 'rgba(138, 106, 43, 0.10)',
   error: '#B91C1C',
   errorSoft: 'rgba(185, 28, 28, 0.12)',
