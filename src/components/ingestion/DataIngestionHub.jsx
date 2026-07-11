@@ -325,7 +325,9 @@ const UploadDropzone = ({ onFilesAdded }) => {
 
 // ----------------------------------------------------------------------------
 // ProcessingQueuePanel
-// ----------------------------------------------------------------------------const EmptyQueueState = () => {
+// ----------------------------------------------------------------------------
+
+const EmptyQueueState = () => {
   const { theme } = useTheme();
   const { CARD_SURFACE, PALETTE } = useDesignTokens();
 
@@ -533,6 +535,7 @@ const DataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
   const [activeJobs, setActiveJobs] = useState([]);
   const [recentUploads, setRecentUploads] = useState([]);
   const [successBanner, setSuccessBanner] = useState(null);
+  const { PALETTE } = useDesignTokens(); // ← add this
 
   useEffect(() => {
     if (activeJobs.length === 0) return undefined;
