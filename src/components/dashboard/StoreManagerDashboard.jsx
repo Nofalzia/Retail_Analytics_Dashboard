@@ -59,21 +59,6 @@ const TrendDownIcon = ({ className }) => (
   </svg>
 );
 
-const SEVERITY_STYLES = {
-  Critical: {
-    borderColor: ALERT_SURFACE.critical.borderColor,
-    badgeBg: ALERT_SURFACE.critical.backgroundColor,
-    iconBg: ALERT_SURFACE.critical.backgroundColor,
-    textColor: PALETTE.charcoalMuted,
-  },
-  Warning: {
-    borderColor: ALERT_SURFACE.warning.borderColor,
-    badgeBg: ALERT_SURFACE.warning.backgroundColor,
-    iconBg: ALERT_SURFACE.warning.backgroundColor,
-    textColor: PALETTE.charcoalMuted,
-  },
-};
-
 const INITIAL_ALERTS = [
   {
     id: 'alert-1',
@@ -122,8 +107,8 @@ const CurrencyFigure = ({ amount, size = 'md' }) => {
 
 const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
   const { ALERT_SURFACE, CARD_SURFACE, PALETTE } = useDesignTokens();
-  const styles = ALERT_SURFACE[alert.severity];
-  const borderAccent = alert.severity === 'Critical' ? '#DC2626' : '#B8863B';
+  const styles = ALERT_SURFACE[alert.severity.toLowerCase()];
+  const borderAccent = styles?.borderColor || (alert.severity === 'Critical' ? '#DC2626' : '#B8863B');
 
   return (
     <div
@@ -134,7 +119,7 @@ const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
     >
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-        style={{ backgroundColor: styles.iconBg, color: styles.textColor }}
+        style={{ backgroundColor: styles?.backgroundColor, color: PALETTE.charcoalMuted }}
       >
         <AlertIcon className="h-4.5 w-4.5" />
       </span>
@@ -142,7 +127,7 @@ const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
         <div className="flex flex-wrap items-center gap-2">
           <span
             className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
-            style={{ backgroundColor: styles.badgeBg, color: styles.textColor }}
+            style={{ backgroundColor: styles?.backgroundColor, color: PALETTE.charcoalMuted }}
           >
             {alert.severity}
           </span>
@@ -217,6 +202,7 @@ const AnomalyDetectionPanel = () => {
 
 const EarthSlider = ({ id, label, value, min, max, step, unit, onChange, accent }) => {
   const percent = ((value - min) / (max - min)) * 100;
+  const { PALETTE } = useDesignTokens();
 
   return (
     <div>
@@ -264,6 +250,7 @@ const BASELINE = {
 };
 
 const ScenarioSimulationPanel = () => {
+  const { CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE } = useDesignTokens();
   const [supplyCostIncrease, setSupplyCostIncrease] = useState(BASELINE_SLIDER_VALUES.supplyCostIncrease);
   const [priceAdjustment, setPriceAdjustment] = useState(BASELINE_SLIDER_VALUES.priceAdjustment);
 
@@ -349,28 +336,28 @@ const ScenarioSimulationPanel = () => {
       <div className="my-6 h-px" style={{ backgroundColor: PALETTE.sandBorder }} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-stone-100 bg-white p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(120, 113, 104, 0.16)', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+        <div className="rounded-xl p-4" style={INSET_SURFACE}>
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: PALETTE.charcoalMuted }}>
             Projected Net Margin
           </p>
-          <p className="mt-1.5 text-3xl font-bold tracking-tight text-stone-900">
+          <p className="mt-1.5 text-3xl font-bold tracking-tight" style={{ color: PALETTE.charcoal }}>
             {projection.marginPercent.toFixed(1)}%
           </p>
-          <p className="mt-1 flex items-center gap-1 text-xs text-stone-500">
+          <p className="mt-1 flex items-center gap-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
             {isMarginDown && (
               <TrendDownIcon className="h-3.5 w-3.5" style={{ color: EARTH.terracotta }} />
             )}
             baseline {projection.baselineMarginPercent.toFixed(1)}%
           </p>
         </div>
-        <div className="rounded-xl border border-stone-100 bg-white p-4" style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(120, 113, 104, 0.16)', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+        <div className="rounded-xl p-4" style={INSET_SURFACE}>
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: PALETTE.charcoalMuted }}>
             Projected Monthly Profit
           </p>
           <div className="mt-1.5">
             <CurrencyFigure amount={projection.monthlyProfit} />
           </div>
-          <p className="mt-1 text-xs font-medium text-stone-500">
+          <p className="mt-1 text-xs font-medium" style={{ color: PALETTE.charcoalMuted }}>
             <span style={{ color: profitDeltaPositive ? EARTH.sage : EARTH.terracotta }}>
               {profitDeltaPositive ? '+' : ''}
               {formatLocalCurrency(projection.profitDelta).prefix}{' '}
