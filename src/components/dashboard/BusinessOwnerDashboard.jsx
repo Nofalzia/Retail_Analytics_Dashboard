@@ -69,9 +69,9 @@ const CurrencyFigure = ({ amount, size = 'lg' }) => {
   const sizeClass = size === 'lg' ? 'text-4xl sm:text-[3.5rem]' : 'text-3xl';
 
   return (
-    <p className={`${sizeClass} tracking-tight font-bold text-stone-900`}>
-      <span className="mr-1.5 text-base font-semibold text-stone-500">{prefix}</span>
-      <span className="text-stone-900">{value}</span>
+    <p className={`${sizeClass} tracking-tight font-bold`} style={{ color: PALETTE.charcoal }}>
+      <span className="mr-1.5 text-base font-semibold" style={{ color: PALETTE.charcoalMuted }}>{prefix}</span>
+      <span>{value}</span>
     </p>
   );
 };
@@ -80,7 +80,7 @@ const MetricCard = ({ icon, label, children }) => {
   const { CARD_SURFACE, PALETTE, INSET_SURFACE } = useDesignTokens();
 
   return (
-    <div className="flex h-full flex-col rounded-xl p-6 sm:p-7 transition-shadow duration-200 ease-out" style={{...CARD_SURFACE, backgroundColor: '#FFFFFF'}}>
+    <div className="flex h-full flex-col rounded-xl p-6 sm:p-7 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
       <div className="flex items-center gap-3" style={{ color: PALETTE.charcoalMuted }}>
         <span
           className="flex h-9 w-9 items-center justify-center rounded-2xl"
@@ -88,7 +88,7 @@ const MetricCard = ({ icon, label, children }) => {
         >
           {icon}
         </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">{label}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: PALETTE.charcoalMuted }}>{label}</span>
       </div>
       <div className="mt-6 flex flex-1 flex-col justify-end">{children}</div>
     </div>
@@ -122,16 +122,20 @@ const TotalRevenueCard = ({ amount, growthPercent }) => {
   );
 };
 
-const TotalOrdersCard = ({ count, ordersToday, averagePerDay }) => (
-  <MetricCard icon={<OrdersIcon className="h-4.5 w-4.5" />} label="Total Orders">
-    <p className="text-4xl font-bold tracking-tight text-stone-900 sm:text-[3.6rem]">
-      {count.toLocaleString('en-PK')}
-    </p>
-    <p className="mt-3 text-xs tracking-wide text-stone-500 uppercase">
-      <span className="font-semibold text-stone-700">{ordersToday} orders</span> today · {averagePerDay}/day average
-    </p>
-  </MetricCard>
-);
+const TotalOrdersCard = ({ count, ordersToday, averagePerDay }) => {
+  const { PALETTE } = useDesignTokens();
+
+  return (
+    <MetricCard icon={<OrdersIcon className="h-4.5 w-4.5" />} label="Total Orders">
+      <p className="text-4xl font-bold tracking-tight sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
+        {count.toLocaleString('en-PK')}
+      </p>
+      <p className="mt-3 text-xs tracking-wide uppercase" style={{ color: PALETTE.charcoalMuted }}>
+        <span className="font-semibold" style={{ color: PALETTE.charcoal }}>{ordersToday} orders</span> today · {averagePerDay}/day average
+      </p>
+    </MetricCard>
+  );
+};
 
 const INVENTORY_CAP_DAYS = 30;
 
@@ -149,9 +153,9 @@ const DaysOfInventoryCard = ({ daysLeft }) => {
   return (
     <MetricCard icon={<InventoryIcon className="h-4.5 w-4.5" />} label="Days of Inventory Left">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-4xl font-bold tracking-tight text-stone-900 sm:text-[3.6rem]">
+        <p className="text-4xl font-bold tracking-tight sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
           {daysLeft}
-          <span className="ml-1 text-sm font-semibold text-stone-500">days</span>
+          <span className="ml-1 text-sm font-semibold" style={{ color: PALETTE.charcoalMuted }}>days</span>
         </p>
         <span
           className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wider"

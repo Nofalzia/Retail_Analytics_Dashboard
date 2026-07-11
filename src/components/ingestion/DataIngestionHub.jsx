@@ -1,26 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CARD_SURFACE, PALETTE } from '../layout/DashboardShell';
-
-/**
- * DataIngestionHub — System Administrator / Data Entry Clerk view
- * Operational only: no financial figures surfaced on this screen.
- */
-
-const SUCCESS_GREEN = {
-  text: '#3F6B4A',
-  soft: 'rgba(63, 107, 74, 0.10)',
-};
-
-const PROCESSING_AMBER = {
-  text: '#8A6A2B',
-  soft: 'rgba(138, 106, 43, 0.10)',
-};
-
-const ERROR_CRIMSON = {
-  text: '#B91C1C',
-  soft: 'rgba(185, 28, 28, 0.12)',
-  ring: '#DC2626',
-};
+import { useDesignTokens, useTheme } from '../../context/ThemeContext';
 
 const SUCCESS_BANNER_MESSAGE =
   'Successfully parsed 4,120 SKU records with 0 structural anomalies. The system runway has updated.';
@@ -124,49 +103,56 @@ const createJob = (file) => ({
 // SuccessFeedbackBanner — dismissible inline notice after graduation
 // ----------------------------------------------------------------------------
 
-const SuccessFeedbackBanner = ({ message, onDismiss }) => (
-  <div
-    role="status"
-    className="flex items-start justify-between gap-4 rounded-xl px-4 py-3 sm:px-5"
-    style={{
-      backgroundColor: SUCCESS_GREEN.soft,
-      border: `1px solid rgba(63, 107, 74, 0.22)`,
-      boxShadow: '0 4px 16px rgba(63, 107, 74, 0.08)',
-    }}
-  >
-    <div className="flex items-start gap-3">
-      <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0" style={{ color: SUCCESS_GREEN.text }} />
-      <p className="text-sm leading-relaxed" style={{ color: PALETTE.charcoal }}>
-        {message}
-      </p>
-    </div>
-    <button
-      type="button"
-      onClick={onDismiss}
-      aria-label="Dismiss notification"
-      className="shrink-0 rounded-lg p-1 transition-colors"
-      style={{ color: PALETTE.charcoalMuted }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = 'rgba(63, 107, 74, 0.12)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = 'transparent';
+const SuccessFeedbackBanner = ({ message, onDismiss }) => {
+  const { theme } = useTheme();
+  const { PALETTE } = useDesignTokens();
+
+  return (
+    <div
+      role="status"
+      className="flex items-start justify-between gap-4 rounded-xl px-4 py-3 sm:px-5"
+      style={{
+        backgroundColor: theme.successSoft,
+        border: `1px solid rgba(63, 107, 74, 0.22)`,
+        boxShadow: `0 4px 16px ${theme.successSoft}`,
       }}
     >
-      <CloseIcon className="h-4 w-4" />
-    </button>
-  </div>
-);
+      <div className="flex items-start gap-3">
+        <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0" style={{ color: theme.success }} />
+        <p className="text-sm leading-relaxed" style={{ color: PALETTE.charcoal }}>
+          {message}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss notification"
+        className="shrink-0 rounded-lg p-1 transition-colors"
+        style={{ color: PALETTE.charcoalMuted }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = theme.successSoft;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'transparent';
+        }}
+      >
+        <CloseIcon className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
 
 // ----------------------------------------------------------------------------
 // ProgressRing
 // ----------------------------------------------------------------------------
 
 const ProgressRing = ({ percent, size = 44, strokeWidth = 4, color, isError = false }) => {
+  const { theme } = useTheme();
+  const { PALETTE } = useDesignTokens();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - percent / 100);
-  const ringColor = isError ? ERROR_CRIMSON.ring : color;
+  const ringColor = isError ? theme.errorRing : color;
 
   return (
     <svg
@@ -180,7 +166,7 @@ const ProgressRing = ({ percent, size = 44, strokeWidth = 4, color, isError = fa
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke={PALETTE.sandBorder}
+        stroke={theme.sandBorder}
         strokeWidth={strokeWidth}
       />
       <circle
@@ -203,7 +189,7 @@ const ProgressRing = ({ percent, size = 44, strokeWidth = 4, color, isError = fa
         dominantBaseline="central"
         fontSize={size * 0.26}
         fontWeight="600"
-        fill={isError ? ERROR_CRIMSON.text : PALETTE.charcoal}
+        fill={isError ? theme.error : PALETTE.charcoal}
       >
         {Math.round(percent)}
       </text>
@@ -218,6 +204,8 @@ const ProgressRing = ({ percent, size = 44, strokeWidth = 4, color, isError = fa
 const UploadDropzone = ({ onFilesAdded }) => {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
+  const { theme } = useTheme();
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
 
   const handleDrop = useCallback(
     (event) => {
@@ -248,25 +236,51 @@ const UploadDropzone = ({ onFilesAdded }) => {
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-stone-200 bg-stone-50/30 px-8 py-12 text-center transition-colors duration-200 hover:bg-stone-50/80 cursor-pointer"
-        style={isDragging ? { borderColor: PALETTE.bottleGreen, backgroundColor: PALETTE.bottleGreenSoft } : undefined}
+        className="flex min-h-[200px] flex-col items-center justify-center rounded-xl cursor-pointer transition-colors duration-200"
+        style={
+          isDragging
+            ? {
+                border: `2px dashed ${PALETTE.bottleGreen}`,
+                backgroundColor: PALETTE.bottleGreenSoft,
+              }
+            : {
+                border: `2px dashed ${theme.sandBorder}`,
+                backgroundColor: theme.panelBg,
+              }
+        }
+        onMouseEnter={(e) => {
+          if (!isDragging) e.currentTarget.style.backgroundColor = theme.surface;
+        }}
+        onMouseLeave={(e) => {
+          if (!isDragging) e.currentTarget.style.backgroundColor = theme.panelBg;
+        }}
       >
         <span
-          className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-stone-700 shadow-sm"
-          style={{ border: `1px solid ${PALETTE.sandBorder}` }}
+          className="flex h-14 w-14 items-center justify-center rounded-2xl shadow-sm"
+          style={{ border: `1px solid ${theme.sandBorder}`, backgroundColor: theme.surface, color: PALETTE.charcoal }}
         >
           <DocumentIcon className="h-7 w-7" />
         </span>
-        <p className="mt-3 text-base font-semibold text-stone-900">
+        <p className="mt-3 text-base font-semibold" style={{ color: PALETTE.charcoal }}>
           Drag and drop a file to begin ingestion
         </p>
-        <p className="mt-1.5 max-w-xs text-xs text-stone-500">
+        <p className="mt-1.5 max-w-xs text-xs" style={{ color: PALETTE.charcoalMuted }}>
           Supports .csv and .xlsx using the standard tenant template.
         </p>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="mt-5 rounded-full border border-stone-200 bg-white px-5 py-2 text-xs font-semibold text-stone-700 transition-all duration-150 hover:bg-stone-100"
+          className="mt-5 rounded-full px-5 py-2 text-xs font-semibold transition-all duration-150"
+          style={{
+            ...CARD_SURFACE,
+            color: PALETTE.charcoal,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = PALETTE.sand;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = theme.surface;
+          }}
         >
           Browse files
         </button>
@@ -284,16 +298,16 @@ const UploadDropzone = ({ onFilesAdded }) => {
         type="button"
         onClick={handleLoadMockMalformed}
         className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-xs transition-colors"
-        style={{ ...CARD_SURFACE, color: PALETTE.charcoal }}
+        style={{ ...CARD_SURFACE, color: PALETTE.charcoal, backgroundColor: theme.surface }}
         onMouseEnter={(e) => {
           e.currentTarget.style.backgroundColor = PALETTE.sand;
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = '#FFFFFF';
+          e.currentTarget.style.backgroundColor = theme.surface;
         }}
       >
         <span className="flex items-center gap-2.5">
-          <DocumentIcon className="h-4 w-4" style={{ color: ERROR_CRIMSON.text }} />
+          <DocumentIcon className="h-4 w-4" style={{ color: theme.error }} />
           <span>
             <span className="font-medium">{MOCK_MALFORMED_FILENAME}</span>
             <span className="ml-2 text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
@@ -311,112 +325,127 @@ const UploadDropzone = ({ onFilesAdded }) => {
 
 // ----------------------------------------------------------------------------
 // ProcessingQueuePanel
-// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------const EmptyQueueState = () => {
+  const { theme } = useTheme();
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
 
-const EmptyQueueState = () => (
-  <div
-    className="rounded-xl border border-dashed border-stone-200 bg-stone-50/50 px-5 py-6"
-    style={{
-      boxShadow: CARD_SURFACE.boxShadow,
-    }}
-  >
-    <p className="text-center text-xs font-medium" style={{ color: PALETTE.charcoal }}>
-      Nothing in the queue right now
-    </p>
-    <p className="mt-1 text-center text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
-      Upload a file to see live progress, or review the structural checklist below.
-    </p>
-    <ul className="mt-4 space-y-1.5">
-      {STRUCTURAL_CHECKLIST.map(({ column, label }) => (
-        <li
-          key={column}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
-          style={{ backgroundColor: PALETTE.sand }}
-        >
-          <ChecklistIcon className="h-3.5 w-3.5 shrink-0" style={{ color: SUCCESS_GREEN.text }} />
-          <span style={{ color: PALETTE.charcoalMuted }}>
-            Column {column}:{' '}
-            <span className="font-medium" style={{ color: PALETTE.charcoal }}>
-              {label}
-            </span>
-          </span>
-        </li>
-      ))}
-    </ul>
-  </div>
-);
-
-const ProcessingJobCard = ({ job }) => (
-  <div className="rounded-xl p-4" style={CARD_SURFACE}>
-    <div className="flex items-center gap-2">
-      <DocumentIcon className="h-4 w-4" style={{ color: PALETTE.charcoalMuted }} />
-      <p className="truncate text-sm font-medium" style={{ color: PALETTE.charcoal }}>
-        {job.fileName}
+  return (
+    <div
+      className="rounded-xl border border-dashed px-5 py-6"
+      style={{
+        boxShadow: CARD_SURFACE.boxShadow,
+        borderColor: theme.sandBorder,
+        backgroundColor: theme.panelBg,
+      }}
+    >
+      <p className="text-center text-xs font-medium" style={{ color: PALETTE.charcoal }}>
+        Nothing in the queue right now
       </p>
+      <p className="mt-1 text-center text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
+        Upload a file to see live progress, or review the structural checklist below.
+      </p>
+      <ul className="mt-4 space-y-1.5">
+        {STRUCTURAL_CHECKLIST.map(({ column, label }) => (
+          <li
+            key={column}
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
+            style={{ backgroundColor: theme.surface, border: `1px solid ${theme.sandBorder}` }}
+          >
+            <ChecklistIcon className="h-3.5 w-3.5 shrink-0" style={{ color: theme.success }} />
+            <span style={{ color: PALETTE.charcoalMuted }}>
+              Column {column}:{' '}
+              <span className="font-medium" style={{ color: PALETTE.charcoal }}>
+                {label}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
+  );
+};
 
-    <div className="mt-4 grid grid-cols-3 gap-3">
-      {job.stages.map((stage, index) => {
-        const isSchemaStage = index === 0;
-        const showError = job.hasError && isSchemaStage;
+const ProcessingJobCard = ({ job }) => {
+  const { theme } = useTheme();
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
 
-        return (
-          <div key={stage.key} className="flex flex-col items-center gap-2">
-            <ProgressRing
-              percent={stage.progress}
-              color={stage.progress >= 100 ? SUCCESS_GREEN.text : PALETTE.bottleGreen}
-              isError={showError}
-            />
-            <p className="text-center text-[10px] leading-tight" style={{ color: PALETTE.charcoalMuted }}>
-              {stage.label}
-            </p>
-          </div>
-        );
-      })}
-    </div>
-
-    {job.hasError && job.errorMessage && (
-      <div
-        className="mt-4 rounded-lg px-3 py-2.5 text-xs font-medium"
-        style={{
-          backgroundColor: ERROR_CRIMSON.soft,
-          color: ERROR_CRIMSON.text,
-          border: `1px solid rgba(185, 28, 28, 0.2)`,
-        }}
-        role="alert"
-      >
-        {job.errorMessage}
+  return (
+    <div className="rounded-xl p-4" style={{ ...CARD_SURFACE, backgroundColor: theme.surface }}>
+      <div className="flex items-center gap-2">
+        <DocumentIcon className="h-4 w-4" style={{ color: PALETTE.charcoalMuted }} />
+        <p className="truncate text-sm font-medium" style={{ color: PALETTE.charcoal }}>
+          {job.fileName}
+        </p>
       </div>
-    )}
-  </div>
-);
 
-const ProcessingQueuePanel = ({ jobs }) => (
-  <div className="rounded-xl p-6 sm:p-8" style={CARD_SURFACE}>
-    <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-      Processing Queue
-    </h2>
-    <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-      Live pipeline status for files currently being ingested.
-    </p>
-    <div className="mt-5 space-y-3">
-      {jobs.length === 0 ? <EmptyQueueState /> : jobs.map((job) => <ProcessingJobCard key={job.id} job={job} />)}
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {job.stages.map((stage, index) => {
+          const isSchemaStage = index === 0;
+          const showError = job.hasError && isSchemaStage;
+
+          return (
+            <div key={stage.key} className="flex flex-col items-center gap-2">
+              <ProgressRing
+                percent={stage.progress}
+                color={stage.progress >= 100 ? theme.success : PALETTE.bottleGreen}
+                isError={showError}
+              />
+              <p className="text-center text-[10px] leading-tight" style={{ color: PALETTE.charcoalMuted }}>
+                {stage.label}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {job.hasError && job.errorMessage && (
+        <div
+          className="mt-4 rounded-lg px-3 py-2.5 text-xs font-medium"
+          style={{
+            backgroundColor: theme.errorSoft,
+            color: theme.error,
+            border: `1px solid rgba(185, 28, 28, 0.2)`,
+          }}
+          role="alert"
+        >
+          {job.errorMessage}
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
+
+const ProcessingQueuePanel = ({ jobs }) => {
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
+
+  return (
+    <div className="rounded-xl p-6 sm:p-8" style={CARD_SURFACE}>
+      <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
+        Processing Queue
+      </h2>
+      <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
+        Live pipeline status for files currently being ingested.
+      </p>
+      <div className="mt-5 space-y-3">
+        {jobs.length === 0 ? <EmptyQueueState /> : jobs.map((job) => <ProcessingJobCard key={job.id} job={job} />)}
+      </div>
+    </div>
+  );
+};
 
 // ----------------------------------------------------------------------------
 // RecentUploadsTable
 // ----------------------------------------------------------------------------
 
 const StatusTag = ({ status }) => {
+  const { theme } = useTheme();
   const isSuccess = status === 'Success';
   const isFailed = status === 'Failed';
   const style = isSuccess
-    ? { backgroundColor: SUCCESS_GREEN.soft, color: SUCCESS_GREEN.text }
+    ? { backgroundColor: theme.successSoft, color: theme.success }
     : isFailed
-      ? { backgroundColor: ERROR_CRIMSON.soft, color: ERROR_CRIMSON.text }
-      : { backgroundColor: PROCESSING_AMBER.soft, color: PROCESSING_AMBER.text };
+      ? { backgroundColor: theme.errorSoft, color: theme.error }
+      : { backgroundColor: theme.warningSoft, color: theme.warning };
 
   const label = isSuccess ? 'Processing Complete' : isFailed ? 'Validation Failed' : 'Processing';
 
@@ -432,61 +461,67 @@ const StatusTag = ({ status }) => {
   );
 };
 
-const RecentUploadsTable = ({ uploads }) => (
-  <div className="rounded-xl p-6 sm:p-8" style={CARD_SURFACE}>
-    <h2 className="text-sm font-semibold text-stone-900">Recent Uploads</h2>
-    <p className="mt-1 text-xs text-stone-500">
-      File name, size, and ingestion status — no downstream data shown here.
-    </p>
-    <div className="mt-5 overflow-x-auto">
-      <table className="w-full min-w-[480px] border-collapse text-left text-sm">
-        <thead>
-          <tr className="border-b border-stone-100">
-            {['File', 'Size', 'Uploaded', 'Status'].map((heading) => (
-              <th
-                key={heading}
-                className="pb-3 pr-4 text-[10px] font-semibold uppercase tracking-wider text-stone-500"
-              >
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {uploads.length === 0 ? (
-            <tr>
-              <td colSpan={4} className="py-6 text-center text-xs" style={{ color: PALETTE.charcoalMuted }}>
-                No uploads yet.
-              </td>
+const RecentUploadsTable = ({ uploads }) => {
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
+  const { theme } = useTheme();
+
+  return (
+    <div className="rounded-xl p-6 sm:p-8" style={CARD_SURFACE}>
+      <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>Recent Uploads</h2>
+      <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
+        File name, size, and ingestion status — no downstream data shown here.
+      </p>
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b" style={{ borderColor: theme.sandBorder }}>
+              {['File', 'Size', 'Uploaded', 'Status'].map((heading) => (
+                <th
+                  key={heading}
+                  className="pb-3 pr-4 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: PALETTE.charcoalMuted }}
+                >
+                  {heading}
+                </th>
+              ))}
             </tr>
-          ) : (
-            uploads.map((upload) => (
-              <tr key={upload.id} className="border-b border-stone-100 last:border-0">
-                <td className="py-3 pr-4">
-                  <div className="flex items-center gap-2">
-                    <DocumentIcon className="h-4 w-4 shrink-0" style={{ color: PALETTE.charcoalMuted }} />
-                    <span className="truncate font-medium" style={{ color: PALETTE.charcoal }}>
-                      {upload.fileName}
-                    </span>
-                  </div>
-                </td>
-                <td className="py-3 pr-4" style={{ color: PALETTE.charcoalMuted }}>
-                  {formatFileSize(upload.fileSize)}
-                </td>
-                <td className="py-3 pr-4" style={{ color: PALETTE.charcoalMuted }}>
-                  {formatTimestamp(upload.timestamp)}
-                </td>
-                <td className="py-3">
-                  <StatusTag status={upload.status} />
+          </thead>
+          <tbody>
+            {uploads.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-6 text-center text-xs" style={{ color: PALETTE.charcoalMuted }}>
+                  No uploads yet.
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              uploads.map((upload) => (
+                <tr key={upload.id} className="border-b last:border-0" style={{ borderColor: theme.sandBorder }}>
+                  <td className="py-3 pr-4">
+                    <div className="flex items-center gap-2">
+                      <DocumentIcon className="h-4 w-4 shrink-0" style={{ color: PALETTE.charcoalMuted }} />
+                      <span className="truncate font-medium" style={{ color: PALETTE.charcoal }}>
+                        {upload.fileName}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-3 pr-4" style={{ color: PALETTE.charcoalMuted }}>
+                    {formatFileSize(upload.fileSize)}
+                  </td>
+                  <td className="py-3 pr-4" style={{ color: PALETTE.charcoalMuted }}>
+                    {formatTimestamp(upload.timestamp)}
+                  </td>
+                  <td className="py-3">
+                    <StatusTag status={upload.status} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ----------------------------------------------------------------------------
 // DataIngestionHub — top-level export

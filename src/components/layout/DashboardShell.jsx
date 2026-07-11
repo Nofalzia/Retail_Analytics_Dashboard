@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme, useDesignTokens } from '../../context/ThemeContext';
 
 /**
  * ============================================================================
@@ -7,59 +7,7 @@ import { useTheme } from '../../context/ThemeContext';
  * ============================================================================
  */
 
-// Theme-aware token factory
-const createDesignTokens = (theme) => ({
-  PALETTE: {
-    cream: theme.cream,
-    sand: theme.sand,
-    sandBorder: theme.sandBorder,
-    charcoal: theme.charcoal,
-    charcoalMuted: theme.charcoalMuted,
-    bottleGreen: theme.bottleGreen,
-    bottleGreenHover: theme.bottleGreenHover,
-    bottleGreenSoft: theme.bottleGreenSoft,
-    bottleGreenSoftStrong: theme.bottleGreenSoftStrong,
-  },
-  CARD_SURFACE: {
-    backgroundColor: theme.cardBg,
-    border: `1px solid ${theme.cardBorder}`,
-    boxShadow: theme.cardShadow,
-  },
-  PANEL_SURFACE: {
-    backgroundColor: theme.panelBg,
-    border: `1px solid ${theme.panelBorder}`,
-    boxShadow: theme.panelShadow,
-  },
-  EARTH: {
-    sage: theme.sage,
-    sageSoft: theme.sageSoft,
-    sand: theme.sand_accent,
-    sandSoft: theme.sandSoft,
-    terracotta: theme.terracotta,
-    terracottaSoft: theme.terracottaSoft,
-    ochre: theme.ochre,
-    ochreSoft: theme.ochreSoft,
-  },
-  CHART_AXIS: {
-    grid: theme.chartGrid,
-    border: theme.chartBorder,
-  },
-  INSET_SURFACE: {
-    backgroundColor: theme.panelBg,
-    border: `1px solid ${theme.panelBorder}`,
-    boxShadow: `0 2px 8px ${theme.panelShadow.split(',')[0].includes('rgba') ? 'rgba(0,0,0,0.03)' : 'rgba(36, 31, 26, 0.03)'}`,
-  },
-  ALERT_SURFACE: {
-    critical: {
-      backgroundColor: theme.errorSoft,
-      borderColor: theme.error,
-    },
-    warning: {
-      backgroundColor: theme.warningSoft,
-      borderColor: theme.ochre,
-    },
-  },
-});
+
 
 // Legacy exports for backward compatibility
 export const PALETTE = {
@@ -238,6 +186,7 @@ function MoonIcon({ className }) {
 
 const SidebarNavLink = ({ item, isActive, onSelect }) => {
   const { label, Icon } = item;
+  const { PALETTE } = useDesignTokens();
 
   return (
     <button
@@ -262,61 +211,70 @@ const SidebarNavLink = ({ item, isActive, onSelect }) => {
   );
 };
 
-const Sidebar = ({ activeView, onSelect }) => (
-  <aside
-    className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col"
-    style={{
-      backgroundColor: '#FFFFFF',
-      borderRight: `1px solid ${PALETTE.sandBorder}`,
-      boxShadow: '4px 0 24px rgba(36, 31, 26, 0.03)',
-    }}
-  >
-    <div className="flex items-center gap-3 px-6 py-6">
-      <div
-        className="flex h-9 w-9 items-center justify-center rounded-lg"
-        style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
-      >
-        <StoreMarkIcon className="h-4.5 w-4.5" />
-      </div>
-      <div className="leading-tight">
-        <p className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-          Retail Analytics
-        </p>
-        <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
-          Store Intelligence
-        </p>
-      </div>
-    </div>
+const Sidebar = ({ activeView, onSelect }) => {
+  const { theme, isDark } = useTheme();
+  const { PALETTE } = useDesignTokens();
 
-    <div className="mx-6 h-px" style={{ backgroundColor: PALETTE.sandBorder }} />
-
-    <nav className="flex-1 space-y-1 px-4 py-6" aria-label="Primary">
-      {NAV_ITEMS.map((item) => (
-        <SidebarNavLink
-          key={item.id}
-          item={item}
-          isActive={activeView === item.id}
-          onSelect={onSelect}
-        />
-      ))}
-    </nav>
-
-    <div className="px-6 py-6">
-      <div
-        className="rounded-xl p-4"
-        style={{
-          backgroundColor: PALETTE.sand,
-          border: `1px solid rgba(120, 113, 104, 0.16)`,
-          boxShadow: '0 2px 8px rgba(36, 31, 26, 0.03)',
-        }}
-      >
-        <p className="text-xs leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
-          Data shown is scoped to your connected store.
-        </p>
+  return (
+    <aside
+      className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col"
+      style={{
+        backgroundColor: theme.surface,
+        borderRight: `1px solid ${theme.sandBorder}`,
+        boxShadow: isDark
+          ? '4px 0 24px rgba(0, 0, 0, 0.3)'
+          : '4px 0 24px rgba(36, 31, 26, 0.03)',
+      }}
+    >
+      <div className="flex items-center gap-3 px-6 py-6">
+        <div
+          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
+        >
+          <StoreMarkIcon className="h-4.5 w-4.5" />
+        </div>
+        <div className="leading-tight">
+          <p className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
+            Retail Analytics
+          </p>
+          <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+            Store Intelligence
+          </p>
+        </div>
       </div>
-    </div>
-  </aside>
-);
+
+      <div className="mx-6 h-px" style={{ backgroundColor: theme.sandBorder }} />
+
+      <nav className="flex-1 space-y-1 px-4 py-6" aria-label="Primary">
+        {NAV_ITEMS.map((item) => (
+          <SidebarNavLink
+            key={item.id}
+            item={item}
+            isActive={activeView === item.id}
+            onSelect={onSelect}
+          />
+        ))}
+      </nav>
+
+      <div className="px-6 py-6">
+        <div
+          className="rounded-xl p-4"
+          style={{
+            backgroundColor: theme.panelBg,
+            border: `1px solid ${theme.panelBorder}`,
+            boxShadow: isDark
+              ? '0 2px 8px rgba(0, 0, 0, 0.2)'
+              : '0 2px 8px rgba(36, 31, 26, 0.03)',
+          }}
+        >
+          <p className="text-xs leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+            Data shown is scoped to your connected store.
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
+};
 
 // ----------------------------------------------------------------------------
 // Bottom navigation dock (mobile only)
@@ -324,6 +282,7 @@ const Sidebar = ({ activeView, onSelect }) => (
 
 const DockNavLink = ({ item, isActive, onSelect }) => {
   const { label, Icon } = item;
+  const { PALETTE } = useDesignTokens();
 
   return (
     <button
@@ -343,27 +302,33 @@ const DockNavLink = ({ item, isActive, onSelect }) => {
   );
 };
 
-const BottomDock = ({ activeView, onSelect }) => (
-  <nav
-    className="fixed inset-x-0 bottom-0 z-30 flex lg:hidden"
-    style={{
-      backgroundColor: 'rgba(255, 255, 255, 0.96)',
-      borderTop: `1px solid ${PALETTE.sandBorder}`,
-      boxShadow: '0 -4px 24px rgba(36, 31, 26, 0.04)',
-      backdropFilter: 'blur(8px)',
-    }}
-    aria-label="Primary"
-  >
-    {NAV_ITEMS.map((item) => (
-      <DockNavLink
-        key={item.id}
-        item={item}
-        isActive={activeView === item.id}
-        onSelect={onSelect}
-      />
-    ))}
-  </nav>
-);
+const BottomDock = ({ activeView, onSelect }) => {
+  const { theme, isDark } = useTheme();
+
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-30 flex lg:hidden"
+      style={{
+        backgroundColor: theme.surface === '#FFFFFF' ? 'rgba(255, 255, 255, 0.96)' : 'rgba(36, 34, 32, 0.96)',
+        borderTop: `1px solid ${theme.sandBorder}`,
+        boxShadow: isDark
+          ? '0 -4px 24px rgba(0, 0, 0, 0.4)'
+          : '0 -4px 24px rgba(36, 31, 26, 0.04)',
+        backdropFilter: 'blur(8px)',
+      }}
+      aria-label="Primary"
+    >
+      {NAV_ITEMS.map((item) => (
+        <DockNavLink
+          key={item.id}
+          item={item}
+          isActive={activeView === item.id}
+          onSelect={onSelect}
+        />
+      ))}
+    </nav>
+  );
+};
 
 // ----------------------------------------------------------------------------
 // Role switcher
@@ -372,6 +337,8 @@ const BottomDock = ({ activeView, onSelect }) => (
 const RoleSwitcher = ({ activeRole, onSelect }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
+  const { theme } = useTheme();
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
 
   // Close on outside click.
   useEffect(() => {
@@ -395,7 +362,7 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
         style={{
           ...CARD_SURFACE,
           color: PALETTE.charcoal,
-          backgroundColor: isOpen ? PALETTE.sand : '#FFFFFF',
+          backgroundColor: isOpen ? PALETTE.sand : theme.surface,
         }}
       >
         <span
@@ -412,12 +379,15 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
       {isOpen && (
         <div
           role="listbox"
-          className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl bg-white"
-          style={CARD_SURFACE}
+          className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl"
+          style={{
+            ...CARD_SURFACE,
+            backgroundColor: theme.surface,
+          }}
         >
           <p
             className="border-b px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide"
-            style={{ borderColor: PALETTE.sandBorder, color: PALETTE.charcoalMuted }}
+            style={{ borderColor: theme.sandBorder, color: PALETTE.charcoalMuted }}
           >
             Preview as
           </p>
@@ -471,8 +441,6 @@ const getGreeting = () => {
 
 const TopHeader = ({ userName, activeRole, onRoleSelect }) => {
   const { isDark, theme, toggleTheme } = useTheme();
-  const tokens = createDesignTokens(theme);
-  const { PALETTE: pal } = tokens;
 
   return (
     <header
@@ -577,29 +545,34 @@ const DashboardShell = ({
 // Role-based access gate — shared by Owner / Manager dashboard scaffolds
 // ----------------------------------------------------------------------------
 
-export const AdminRestrictedAccess = () => (
-  <div className="flex min-h-[400px] items-center justify-center px-4 py-12">
-    <div
-      className="max-w-md rounded-2xl border border-stone-200 bg-white px-8 py-12 text-center"
-      style={{
-        boxShadow: '0 8px 24px -4px rgba(0,0,0,0.04), 0 2px 8px -3px rgba(0,0,0,0.05)',
-        backgroundColor: '#FFFFFF',
-      }}
-    >
-      <span
-        className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl text-2xl font-semibold"
-        style={{ backgroundColor: PALETTE.bottleGreenSoft, color: PALETTE.bottleGreen }}
+export const AdminRestrictedAccess = () => {
+  const { theme } = useTheme();
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
+
+  return (
+    <div className="flex min-h-[400px] items-center justify-center px-4 py-12">
+      <div
+        className="max-w-md rounded-2xl px-8 py-12 text-center"
+        style={{
+          ...CARD_SURFACE,
+          backgroundColor: theme.surface,
+        }}
       >
-        !
-      </span>
-      <h2 className="mt-6 text-lg font-semibold" style={{ color: PALETTE.charcoal }}>
-        Restricted Access
-      </h2>
-      <p className="mt-3 text-sm leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
-        Financial metrics and deep simulation pipelines are hidden for System Administrators.
-      </p>
+        <span
+          className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl text-2xl font-semibold"
+          style={{ backgroundColor: PALETTE.bottleGreenSoft, color: PALETTE.bottleGreen }}
+        >
+          !
+        </span>
+        <h2 className="mt-6 text-lg font-semibold" style={{ color: PALETTE.charcoal }}>
+          Restricted Access
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+          Financial metrics and deep simulation pipelines are hidden for System Administrators.
+        </p>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default DashboardShell;
