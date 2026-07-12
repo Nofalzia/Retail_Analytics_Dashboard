@@ -16,6 +16,8 @@ const BASELINE_SLIDER_VALUES = {
   priceAdjustment: 0,
 };
 
+const ALERT_DISPLAY_CAP = 5;
+
 const strokeProps = {
   fill: 'none',
   stroke: 'currentColor',
@@ -79,7 +81,7 @@ const CheckAllIcon = ({ className, style }) => (
   </svg>
 );
 
-const INITIAL_ALERTS = [
+export const INITIAL_ALERTS = [
   {
     id: 'alert-1',
     severity: 'Critical',
@@ -215,7 +217,13 @@ const AllClearState = () => {
 const AnomalyDetectionPanel = () => {
   const { CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
   const [acknowledgedIds, setAcknowledgedIds] = useState(() => new Set());
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
   const openCount = INITIAL_ALERTS.length - acknowledgedIds.size;
+
+  const visibleAlerts = showAllAlerts
+    ? INITIAL_ALERTS
+    : INITIAL_ALERTS.slice(0, ALERT_DISPLAY_CAP);
+  const hiddenCount = INITIAL_ALERTS.length - visibleAlerts.length;
 
   return (
     <div className="rounded-xl p-6 sm:p-8 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
@@ -239,14 +247,32 @@ const AnomalyDetectionPanel = () => {
         {openCount === 0 ? (
           <AllClearState />
         ) : (
-          INITIAL_ALERTS.map((alert) => (
-            <AlertCard
-              key={alert.id}
-              alert={alert}
-              onAcknowledge={(id) => setAcknowledgedIds((prev) => new Set(prev).add(id))}
-              isAcknowledged={acknowledgedIds.has(alert.id)}
-            />
-          ))
+          <>
+            {visibleAlerts.map((alert) => (
+              <AlertCard
+                key={alert.id}
+                alert={alert}
+                onAcknowledge={(id) => setAcknowledgedIds((prev) => new Set(prev).add(id))}
+                isAcknowledged={acknowledgedIds.has(alert.id)}
+              />
+            ))}
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllAlerts(true)}
+                className="w-full rounded-full px-3 py-2 text-xs font-medium transition-all duration-150 ease-out"
+                style={{ backgroundColor: PANEL_SURFACE.backgroundColor, color: PALETTE.charcoalMuted }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
+                }}
+              >
+                Show {hiddenCount} more
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

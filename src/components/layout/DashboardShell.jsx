@@ -87,6 +87,8 @@ export const formatLocalCurrency = (amount) => ({
 export const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', Icon: (p) => <OverviewIcon {...p} /> },
   { id: 'deep-analytics', label: 'Deep Analytics', Icon: (p) => <AnalyticsIcon {...p} /> },
+  { id: 'stockout-prediction', label: 'Stockout Watch', Icon: (p) => <StockoutIcon {...p} /> },
+  { id: 'recommendations', label: 'Recommendations', Icon: (p) => <RecommendationsIcon {...p} /> },
   { id: 'data-ingestion', label: 'Data Ingestion', Icon: (p) => <IngestionIcon {...p} /> },
 ];
 
@@ -133,6 +135,27 @@ function IngestionIcon({ className }) {
       <path d="M12 4v11" />
       <path d="M7.5 10.5 12 15l4.5-4.5" />
       <path d="M4.5 17.5v1.5A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5v-1.5" />
+    </svg>
+  );
+}
+
+function StockoutIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M4 20V10.5L12 5l8 5.5V20" />
+      <path d="M9 20v-6h6v6" />
+      <path d="M9.5 14.5h5" />
+    </svg>
+  );
+}
+
+function RecommendationsIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+      <path d="M4 6h13" />
+      <path d="M4 12h9" />
+      <path d="M4 18h6" />
+      <path d="M16 15l3 3 5-5" />
     </svg>
   );
 }
