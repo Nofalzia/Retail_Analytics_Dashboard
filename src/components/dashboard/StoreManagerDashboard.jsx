@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   AdminRestrictedAccess,
+  EmptyState,
   formatLocalCurrency,
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
@@ -507,9 +508,18 @@ const ScenarioSimulationPanel = () => {
   );
 };
 
-const StoreManagerDashboard = ({ activeRole = 'Manager' }) => {
+const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true }) => {
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
+  }
+
+  if (!hasData) {
+    return (
+      <EmptyState
+        title="No analytics to show yet"
+        description="Anomaly detection and scenario simulations need at least a few days of sales history to work with — check back once data starts flowing in."
+      />
+    );
   }
 
   return (
