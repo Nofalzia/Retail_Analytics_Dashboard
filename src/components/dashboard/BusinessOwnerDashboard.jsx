@@ -11,6 +11,7 @@ import {
 } from 'chart.js';
 import {
   AdminRestrictedAccess,
+  EmptyState,
   formatLocalCurrency,
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
@@ -297,7 +298,7 @@ const PerformanceChart = () => {
   );
 };
 
-const BusinessOwnerDashboard = ({ activeRole = 'Owner' }) => {
+const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true }) => {
   const [metrics] = useState({
     totalRevenue: 4218000,
     revenueGrowthPercent: 12.4,
@@ -309,6 +310,15 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner' }) => {
 
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
+  }
+
+  if (!hasData) {
+    return (
+      <EmptyState
+        title="No sales data yet"
+        description="Once your store's sales start coming in, your revenue, orders, and inventory health will show up here automatically."
+      />
+    );
   }
 
   return (
