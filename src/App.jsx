@@ -11,7 +11,8 @@ export default function App() {
   return (
     <ThemeProvider>
       <DashboardShell>
-        {(activeView, activeRole) => {
+        {(activeView, activeRole, dataMode) => {
+          const hasData = dataMode !== 'empty';
           // System Administrator is scoped to data ingestion and stockout
           // visibility (no financial data) — but can still see Stockout Watch,
           // since it's real-world inventory context, not a financial metric.
@@ -25,17 +26,17 @@ export default function App() {
 
           switch (activeView) {
             case 'overview':
-              return <BusinessOwnerDashboard activeRole={activeRole} />;
+              return <BusinessOwnerDashboard activeRole={activeRole} hasData={hasData} />;
             case 'deep-analytics':
-              return <StoreManagerDashboard activeRole={activeRole} />;
+              return <StoreManagerDashboard activeRole={activeRole} hasData={hasData} />;
             case 'stockout-prediction':
-              return <StockoutPrediction />;
+              return <StockoutPrediction hasData={hasData} />;
             case 'recommendations':
-              return <RecommendationsPanel />;
+              return <RecommendationsPanel hasData={hasData} />;
             case 'data-ingestion':
               return <DataIngestionHub />;
             default:
-              return <BusinessOwnerDashboard activeRole={activeRole} />;
+              return <BusinessOwnerDashboard activeRole={activeRole} hasData={hasData} />;
           }
         }}
       </DashboardShell>
