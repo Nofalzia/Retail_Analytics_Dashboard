@@ -452,6 +452,110 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
 };
 
 // ----------------------------------------------------------------------------
+// Data mode switcher — dev/demo preview toggle for empty-state QA.
+// Phase 3 removes this once `hasData` is derived from real API responses.
+// ----------------------------------------------------------------------------
+
+const DATA_MODES = [
+  { id: 'live', label: 'Demo Data' },
+  { id: 'empty', label: 'New Tenant (No Data)' },
+];
+
+const DataModeSwitcher = ({ dataMode, onSelect }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+  const { theme } = useTheme();
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
+  const activeLabel = DATA_MODES.find((mode) => mode.id === dataMode)?.label ?? 'Demo Data';
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors"
+        style={{
+          ...CARD_SURFACE,
+          color: PALETTE.charcoal,
+          backgroundColor: isOpen ? PALETTE.sand : theme.surface,
+        }}
+      >
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: dataMode === 'empty' ? PALETTE.charcoalMuted : PALETTE.bottleGreen }}
+        />
+        <span className="hidden sm:inline">{activeLabel}</span>
+        <ChevronDownIcon
+          className={`h-3.5 w-3.5 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
+          style={{ color: PALETTE.charcoalMuted }}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          role="listbox"
+          className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl"
+          style={{
+            ...CARD_SURFACE,
+            backgroundColor: theme.surface,
+          }}
+        >
+          <p
+            className="border-b px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide"
+            style={{ borderColor: theme.sandBorder, color: PALETTE.charcoalMuted }}
+          >
+            Preview data state
+          </p>
+          {DATA_MODES.map((mode) => {
+            const isSelected = mode.id === dataMode;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onSelect(mode.id);
+                  setIsOpen(false);
+                }}
+                className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors"
+                style={{
+                  color: PALETTE.charcoal,
+                  backgroundColor: isSelected ? PALETTE.bottleGreenSoft : 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = PALETTE.sand;
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                {mode.label}
+                {isSelected && (
+                  <CheckIcon className="h-4 w-4" style={{ color: PALETTE.bottleGreen }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------------
 // Top header
 // ----------------------------------------------------------------------------
 
@@ -462,7 +566,7 @@ const getGreeting = () => {
   return 'Good evening';
 };
 
-const TopHeader = ({ userName, activeRole, onRoleSelect }) => {
+const TopHeader = ({ userName, activeRole, onRoleSelect, dataMode, onDataModeSelect }) => {
   const { isDark, theme, toggleTheme } = useTheme();
 
   return (
@@ -512,6 +616,7 @@ const TopHeader = ({ userName, activeRole, onRoleSelect }) => {
             <MoonIcon className="h-4 w-4" />
           )}
         </button>
+        <DataModeSwitcher dataMode={dataMode} onSelect={onDataModeSelect} />
         <RoleSwitcher activeRole={activeRole} onSelect={onRoleSelect} />
       </div>
     </header>
@@ -527,12 +632,15 @@ const DashboardShell = ({
   userName = 'Ayesha',
   initialView = 'overview',
   initialRole = 'Owner',
+  initialDataMode = 'live',
   onNavigate = () => {},
   onRoleChange = () => {},
+  onDataModeChange = () => {},
 }) => {
   const { theme } = useTheme();
   const [activeView, setActiveView] = useState(initialView);
   const [activeRole, setActiveRole] = useState(initialRole);
+  const [dataMode, setDataMode] = useState(initialDataMode);
 
   const handleNavigate = (id) => {
     setActiveView(id);
@@ -544,15 +652,26 @@ const DashboardShell = ({
     onRoleChange(role);
   };
 
-  const content = typeof children === 'function' ? children(activeView, activeRole) : children;
+  const handleDataModeChange = (mode) => {
+    setDataMode(mode);
+    onDataModeChange(mode);
+  };
 
+  const content =
+    typeof children === 'function' ? children(activeView, activeRole, dataMode) : children;
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.background }}>
       <Sidebar activeView={activeView} onSelect={handleNavigate} />
 
       {/* Main column — offset for the docked sidebar on lg+ */}
       <div className="lg:ml-64">
-        <TopHeader userName={userName} activeRole={activeRole} onRoleSelect={handleRoleChange} />
+        <TopHeader
+          userName={userName}
+          activeRole={activeRole}
+          onRoleSelect={handleRoleChange}
+          dataMode={dataMode}
+          onDataModeSelect={handleDataModeChange}
+        />
 
         <main className="p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">
           <div className="mx-auto max-w-6xl">{content}</div>
@@ -567,6 +686,71 @@ const DashboardShell = ({
 // ----------------------------------------------------------------------------
 // Role-based access gate — shared by Owner / Manager dashboard scaffolds
 // ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// Empty state — shared across Overview, Deep Analytics, Stockout Watch, and
+// Recommendations for brand-new tenants with zero ingested data.
+// ----------------------------------------------------------------------------
+
+const InboxIcon = ({ className }) => (
+  <svg viewBox="0 0 24 24" className={className} {...strokeProps}>
+    <path d="M4 12.5 6.5 5h11l2.5 7.5" />
+    <path d="M4 12.5v6a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5v-6" />
+    <path d="M4 12.5h4.5l1 2h5l1-2H20" />
+  </svg>
+);
+
+export const EmptyState = ({
+  icon,
+  title = 'Nothing here yet',
+  description = 'Once sales data comes in, this view fills in automatically.',
+  actionLabel,
+  onAction,
+}) => {
+  const { theme } = useTheme();
+  const { CARD_SURFACE, PALETTE, INSET_SURFACE } = useDesignTokens();
+
+  return (
+    <div className="flex min-h-[360px] items-center justify-center px-4 py-12">
+      <div
+        className="max-w-md rounded-2xl px-8 py-12 text-center"
+        style={{
+          ...CARD_SURFACE,
+          backgroundColor: theme.surface,
+        }}
+      >
+        <span
+          className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl"
+          style={{ ...INSET_SURFACE, color: PALETTE.charcoalMuted }}
+        >
+          {icon || <InboxIcon className="h-6 w-6" />}
+        </span>
+        <h2 className="mt-6 text-lg font-semibold" style={{ color: PALETTE.charcoal }}>
+          {title}
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+          {description}
+        </p>
+        {actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="mt-6 rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors"
+            style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = PALETTE.bottleGreenHover;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = PALETTE.bottleGreen;
+            }}
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const AdminRestrictedAccess = () => {
   const { theme } = useTheme();
