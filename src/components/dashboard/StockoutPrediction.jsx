@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { EmptyState } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 
 /**
@@ -142,7 +143,7 @@ const StockoutCard = ({ product }) => {
   );
 };
 
-const StockoutPrediction = () => {
+const StockoutPrediction = ({ hasData = true }) => {
   const { PALETTE } = useDesignTokens();
 
   const sortedProducts = useMemo(
@@ -152,6 +153,15 @@ const StockoutPrediction = () => {
       ),
     []
   );
+
+  if (!hasData) {
+    return (
+      <EmptyState
+        title="No stock levels to watch yet"
+        description="Upload your product and inventory data to start tracking depletion rates and stockout risk."
+      />
+    );
+  }
 
   return (
     <div>
