@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { EmptyState } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { INITIAL_ALERTS } from './StoreManagerDashboard';
 import { PRODUCTS, getUrgencyTier } from './StockoutPrediction';
@@ -123,11 +124,20 @@ const RecommendationCard = ({ recommendation, onAcknowledge, isAcknowledged }) =
   );
 };
 
-const RecommendationsPanel = () => {
+const RecommendationsPanel = ({ hasData = true }) => {
   const { PALETTE } = useDesignTokens();
   const [doneIds, setDoneIds] = useState(() => new Set());
   const recommendations = useMemo(() => buildRecommendations(), []);
   const openCount = recommendations.length - doneIds.size;
+
+  if (!hasData) {
+    return (
+      <EmptyState
+        title="No recommendations yet"
+        description="Once alerts and stock levels start coming in, we'll surface prioritized, plain-language actions here."
+      />
+    );
+  }
 
   return (
     <div>
