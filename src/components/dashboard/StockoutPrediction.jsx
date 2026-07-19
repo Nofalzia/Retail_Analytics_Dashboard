@@ -28,6 +28,8 @@ const BoxIcon = ({ className, style }) => (
 
 // Depletion curve inputs — currentStock and avgDailySales are the two
 // numbers a shop owner already recognizes from their own stock room.
+
+/** Healthy store — a mix of urgency tiers, mostly green. */
 export const PRODUCTS = [
   { id: 'sku-1', name: 'Basmati Rice 5kg', category: 'Staples', currentStock: 18, avgDailySales: 6 },
   { id: 'sku-2', name: 'Cooking Oil 1L', category: 'Staples', currentStock: 42, avgDailySales: 5 },
@@ -35,6 +37,19 @@ export const PRODUCTS = [
   { id: 'sku-4', name: 'Wheat Flour 10kg', category: 'Staples', currentStock: 65, avgDailySales: 7 },
   { id: 'sku-5', name: 'Soft Drinks 1.5L', category: 'Beverages', currentStock: 24, avgDailySales: 22 },
   { id: 'sku-6', name: 'Detergent Powder 1kg', category: 'Household', currentStock: 30, avgDailySales: 3 },
+];
+
+/**
+ * Struggling store — all SKUs critically low or approaching reorder threshold.
+ * Simulates a store that hasn't restocked in two weeks and is haemorrhaging stock.
+ */
+export const STRUGGLING_PRODUCTS = [
+  { id: 'sku-1', name: 'Basmati Rice 5kg', category: 'Staples', currentStock: 5, avgDailySales: 6 },
+  { id: 'sku-2', name: 'Cooking Oil 1L', category: 'Staples', currentStock: 8, avgDailySales: 5 },
+  { id: 'sku-3', name: 'Tea Leaves 400g', category: 'Beverages', currentStock: 3, avgDailySales: 4.5 },
+  { id: 'sku-4', name: 'Wheat Flour 10kg', category: 'Staples', currentStock: 12, avgDailySales: 7 },
+  { id: 'sku-5', name: 'Soft Drinks 1.5L', category: 'Beverages', currentStock: 14, avgDailySales: 22 },
+  { id: 'sku-6', name: 'Detergent Powder 1kg', category: 'Household', currentStock: 6, avgDailySales: 3 },
 ];
 
 // Urgency thresholds — documented here so the "how did you tune this"
@@ -143,15 +158,18 @@ const StockoutCard = ({ product }) => {
   );
 };
 
-const StockoutPrediction = ({ hasData = true }) => {
+const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   const { PALETTE } = useDesignTokens();
+
+  // Pick the right product list based on the active data mode.
+  const sourceProducts = dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS;
 
   const sortedProducts = useMemo(
     () =>
-      [...PRODUCTS].sort(
+      [...sourceProducts].sort(
         (a, b) => a.currentStock / a.avgDailySales - b.currentStock / b.avgDailySales
       ),
-    []
+    [sourceProducts]
   );
 
   if (!hasData) {

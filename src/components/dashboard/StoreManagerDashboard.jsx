@@ -82,6 +82,7 @@ const CheckAllIcon = ({ className, style }) => (
   </svg>
 );
 
+/** Healthy store — a mix of severities, a few things to watch. */
 export const INITIAL_ALERTS = [
   {
     id: 'alert-1',
@@ -112,6 +113,63 @@ export const INITIAL_ALERTS = [
     metricLabel: 'Threshold',
     metricValue: '3-day consecutive decline',
     timestamp: '5 hours ago',
+  },
+];
+
+/**
+ * Struggling store — all critical, high-urgency anomalies firing simultaneously.
+ * Simulates a store with cascading margin pressure and supply disruptions.
+ */
+export const STRUGGLING_ALERTS = [
+  {
+    id: 'salert-1',
+    severity: 'Critical',
+    title: 'Revenue collapsed 42% week-over-week',
+    description:
+      'Total revenue for the trailing 7 days is 42% below the same period last month. Transaction count has also dropped, ruling out a price-only explanation.',
+    metricLabel: 'Threshold',
+    metricValue: '−30% WoW revenue',
+    timestamp: '8 minutes ago',
+  },
+  {
+    id: 'salert-2',
+    severity: 'Critical',
+    title: 'Gross margin breached minimum threshold',
+    description:
+      'Effective gross margin has fallen to 11% — below the configured 15% floor — due to unabsorbed supply cost increases across 4 product categories.',
+    metricLabel: 'Threshold',
+    metricValue: '< 15% margin floor',
+    timestamp: '34 minutes ago',
+  },
+  {
+    id: 'salert-3',
+    severity: 'Critical',
+    title: 'Multi-SKU stockout imminent (< 2 days)',
+    description:
+      'Five products are projected to reach zero stock within 48 hours at current depletion rates, with no pending purchase orders on record.',
+    metricLabel: 'Threshold',
+    metricValue: '≤ 2 days remaining',
+    timestamp: '1 hour ago',
+  },
+  {
+    id: 'salert-4',
+    severity: 'Warning',
+    title: 'Repeat customer rate dropping',
+    description:
+      'The share of returning customers this month has declined from 61% to 38% — a leading indicator of retention erosion.',
+    metricLabel: 'Threshold',
+    metricValue: '−23 pp vs prior month',
+    timestamp: '3 hours ago',
+  },
+  {
+    id: 'salert-5',
+    severity: 'Warning',
+    title: 'Cash-to-COGS runway below 10 days',
+    description:
+      'Available operating cash covers only 8.4 days of cost of goods sold at the current burn rate, below the configured 14-day safety floor.',
+    metricLabel: 'Threshold',
+    metricValue: '8.4 days runway',
+    timestamp: '6 hours ago',
   },
 ];
 
@@ -215,16 +273,16 @@ const AllClearState = () => {
   );
 };
 
-const AnomalyDetectionPanel = () => {
+const AnomalyDetectionPanel = ({ alerts = INITIAL_ALERTS }) => {
   const { CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
   const [acknowledgedIds, setAcknowledgedIds] = useState(() => new Set());
   const [showAllAlerts, setShowAllAlerts] = useState(false);
-  const openCount = INITIAL_ALERTS.length - acknowledgedIds.size;
+  const openCount = alerts.length - acknowledgedIds.size;
 
   const visibleAlerts = showAllAlerts
-    ? INITIAL_ALERTS
-    : INITIAL_ALERTS.slice(0, ALERT_DISPLAY_CAP);
-  const hiddenCount = INITIAL_ALERTS.length - visibleAlerts.length;
+    ? alerts
+    : alerts.slice(0, ALERT_DISPLAY_CAP);
+  const hiddenCount = alerts.length - visibleAlerts.length;
 
   return (
     <div className="rounded-xl p-6 sm:p-8 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
@@ -324,12 +382,19 @@ const EarthSlider = ({ id, label, value, min, max, step, unit, onChange, accent 
   );
 };
 
+/** Healthy store baseline — used by the scenario simulation sliders. */
 const BASELINE = {
   monthlyRevenue: 4218000,
   cogsPercent: 58,
 };
 
-const ScenarioSimulationPanel = () => {
+/** Struggling store baseline — thin margin, already under pressure. */
+const STRUGGLING_BASELINE = {
+  monthlyRevenue: 1840000,
+  cogsPercent: 76,
+};
+
+const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
   const { CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE, PANEL_SURFACE } = useDesignTokens();
   const [supplyCostIncrease, setSupplyCostIncrease] = useState(BASELINE_SLIDER_VALUES.supplyCostIncrease);
   const [priceAdjustment, setPriceAdjustment] = useState(BASELINE_SLIDER_VALUES.priceAdjustment);
@@ -340,14 +405,14 @@ const ScenarioSimulationPanel = () => {
   };
 
   const projection = useMemo(() => {
-    const adjustedCogsPercent = BASELINE.cogsPercent * (1 + supplyCostIncrease / 100);
-    const adjustedRevenue = BASELINE.monthlyRevenue * (1 + priceAdjustment / 100);
+    const adjustedCogsPercent = baseline.cogsPercent * (1 + supplyCostIncrease / 100);
+    const adjustedRevenue = baseline.monthlyRevenue * (1 + priceAdjustment / 100);
     const effectiveCogsPercent =
-      (adjustedCogsPercent * BASELINE.monthlyRevenue) / adjustedRevenue;
+      (adjustedCogsPercent * baseline.monthlyRevenue) / adjustedRevenue;
     const marginPercent = Math.max(0, 100 - effectiveCogsPercent);
     const monthlyProfit = adjustedRevenue * (marginPercent / 100);
-    const baselineMarginPercent = 100 - BASELINE.cogsPercent;
-    const baselineProfit = BASELINE.monthlyRevenue * (baselineMarginPercent / 100);
+    const baselineMarginPercent = 100 - baseline.cogsPercent;
+    const baselineProfit = baseline.monthlyRevenue * (baselineMarginPercent / 100);
 
     return {
       marginPercent,
@@ -508,7 +573,7 @@ const ScenarioSimulationPanel = () => {
   );
 };
 
-const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true }) => {
+const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMode = 'live' }) => {
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
   }
@@ -522,10 +587,12 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true }) => {
     );
   }
 
+  const isStruggling = dataMode === 'struggling';
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-      <AnomalyDetectionPanel />
-      <ScenarioSimulationPanel />
+      <AnomalyDetectionPanel alerts={isStruggling ? STRUGGLING_ALERTS : INITIAL_ALERTS} />
+      <ScenarioSimulationPanel baseline={isStruggling ? STRUGGLING_BASELINE : BASELINE} />
     </div>
   );
 };

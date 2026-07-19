@@ -457,7 +457,8 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
 // ----------------------------------------------------------------------------
 
 const DATA_MODES = [
-  { id: 'live', label: 'Demo Data' },
+  { id: 'live', label: 'Healthy Store' },
+  { id: 'struggling', label: 'Struggling Store' },
   { id: 'empty', label: 'New Tenant (No Data)' },
 ];
 
@@ -465,8 +466,8 @@ const DataModeSwitcher = ({ dataMode, onSelect }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
   const { theme } = useTheme();
-  const { CARD_SURFACE, PALETTE } = useDesignTokens();
-  const activeLabel = DATA_MODES.find((mode) => mode.id === dataMode)?.label ?? 'Demo Data';
+  const { CARD_SURFACE, PALETTE, EARTH } = useDesignTokens();
+  const activeLabel = DATA_MODES.find((mode) => mode.id === dataMode)?.label ?? 'Healthy Store';
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -494,7 +495,14 @@ const DataModeSwitcher = ({ dataMode, onSelect }) => {
       >
         <span
           className="h-1.5 w-1.5 rounded-full"
-          style={{ backgroundColor: dataMode === 'empty' ? PALETTE.charcoalMuted : PALETTE.bottleGreen }}
+          style={{
+            backgroundColor:
+              dataMode === 'empty'
+                ? PALETTE.charcoalMuted
+                : dataMode === 'struggling'
+                  ? EARTH.terracotta
+                  : PALETTE.bottleGreen,
+          }}
         />
         <span className="hidden sm:inline">{activeLabel}</span>
         <ChevronDownIcon

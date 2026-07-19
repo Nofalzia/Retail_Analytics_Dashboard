@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { EmptyState } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
-import { INITIAL_ALERTS } from './StoreManagerDashboard';
-import { PRODUCTS, getUrgencyTier } from './StockoutPrediction';
+import { INITIAL_ALERTS, STRUGGLING_ALERTS } from './StoreManagerDashboard';
+import { PRODUCTS, STRUGGLING_PRODUCTS, getUrgencyTier } from './StockoutPrediction';
 
 /**
  * RecommendationsPanel — rule-based engine that translates anomalies
@@ -37,8 +37,8 @@ const CheckIcon = ({ className, style }) => (
 // can be sorted into a single list.
 const PRIORITY_RANK = { critical: 0, warning: 1, healthy: 2 };
 
-const buildRecommendations = () => {
-  const fromAlerts = INITIAL_ALERTS.map((alert) => ({
+const buildRecommendations = (alerts, products) => {
+  const fromAlerts = alerts.map((alert) => ({
     id: `rec-alert-${alert.id}`,
     tier: alert.severity.toLowerCase(),
     action: `Investigate: ${alert.title}`,
@@ -47,7 +47,7 @@ const buildRecommendations = () => {
     sourceValue: alert.metricValue,
   }));
 
-  const fromStockouts = PRODUCTS.map((product) => {
+  const fromStockouts = products.map((product) => {
     const daysRemaining = product.currentStock / product.avgDailySales;
     const tier = getUrgencyTier(daysRemaining);
     return {
@@ -95,7 +95,7 @@ const RecommendationCard = ({ recommendation, onAcknowledge, isAcknowledged }) =
         <p className="mt-1 text-xs leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
           {recommendation.detail}
         </p>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
           <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
             <span className="font-medium" style={{ color: PALETTE.charcoal }}>
               {recommendation.sourceLabel}:
@@ -124,10 +124,18 @@ const RecommendationCard = ({ recommendation, onAcknowledge, isAcknowledged }) =
   );
 };
 
-const RecommendationsPanel = ({ hasData = true }) => {
+const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
   const { PALETTE } = useDesignTokens();
   const [doneIds, setDoneIds] = useState(() => new Set());
-  const recommendations = useMemo(() => buildRecommendations(), []);
+
+  // Select alerts and product lists that match the active data mode.
+  const activeAlerts = dataMode === 'struggling' ? STRUGGLING_ALERTS : INITIAL_ALERTS;
+  const activeProducts = dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS;
+
+  const recommendations = useMemo(
+    () => buildRecommendations(activeAlerts, activeProducts),
+    [activeAlerts, activeProducts]
+  );
   const openCount = recommendations.length - doneIds.size;
 
   if (!hasData) {
@@ -141,7 +149,8 @@ const RecommendationsPanel = ({ hasData = true }) => {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      {/* Header — stacks on mobile, side-by-side on sm+ */}
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
             Recommendations
@@ -150,7 +159,7 @@ const RecommendationsPanel = ({ hasData = true }) => {
             Plain-language actions, prioritized from your alerts and stock levels.
           </p>
         </div>
-        <span className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+        <span className="shrink-0 text-xs" style={{ color: PALETTE.charcoalMuted }}>
           {openCount} open
         </span>
       </div>

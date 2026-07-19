@@ -183,12 +183,44 @@ const CHART_LABELS = [
   'Jul 1', 'Jul 2', 'Jul 3', 'Jul 4', 'Jul 5', 'Jul 6', 'Jul 7', 'Jul 8', 'Jul 9',
 ];
 
+/** Healthy store — steady upward trend, healthy daily volumes. */
 const CHART_REVENUE = [
   214000, 238000, 226000, 251000, 289000, 264000, 241000,
   276000, 302000, 295000, 318000, 334000, 326000, 351000,
 ];
 
-const PerformanceChart = () => {
+/**
+ * Struggling store — declining revenue with a sharp drop mid-period,
+ * simulating a supply disruption or demand collapse.
+ */
+const CHART_REVENUE_STRUGGLING = [
+  148000, 139000, 152000, 131000, 118000, 124000, 106000,
+  98000, 87000, 94000, 79000, 68000, 72000, 61000,
+];
+
+/** Metric snapshots keyed by data mode. */
+const DATASETS = {
+  live: {
+    totalRevenue: 4218000,
+    revenueGrowthPercent: 12.4,
+    totalOrders: 1284,
+    ordersToday: 47,
+    averageOrdersPerDay: 92,
+    daysOfInventoryLeft: 9,
+    chartRevenue: CHART_REVENUE,
+  },
+  struggling: {
+    totalRevenue: 1198000,
+    revenueGrowthPercent: -31.6,
+    totalOrders: 387,
+    ordersToday: 11,
+    averageOrdersPerDay: 28,
+    daysOfInventoryLeft: 2,
+    chartRevenue: CHART_REVENUE_STRUGGLING,
+  },
+};
+
+const PerformanceChart = ({ chartRevenue = CHART_REVENUE }) => {
   const { PALETTE, CHART_AXIS, EARTH, CARD_SURFACE } = useDesignTokens();
   const canvasRef = useRef(null);
   const chartInstanceRef = useRef(null);
@@ -196,6 +228,10 @@ const PerformanceChart = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
+
+    // Destroy any existing chart instance before creating a new one —
+    // this handles dataset switching (healthy → struggling) cleanly.
+    chartInstanceRef.current?.destroy();
 
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 260);
@@ -209,7 +245,7 @@ const PerformanceChart = () => {
         datasets: [
           {
             label: 'Daily Revenue',
-            data: CHART_REVENUE,
+            data: chartRevenue,
             borderColor: EARTH.sage,
             backgroundColor: gradient,
             pointBackgroundColor: EARTH.sand,
@@ -273,7 +309,7 @@ const PerformanceChart = () => {
     return () => {
       chartInstanceRef.current?.destroy();
     };
-  }, [PALETTE, CHART_AXIS, EARTH]);
+  }, [PALETTE, CHART_AXIS, EARTH, chartRevenue]);
 
   return (
     <div className="rounded-xl p-6 sm:p-8 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
@@ -298,15 +334,10 @@ const PerformanceChart = () => {
   );
 };
 
-const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true }) => {
-  const [metrics] = useState({
-    totalRevenue: 4218000,
-    revenueGrowthPercent: 12.4,
-    totalOrders: 1284,
-    ordersToday: 47,
-    averageOrdersPerDay: 92,
-    daysOfInventoryLeft: 9,
-  });
+const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode = 'live' }) => {
+  // Select the correct metric snapshot for the active data mode.
+  // Falls back to the healthy (live) dataset for any unrecognised mode.
+  const metrics = DATASETS[dataMode] ?? DATASETS.live;
 
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
@@ -332,7 +363,7 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true }) => {
         />
         <DaysOfInventoryCard daysLeft={metrics.daysOfInventoryLeft} />
       </div>
-      <PerformanceChart />
+      <PerformanceChart chartRevenue={metrics.chartRevenue} />
     </div>
   );
 };
