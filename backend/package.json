@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "db:migrate": "psql $DATABASE_URL -f schema.sql"
-  },
+    "db:migrate": "psql $DATABASE_URL -f db/schema.sql"
+ },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
