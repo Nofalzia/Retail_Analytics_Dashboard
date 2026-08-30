@@ -15,6 +15,7 @@ import {
   formatLocalCurrency,
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
+import { api } from '../../api/client.js';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
@@ -208,6 +209,7 @@ const DATASETS = {
     averageOrdersPerDay: 92,
     daysOfInventoryLeft: 9,
     chartRevenue: CHART_REVENUE,
+    chartLabels: CHART_LABELS,
   },
   struggling: {
     totalRevenue: 1198000,
@@ -217,10 +219,52 @@ const DATASETS = {
     averageOrdersPerDay: 28,
     daysOfInventoryLeft: 2,
     chartRevenue: CHART_REVENUE_STRUGGLING,
+    chartLabels: CHART_LABELS,
   },
 };
 
-const PerformanceChart = ({ chartRevenue = CHART_REVENUE }) => {
+// Demo store ID — matches the seed data
+const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
+
+/** Maps /api/overview response → the metrics shape this component already uses. */
+function mapOverviewToMetrics(data) {
+  const { kpi, dailyTrend } = data;
+  const last14 = dailyTrend.slice(-14);
+
+  const chartLabels  = last14.map((d) => {
+    const dt = new Date(d.date);
+    return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  });
+  const chartRevenue = last14.map((d) => parseFloat(d.revenue) || 0);
+
+  // Growth: split trend in half, compare earlier vs later period
+  const half       = Math.floor(dailyTrend.length / 2);
+  const earlySum   = dailyTrend.slice(0, half).reduce((s, d) => s + (parseFloat(d.revenue) || 0), 0);
+  const lateSum    = dailyTrend.slice(half).reduce((s, d) => s + (parseFloat(d.revenue) || 0), 0);
+  const growthPct  = earlySum > 0 ? +((lateSum - earlySum) / earlySum * 100).toFixed(1) : 0;
+
+  // Today's order count
+  const todayStr   = new Date().toISOString().slice(0, 10);
+  const todayData  = dailyTrend.find((d) => d.date === todayStr);
+  const ordersToday = todayData ? parseInt(todayData.transaction_count || 0) : 0;
+
+  const avgPerDay  = dailyTrend.length > 0
+    ? Math.round(parseInt(kpi.total_transactions) / dailyTrend.length)
+    : 0;
+
+  return {
+    totalRevenue:         parseFloat(kpi.total_revenue) || 0,
+    revenueGrowthPercent: growthPct,
+    totalOrders:          parseInt(kpi.total_transactions) || 0,
+    ordersToday,
+    averageOrdersPerDay:  avgPerDay,
+    daysOfInventoryLeft:  9, // placeholder — stockout API is wired in StockoutPrediction
+    chartRevenue,
+    chartLabels,
+  };
+}
+
+const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LABELS }) => {
   const { PALETTE, CHART_AXIS, EARTH, CARD_SURFACE } = useDesignTokens();
   const canvasRef = useRef(null);
   const chartInstanceRef = useRef(null);
@@ -241,7 +285,7 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE }) => {
     chartInstanceRef.current = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: CHART_LABELS,
+        labels: chartLabels,
         datasets: [
           {
             label: 'Daily Revenue',
@@ -335,9 +379,21 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE }) => {
 };
 
 const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode = 'live' }) => {
-  // Select the correct metric snapshot for the active data mode.
-  // Falls back to the healthy (live) dataset for any unrecognised mode.
-  const metrics = DATASETS[dataMode] ?? DATASETS.live;
+  const [metrics, setMetrics] = useState(DATASETS[dataMode] ?? DATASETS.live);
+
+  // When dataMode is 'live', fetch real data from the API.
+  // Falls back silently to the mock DATASETS.live if the API is unreachable.
+  useEffect(() => {
+    if (dataMode !== 'live') {
+      setMetrics(DATASETS[dataMode] ?? DATASETS.live);
+      return;
+    }
+    api.getOverview({ storeId: DEMO_STORE_ID, startDate: (() => {
+      const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
+    })() })
+      .then((data) => setMetrics(mapOverviewToMetrics(data)))
+      .catch(() => setMetrics(DATASETS.live)); // silent fallback
+  }, [dataMode]);
 
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
@@ -363,7 +419,7 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
         />
         <DaysOfInventoryCard daysLeft={metrics.daysOfInventoryLeft} />
       </div>
-      <PerformanceChart chartRevenue={metrics.chartRevenue} />
+      <PerformanceChart chartRevenue={metrics.chartRevenue} chartLabels={metrics.chartLabels} />
     </div>
   );
 };

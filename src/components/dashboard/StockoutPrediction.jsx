@@ -1,12 +1,17 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
+import { api } from '../../api/client.js';
 
 /**
  * StockoutPrediction — "Days of Inventory Left" bento grid.
  * Every card traces back to a number the shop owner recognizes (current
  * stock, average daily sales) — no unexplained scores, per product vision.
  * Uses simple depletion-rate math: daysRemaining = currentStock / avgDailySales.
+ *
+ * dataMode === 'live'      → fetches real stock + velocity from /api/stockout
+ * dataMode === 'struggling' → uses STRUGGLING_PRODUCTS mock
+ * dataMode === 'empty'     → shows EmptyState
  */
 
 const strokeProps = {
@@ -31,12 +36,12 @@ const BoxIcon = ({ className, style }) => (
 
 /** Healthy store — a mix of urgency tiers, mostly green. */
 export const PRODUCTS = [
-  { id: 'sku-1', name: 'Basmati Rice 5kg', category: 'Staples', currentStock: 18, avgDailySales: 6 },
-  { id: 'sku-2', name: 'Cooking Oil 1L', category: 'Staples', currentStock: 42, avgDailySales: 5 },
-  { id: 'sku-3', name: 'Tea Leaves 400g', category: 'Beverages', currentStock: 9, avgDailySales: 4.5 },
-  { id: 'sku-4', name: 'Wheat Flour 10kg', category: 'Staples', currentStock: 65, avgDailySales: 7 },
-  { id: 'sku-5', name: 'Soft Drinks 1.5L', category: 'Beverages', currentStock: 24, avgDailySales: 22 },
-  { id: 'sku-6', name: 'Detergent Powder 1kg', category: 'Household', currentStock: 30, avgDailySales: 3 },
+  { id: 'sku-1', name: 'Basmati Rice 5kg',      category: 'Staples',   currentStock: 18, avgDailySales: 6   },
+  { id: 'sku-2', name: 'Cooking Oil 1L',         category: 'Staples',   currentStock: 42, avgDailySales: 5   },
+  { id: 'sku-3', name: 'Tea Leaves 400g',        category: 'Beverages', currentStock: 9,  avgDailySales: 4.5 },
+  { id: 'sku-4', name: 'Wheat Flour 10kg',       category: 'Staples',   currentStock: 65, avgDailySales: 7   },
+  { id: 'sku-5', name: 'Soft Drinks 1.5L',       category: 'Beverages', currentStock: 24, avgDailySales: 22  },
+  { id: 'sku-6', name: 'Detergent Powder 1kg',   category: 'Household', currentStock: 30, avgDailySales: 3   },
 ];
 
 /**
@@ -44,53 +49,51 @@ export const PRODUCTS = [
  * Simulates a store that hasn't restocked in two weeks and is haemorrhaging stock.
  */
 export const STRUGGLING_PRODUCTS = [
-  { id: 'sku-1', name: 'Basmati Rice 5kg', category: 'Staples', currentStock: 5, avgDailySales: 6 },
-  { id: 'sku-2', name: 'Cooking Oil 1L', category: 'Staples', currentStock: 8, avgDailySales: 5 },
-  { id: 'sku-3', name: 'Tea Leaves 400g', category: 'Beverages', currentStock: 3, avgDailySales: 4.5 },
-  { id: 'sku-4', name: 'Wheat Flour 10kg', category: 'Staples', currentStock: 12, avgDailySales: 7 },
-  { id: 'sku-5', name: 'Soft Drinks 1.5L', category: 'Beverages', currentStock: 14, avgDailySales: 22 },
-  { id: 'sku-6', name: 'Detergent Powder 1kg', category: 'Household', currentStock: 6, avgDailySales: 3 },
+  { id: 'sku-1', name: 'Basmati Rice 5kg',      category: 'Staples',   currentStock: 5,  avgDailySales: 6   },
+  { id: 'sku-2', name: 'Cooking Oil 1L',         category: 'Staples',   currentStock: 8,  avgDailySales: 5   },
+  { id: 'sku-3', name: 'Tea Leaves 400g',        category: 'Beverages', currentStock: 3,  avgDailySales: 4.5 },
+  { id: 'sku-4', name: 'Wheat Flour 10kg',       category: 'Staples',   currentStock: 12, avgDailySales: 7   },
+  { id: 'sku-5', name: 'Soft Drinks 1.5L',       category: 'Beverages', currentStock: 14, avgDailySales: 22  },
+  { id: 'sku-6', name: 'Detergent Powder 1kg',   category: 'Household', currentStock: 6,  avgDailySales: 3   },
 ];
 
 // Urgency thresholds — documented here so the "how did you tune this"
 // question (Phase 5 methodology) has a clear, defensible answer.
 export const URGENCY = {
-  critical: { maxDays: 3, label: 'Reorder now' },
-  warning: { maxDays: 7, label: 'Reorder soon' },
-  healthy: { maxDays: Infinity, label: 'Healthy' },
+  critical: { maxDays: 3,        label: 'Reorder now'  },
+  warning:  { maxDays: 7,        label: 'Reorder soon' },
+  healthy:  { maxDays: Infinity,  label: 'Healthy'      },
 };
 
 export const getUrgencyTier = (daysRemaining) => {
   if (daysRemaining <= URGENCY.critical.maxDays) return 'critical';
-  if (daysRemaining <= URGENCY.warning.maxDays) return 'warning';
+  if (daysRemaining <= URGENCY.warning.maxDays)  return 'warning';
   return 'healthy';
 };
+
+// Demo store ID — matches the seed data and backend middleware
+const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
+
+// ── Card ─────────────────────────────────────────────────────────────────────
 
 const StockoutCard = ({ product }) => {
   const { CARD_SURFACE, INSET_SURFACE, PALETTE, EARTH } = useDesignTokens();
 
   const daysRemaining = useMemo(
-    () => product.currentStock / product.avgDailySales,
-    [product.currentStock, product.avgDailySales]
+    () => (product.avgDailySales > 0 ? product.currentStock / product.avgDailySales : Infinity),
+    [product.currentStock, product.avgDailySales],
   );
   const tier = getUrgencyTier(daysRemaining);
 
-  const tierColor = {
-    critical: EARTH.terracotta,
-    warning: EARTH.ochre,
-    healthy: EARTH.sage,
-  }[tier];
-
-  const tierSoft = {
-    critical: EARTH.terracottaSoft,
-    warning: EARTH.ochreSoft,
-    healthy: EARTH.sageSoft,
-  }[tier];
+  const tierColor = { critical: EARTH.terracotta, warning: EARTH.ochre, healthy: EARTH.sage }[tier];
+  const tierSoft  = { critical: EARTH.terracottaSoft, warning: EARTH.ochreSoft, healthy: EARTH.sageSoft }[tier];
 
   // Progress bar fills toward 100% as days-remaining shrinks toward 0 —
   // capped at a 14-day horizon so the bar has a meaningful full state.
   const HORIZON_DAYS = 14;
-  const fillPercent = Math.max(0, Math.min(100, 100 - (daysRemaining / HORIZON_DAYS) * 100));
+  const fillPercent  = daysRemaining === Infinity
+    ? 0
+    : Math.max(0, Math.min(100, 100 - (daysRemaining / HORIZON_DAYS) * 100));
 
   return (
     <div className="rounded-xl p-5 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
@@ -122,7 +125,7 @@ const StockoutCard = ({ product }) => {
       <div className="mt-4">
         <div className="flex items-baseline justify-between">
           <span className="text-2xl font-bold tracking-tight" style={{ color: PALETTE.charcoal }}>
-            {daysRemaining.toFixed(1)}
+            {daysRemaining === Infinity ? '—' : daysRemaining.toFixed(1)}
           </span>
           <span className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
             days of inventory left
@@ -142,34 +145,64 @@ const StockoutCard = ({ product }) => {
 
       <div className="mt-4 flex items-center justify-between text-xs" style={{ color: PALETTE.charcoalMuted }}>
         <span>
-          <span className="font-medium" style={{ color: PALETTE.charcoal }}>
-            {product.currentStock}
-          </span>{' '}
-          units in stock
+          <span className="font-medium" style={{ color: PALETTE.charcoal }}>{product.currentStock}</span>
+          {' '}units in stock
         </span>
         <span>
           <span className="font-medium" style={{ color: PALETTE.charcoal }}>
-            {product.avgDailySales}
-          </span>{' '}
-          sold/day avg
+            {product.avgDailySales > 0 ? product.avgDailySales.toFixed(1) : '—'}
+          </span>
+          {' '}sold/day avg
         </span>
       </div>
     </div>
   );
 };
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   const { PALETTE } = useDesignTokens();
+  const [sourceProducts, setSourceProducts] = useState(
+    dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS,
+  );
 
-  // Pick the right product list based on the active data mode.
-  const sourceProducts = dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS;
+  useEffect(() => {
+    // Non-live modes use static mock datasets — no API call needed.
+    if (dataMode !== 'live') {
+      setSourceProducts(dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS);
+      return;
+    }
+
+    api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
+      .then(({ products }) => {
+        if (!products || products.length === 0) return; // keep current state
+        setSourceProducts(
+          products.map((p) => ({
+            id:           p.product_id,
+            name:         p.product_name,
+            // category column holds the SKU until the API returns category name —
+            // Phase 3 will join categories into the stockout view.
+            category:     p.sku,
+            currentStock: parseInt(p.quantity_on_hand)    || 0,
+            avgDailySales: parseFloat(p.avg_daily_velocity) || 0,
+          })),
+        );
+      })
+      .catch(() => {
+        // API unreachable — silently fall back to the demo mock data.
+        setSourceProducts(PRODUCTS);
+      });
+  }, [dataMode]);
 
   const sortedProducts = useMemo(
     () =>
       [...sourceProducts].sort(
-        (a, b) => a.currentStock / a.avgDailySales - b.currentStock / b.avgDailySales
+        (a, b) =>
+          (a.avgDailySales > 0 ? a.currentStock / a.avgDailySales : Infinity) -
+          (b.avgDailySales > 0 ? b.currentStock / b.avgDailySales : Infinity),
       ),
-    [sourceProducts]
+    [sourceProducts],
   );
 
   if (!hasData) {
@@ -188,7 +221,7 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
           Stockout Watch
         </h2>
         <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-          Estimated days of inventory left, based on your current stock and average daily sales.
+          Estimated days of inventory left, based on current stock and average daily sales velocity.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

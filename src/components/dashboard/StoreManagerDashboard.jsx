@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AdminRestrictedAccess,
   EmptyState,
   formatLocalCurrency,
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
+import { api } from '../../api/client.js';
 
 /**
  * StoreManagerDashboard — Manager & in-depth analytics scaffold.
@@ -573,7 +574,38 @@ const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
   );
 };
 
+const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
+
 const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMode = 'live' }) => {
+  const [alerts, setAlerts] = useState(INITIAL_ALERTS);
+
+  useEffect(() => {
+    if (dataMode !== 'live') {
+      setAlerts(dataMode === 'struggling' ? STRUGGLING_ALERTS : INITIAL_ALERTS);
+      return;
+    }
+    api.getAlerts({ storeId: DEMO_STORE_ID })
+      .then(({ alerts: apiAlerts }) => {
+        // Phase 3 will write real anomalies. Until then, fall back to demo alerts.
+        if (!apiAlerts || apiAlerts.length === 0) {
+          setAlerts(INITIAL_ALERTS);
+          return;
+        }
+        setAlerts(
+          apiAlerts.map((a) => ({
+            id:          a.id,
+            severity:    a.severity.charAt(0).toUpperCase() + a.severity.slice(1),
+            title:       a.title,
+            description: a.description,
+            metricLabel: 'Threshold',
+            metricValue: `${a.metric_value} (threshold: ${a.threshold_value})`,
+            timestamp:   new Date(a.created_at).toLocaleDateString('en-GB'),
+          }))
+        );
+      })
+      .catch(() => setAlerts(INITIAL_ALERTS)); // silent fallback
+  }, [dataMode]);
+
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
   }
@@ -591,7 +623,7 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-      <AnomalyDetectionPanel alerts={isStruggling ? STRUGGLING_ALERTS : INITIAL_ALERTS} />
+      <AnomalyDetectionPanel alerts={isStruggling ? STRUGGLING_ALERTS : alerts} />
       <ScenarioSimulationPanel baseline={isStruggling ? STRUGGLING_BASELINE : BASELINE} />
     </div>
   );
