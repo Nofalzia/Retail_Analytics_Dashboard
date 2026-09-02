@@ -76,6 +76,20 @@ const WarningIcon = ({ className, style }) => (
   </svg>
 );
 
+const RunDetectionIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="8" />
+    <path d="M10 8.5 16 12l-6 3.5V8.5Z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+const SpinnerIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.25" />
+    <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 const CheckAllIcon = ({ className, style }) => (
   <svg viewBox="0 0 24 24" className={className} style={style} {...strokeProps}>
     <circle cx="12" cy="12" r="8" />
@@ -274,7 +288,67 @@ const AllClearState = () => {
   );
 };
 
-const AnomalyDetectionPanel = ({ alerts = INITIAL_ALERTS }) => {
+const RunDetectionButton = ({ storeId, onComplete }) => {
+  const { PALETTE, PANEL_SURFACE } = useDesignTokens();
+  const [status, setStatus] = useState('idle');
+  const [runSummary, setRunSummary] = useState(null);
+
+  const handleRun = async () => {
+    setStatus('running');
+    setRunSummary(null);
+    try {
+      const data = await api.runDetection({ storeId });
+      setRunSummary(data.runSummary);
+      setStatus('success');
+      onComplete?.();
+      setTimeout(() => setStatus('idle'), 4000);
+    } catch (err) {
+      console.error('[RunDetectionButton]', err);
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 4000);
+    }
+  };
+
+  const isRunning = status === 'running';
+
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <button
+        type="button"
+        onClick={handleRun}
+        disabled={isRunning}
+        className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-60"
+        style={{ backgroundColor: PALETTE.bottleGreen, color: '#ffffff' }}
+        onMouseEnter={(e) => { if (!isRunning) e.currentTarget.style.opacity = '0.88'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+      >
+        {isRunning ? (
+          <>
+            <SpinnerIcon className="h-3.5 w-3.5 animate-spin" style={{ color: '#ffffff' }} />
+            Running…
+          </>
+        ) : (
+          <>
+            <RunDetectionIcon className="h-3.5 w-3.5" style={{ color: '#ffffff' }} />
+            Run Detection
+          </>
+        )}
+      </button>
+      {status === 'success' && runSummary && (
+        <p className="text-[11px] font-medium" style={{ color: PALETTE.bottleGreen }}>
+          ✓ {runSummary.alertsCreated.total} new alert{runSummary.alertsCreated.total !== 1 ? 's' : ''} written ({runSummary.durationMs}ms)
+        </p>
+      )}
+      {status === 'error' && (
+        <p className="text-[11px] font-medium" style={{ color: '#b45309' }}>
+          Detection failed — check server logs.
+        </p>
+      )}
+    </div>
+  );
+};
+
+const AnomalyDetectionPanel = ({ alerts = INITIAL_ALERTS, storeId, onRefreshAlerts }) => {
   const { CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
   const [acknowledgedIds, setAcknowledgedIds] = useState(() => new Set());
   const [showAllAlerts, setShowAllAlerts] = useState(false);
@@ -287,7 +361,7 @@ const AnomalyDetectionPanel = ({ alerts = INITIAL_ALERTS }) => {
 
   return (
     <div className="rounded-xl p-6 sm:p-8 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
-      <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
             Threshold Alerts
@@ -295,13 +369,16 @@ const AnomalyDetectionPanel = ({ alerts = INITIAL_ALERTS }) => {
           <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
             Rule-based checks against your configured statistical thresholds.
           </p>
+          <span
+            className="mt-2 inline-block rounded-full px-3 py-1 text-xs font-medium"
+            style={{ ...PANEL_SURFACE, color: PALETTE.charcoalMuted }}
+          >
+            {openCount} open
+          </span>
         </div>
-        <span
-          className="rounded-full px-3 py-1 text-xs font-medium"
-          style={{ ...PANEL_SURFACE, color: PALETTE.charcoalMuted }}
-        >
-          {openCount} open
-        </span>
+        {storeId && (
+          <RunDetectionButton storeId={storeId} onComplete={onRefreshAlerts} />
+        )}
       </div>
       <div className="mt-6 space-y-3">
         {openCount === 0 ? (
@@ -579,14 +656,13 @@ const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMode = 'live' }) => {
   const [alerts, setAlerts] = useState(INITIAL_ALERTS);
 
-  useEffect(() => {
+  const fetchAlerts = () => {
     if (dataMode !== 'live') {
       setAlerts(dataMode === 'struggling' ? STRUGGLING_ALERTS : INITIAL_ALERTS);
       return;
     }
     api.getAlerts({ storeId: DEMO_STORE_ID })
       .then(({ alerts: apiAlerts }) => {
-        // Phase 3 will write real anomalies. Until then, fall back to demo alerts.
         if (!apiAlerts || apiAlerts.length === 0) {
           setAlerts(INITIAL_ALERTS);
           return;
@@ -603,7 +679,11 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
           }))
         );
       })
-      .catch(() => setAlerts(INITIAL_ALERTS)); // silent fallback
+      .catch(() => setAlerts(INITIAL_ALERTS));
+  };
+
+  useEffect(() => {
+    fetchAlerts();
   }, [dataMode]);
 
   if (activeRole === 'System Administrator') {
@@ -623,7 +703,11 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-      <AnomalyDetectionPanel alerts={isStruggling ? STRUGGLING_ALERTS : alerts} />
+          <AnomalyDetectionPanel
+        alerts={isStruggling ? STRUGGLING_ALERTS : alerts}
+        storeId={dataMode === 'live' ? DEMO_STORE_ID : null}
+        onRefreshAlerts={fetchAlerts}
+      />
       <ScenarioSimulationPanel baseline={isStruggling ? STRUGGLING_BASELINE : BASELINE} />
     </div>
   );

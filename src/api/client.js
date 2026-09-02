@@ -69,6 +69,12 @@ export const api = {
     return apiFetch(`/api/stockout${qs ? `?${qs}` : ''}`);
   },
 
+  /** POST /api/alerts/run-detection — triggers Phase 3 detection engine */
+  runDetection: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/alerts/run-detection${qs ? `?${qs}` : ''}`, { method: 'POST' });
+  },
+
   /** GET /health — used by login screen to verify server is reachable */
   health: () => apiFetch('/health'),
 };

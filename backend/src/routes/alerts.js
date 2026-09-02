@@ -15,7 +15,8 @@ import { Router }       from 'express';
 import { requireAuth }  from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { requireRole }  from '../middleware/auth.js';
-import { query }        from '../db/pool.js';
+import { query }          from '../db/pool.js';
+import { runAllDetection } from '../services/detectionEngine.js';
 
 const router = Router();
 
@@ -109,6 +110,41 @@ router.patch(
     } catch (err) {
       console.error('[alerts] PATCH dismiss error:', err.message);
       return res.status(500).json({ error: 'UPDATE_ERROR' });
+    }
+  },
+);
+
+// ── POST /api/alerts/run-detection ───────────────────────────────────────────
+// Triggers all three Phase 3 detection engines on demand.
+// Restricted to manager and owner roles only.
+router.post(
+  '/run-detection',
+  requireAuth,
+  resolveTenant,
+  requireRole('manager', 'owner'),
+  async (req, res) => {
+    const { tenantId } = req;
+    const storeId = req.query.storeId || req.body?.storeId;
+
+    if (!storeId) {
+      return res.status(400).json({
+        error:   'MISSING_PARAM',
+        message: 'storeId is required as a query parameter or in the request body.',
+      });
+    }
+
+    try {
+      console.log(`[alerts/run-detection] Starting — tenant=${tenantId} store=${storeId}`);
+      const result = await runAllDetection(tenantId, storeId);
+      console.log(`[alerts/run-detection] Done in ${result.durationMs}ms — ${result.alertsCreated.total} new alerts`);
+      return res.json({ success: true, runSummary: result });
+
+    } catch (err) {
+      console.error('[alerts/run-detection] Engine error:', err.message);
+      return res.status(500).json({
+        error:   'DETECTION_ENGINE_ERROR',
+        message: 'Detection engine encountered an error. Check server logs.',
+      });
     }
   },
 );
