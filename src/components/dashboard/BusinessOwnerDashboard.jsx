@@ -143,7 +143,7 @@ const INVENTORY_CAP_DAYS = 30;
 
 const getInventoryUrgency = (daysLeft, EARTH) => {
   if (daysLeft >= 14) return { tone: 'Healthy', color: EARTH.sage, soft: EARTH.sageSoft };
-  if (daysLeft >= 7) return { tone: 'Watch', color: EARTH.sand, soft: EARTH.sandSoft };
+  if (daysLeft >= 7) return { tone: 'Watch', color: EARTH.tan, soft: EARTH.sandSoft };
   return { tone: 'Act now', color: EARTH.terracotta, soft: EARTH.terracottaSoft };
 };
 
@@ -228,8 +228,9 @@ const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 
 /** Maps /api/overview response → the metrics shape this component already uses. */
 function mapOverviewToMetrics(data) {
-  const { kpi, dailyTrend } = data;
-  const last14 = dailyTrend.slice(-14);
+  const { kpi = {}, dailyTrend = [] } = data ?? {};
+  const safeTrend = Array.isArray(dailyTrend) ? dailyTrend : [];
+  const last14 = safeTrend.slice(-14);
 
   const chartLabels  = last14.map((d) => {
     const dt = new Date(d.date);
@@ -238,18 +239,18 @@ function mapOverviewToMetrics(data) {
   const chartRevenue = last14.map((d) => parseFloat(d.revenue) || 0);
 
   // Growth: split trend in half, compare earlier vs later period
-  const half       = Math.floor(dailyTrend.length / 2);
+  const half       = Math.floor(safeTrend.length / 2);
   const earlySum   = dailyTrend.slice(0, half).reduce((s, d) => s + (parseFloat(d.revenue) || 0), 0);
   const lateSum    = dailyTrend.slice(half).reduce((s, d) => s + (parseFloat(d.revenue) || 0), 0);
   const growthPct  = earlySum > 0 ? +((lateSum - earlySum) / earlySum * 100).toFixed(1) : 0;
 
   // Today's order count
   const todayStr   = new Date().toISOString().slice(0, 10);
-  const todayData  = dailyTrend.find((d) => d.date === todayStr);
+  const todayData  = safeTrend.find((d) => d.date === todayStr);
   const ordersToday = todayData ? parseInt(todayData.transaction_count || 0) : 0;
 
   const avgPerDay  = dailyTrend.length > 0
-    ? Math.round(parseInt(kpi.total_transactions) / dailyTrend.length)
+    ? Math.round(parseInt(kpi.total_transactions) / safeTrend.length)
     : 0;
 
   return {
@@ -292,7 +293,7 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
             data: chartRevenue,
             borderColor: EARTH.sage,
             backgroundColor: gradient,
-            pointBackgroundColor: EARTH.sand,
+            pointBackgroundColor: EARTH.tan,
             pointBorderColor: PALETTE.cardBg || '#ffffff',
             pointBorderWidth: 1.5,
             pointRadius: 3,
@@ -380,6 +381,7 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
 
 const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode = 'live' }) => {
   const [metrics, setMetrics] = useState(DATASETS[dataMode] ?? DATASETS.live);
+  const [inventoryDays, setInventoryDays] = useState(null);
 
   // When dataMode is 'live', fetch real data from the API.
   // Falls back silently to the mock DATASETS.live if the API is unreachable.
@@ -393,6 +395,39 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
     })() })
       .then((data) => setMetrics(mapOverviewToMetrics(data)))
       .catch(() => setMetrics(DATASETS.live)); // silent fallback
+  }, [dataMode]);
+
+  // Live inventory health: derive "days of inventory left" from the same
+  // stockout API that powers Stockout Watch — never a hardcoded placeholder.
+  useEffect(() => {
+    if (dataMode !== 'live') {
+      setInventoryDays(null);
+      return;
+    }
+    api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
+      .then(({ products }) => {
+        if (!Array.isArray(products) || products.length === 0) {
+          setInventoryDays(null);
+          return;
+        }
+        const days = products
+          .map((p) => {
+            const velocity = parseFloat(p.avg_daily_velocity);
+            const stock    = parseInt(p.quantity_on_hand) || 0;
+            return velocity > 0 ? stock / velocity : null;
+          })
+          .filter((d) => d !== null && Number.isFinite(d))
+          .sort((a, b) => a - b);
+        if (days.length === 0) {
+          setInventoryDays(null);
+          return;
+        }
+        const mid = Math.floor(days.length / 2);
+        const median =
+          days.length % 2 === 1 ? days[mid] : (days[mid - 1] + days[mid]) / 2;
+        setInventoryDays(+median.toFixed(1));
+      })
+      .catch(() => setInventoryDays(null));
   }, [dataMode]);
 
   if (activeRole === 'System Administrator') {
@@ -417,7 +452,7 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
           ordersToday={metrics.ordersToday}
           averagePerDay={metrics.averageOrdersPerDay}
         />
-        <DaysOfInventoryCard daysLeft={metrics.daysOfInventoryLeft} />
+        <DaysOfInventoryCard daysLeft={inventoryDays ?? metrics.daysOfInventoryLeft} />
       </div>
       <PerformanceChart chartRevenue={metrics.chartRevenue} chartLabels={metrics.chartLabels} />
     </div>

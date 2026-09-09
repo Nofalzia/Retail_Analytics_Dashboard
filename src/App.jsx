@@ -10,15 +10,23 @@ import StockoutPrediction from './components/dashboard/StockoutPrediction';
 import RecommendationsPanel from './components/dashboard/RecommendationsPanel';
 
 // ── Inner component — can use useAuth() because it sits inside AuthProvider ──
+const ROLE_LABELS = {
+  owner: 'Owner',
+  manager: 'Manager',
+  data_entry_clerk: 'Data Entry Clerk',
+  system_admin: 'System Administrator',
+};
+
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const userName = (user?.email || '').split('@')[0] || 'there';
 
   // Gate the entire dashboard behind authentication.
   // LoginScreen handles its own styling — no DashboardShell wrapper needed.
   if (!isAuthenticated) return <LoginScreen />;
 
   return (
-    <DashboardShell>
+    <DashboardShell initialRole={ROLE_LABELS[user?.role] ?? 'Owner'} userName={userName}>
       {(activeView, activeRole, dataMode) => {
         const hasData = dataMode !== 'empty';
         // System Administrator is scoped to data ingestion only — no financial

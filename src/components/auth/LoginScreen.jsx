@@ -178,7 +178,7 @@ export default function LoginScreen() {
               autoComplete="current-password"
             />
             <Field
-              label="Store ID"
+              label="Store Slug"
               value={form.tenantSlug}
               onChange={set('tenantSlug')}
               placeholder="your-store-slug"

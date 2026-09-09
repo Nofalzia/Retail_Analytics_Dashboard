@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
     const data = await api.login(email, password, tenantSlug);
     setToken(data.token);
     setTokenState(data.token);
-    setUser({ role: data.role, tenantId: data.tenantId });
+    setUser({ role: data.role, tenantId: data.tenantId, email });
     return data;
   }, []);
 

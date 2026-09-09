@@ -56,6 +56,10 @@ const createDesignTokens = (theme) => ({
       backgroundColor: theme.errorSoft,
       borderColor: theme.error,
     },
+    info: {
+      backgroundColor: theme.sandSoft,
+      borderColor: theme.sand_accent,
+    },
     warning: {
       backgroundColor: theme.warningSoft,
       borderColor: theme.ochre,

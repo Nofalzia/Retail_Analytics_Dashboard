@@ -176,7 +176,7 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
 
     api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
       .then(({ products }) => {
-        if (!products || products.length === 0) return; // keep current state
+        if (!Array.isArray(products) || products.length === 0) return; // keep current state
         setSourceProducts(
           products.map((p) => ({
             id:           p.product_id,

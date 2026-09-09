@@ -32,8 +32,23 @@ const PORT = process.env.PORT || 3001;
 
 // ── Security middleware ────────────────────────────────────────────────────────
 app.use(helmet());
+
+// CORS — accepts a comma-separated list of allowed frontend origins so local dev
+// (http://localhost:5173) and the deployed Vercel app can both be listed, e.g.
+//   CORS_ORIGIN=http://localhost:5173,https://retail-analytics-saas.vercel.app
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim());
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
 }));

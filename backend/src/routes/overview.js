@@ -66,7 +66,8 @@ router.get('/', requireAuth, resolveTenant, async (req, res) => {
       `SELECT
          st.sale_date::text                  AS date,
          SUM(st.total_revenue)               AS revenue,
-         SUM(st.total_revenue - st.total_cost) AS profit
+         SUM(st.total_revenue - st.total_cost) AS profit,
+         COUNT(*)                            AS transaction_count
        FROM sale_transactions st
        WHERE st.tenant_id = $1
          AND st.sale_date BETWEEN $2 AND $3

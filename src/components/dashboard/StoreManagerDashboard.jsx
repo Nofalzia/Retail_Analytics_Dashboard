@@ -19,6 +19,41 @@ const BASELINE_SLIDER_VALUES = {
 };
 
 const ALERT_DISPLAY_CAP = 5;
+// ============================================================================
+// Alert metric formatting — the API stores metric_value / threshold_value as
+// NUMERIC(15,4) (e.g. "4.0000") with type-specific meaning. We translate each
+// alert_type into a label + human-readable value instead of dumping the raw
+// numbers. The default branch keeps any future alert_type readable.
+// ============================================================================
+
+const ALERT_METRIC_LABELS = {
+  stockout_risk: 'Status',
+  low_stock:     'Inventory',
+  sales_spike:   'Sales vs Average',
+  sales_drop:    'Sales vs Average',
+};
+
+const formatAlertValue = (alert) => {
+  const fmt = (v) => {
+    const n = parseFloat(v);
+    return (Number.isNaN(n) ? 0 : n).toFixed(1);
+  };
+
+  const metric    = fmt(alert.metric_value);
+  const threshold = fmt(alert.threshold_value);
+
+  switch (alert.alert_type) {
+    case 'stockout_risk':
+      return 'Out of stock';
+    case 'low_stock':
+      return `${metric} units left (reorder at ${threshold})`;
+    case 'sales_spike':
+    case 'sales_drop':
+      return `Sales ${metric} units (avg ~${threshold})`;
+    default:
+      return `${metric} (threshold: ${threshold})`;
+  }
+};
 
 const strokeProps = {
   fill: 'none',
@@ -203,7 +238,7 @@ const CurrencyFigure = ({ amount, size = 'md' }) => {
 
 const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
   const { ALERT_SURFACE, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
-  const styles = ALERT_SURFACE[alert.severity.toLowerCase()];
+  const styles = ALERT_SURFACE[alert.severity.toLowerCase()] ?? ALERT_SURFACE.warning;
   const SeverityIcon = alert.severity === 'Critical' ? CriticalIcon : WarningIcon;
 
   return (
@@ -670,11 +705,11 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
         setAlerts(
           apiAlerts.map((a) => ({
             id:          a.id,
-            severity:    a.severity.charAt(0).toUpperCase() + a.severity.slice(1),
+            severity:    (a.severity || 'info').charAt(0).toUpperCase() + (a.severity || 'info').slice(1),
             title:       a.title,
             description: a.description,
-            metricLabel: 'Threshold',
-            metricValue: `${a.metric_value} (threshold: ${a.threshold_value})`,
+            metricLabel: ALERT_METRIC_LABELS[a.alert_type] ?? 'Observed value',
+            metricValue: formatAlertValue(a),
             timestamp:   new Date(a.created_at).toLocaleDateString('en-GB'),
           }))
         );

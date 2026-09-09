@@ -637,7 +637,7 @@ const TopHeader = ({ userName, activeRole, onRoleSelect, dataMode, onDataModeSel
 
 const DashboardShell = ({
   children,
-  userName = 'Ayesha',
+  userName = 'there',
   initialView = 'overview',
   initialRole = 'Owner',
   initialDataMode = 'live',

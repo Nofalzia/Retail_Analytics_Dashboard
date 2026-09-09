@@ -35,12 +35,12 @@ const CheckIcon = ({ className, style }) => (
 // Priority ranking: lower number = surfaced first. Anomaly severity and
 // stockout urgency are mapped onto the same 3-tier scale so both sources
 // can be sorted into a single list.
-const PRIORITY_RANK = { critical: 0, warning: 1, healthy: 2 };
+const PRIORITY_RANK = { critical: 0, warning: 1, info: 1, healthy: 2 };
 
 const buildRecommendations = (alerts, products) => {
   const fromAlerts = alerts.map((alert) => ({
     id: `rec-alert-${alert.id}`,
-    tier: alert.severity.toLowerCase(),
+    tier: (alert.severity || 'warning').toLowerCase(),
     action: `Investigate: ${alert.title}`,
     detail: alert.description,
     sourceLabel: alert.metricLabel,
@@ -61,7 +61,7 @@ const buildRecommendations = (alerts, products) => {
   }).filter((rec) => rec.tier !== 'healthy'); // healthy stock needs no action
 
   return [...fromAlerts, ...fromStockouts].sort(
-    (a, b) => PRIORITY_RANK[a.tier] - PRIORITY_RANK[b.tier]
+    (a, b) => (PRIORITY_RANK[a.tier] ?? 99) - (PRIORITY_RANK[b.tier] ?? 99)
   );
 };
 
