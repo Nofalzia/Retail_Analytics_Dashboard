@@ -1,0 +1,9 @@
+# Project rules (apply to every task)
+- Stack: React 19 + Vite + Tailwind v4 + Chart.js (frontend, /src); Node/Express + PostgreSQL (backend, /backend). Modern ES6+ modules, JSDoc on exported functions, explicit variable names, clean error handling.
+- Multi-tenant SaaS. Never hardcode industry terms (bakery, grocery, apparel...) in schema, variables or components. Generic entities only: Product, Category, SaleTransaction, InventoryLog.
+- Every backend query MUST filter by req.tenantId (from the JWT). Never take tenant identity from the request body or query.
+- Design: warm Euro-Asian minimalist. Use tokens from useDesignTokens() (PALETTE, EARTH, ALERT_SURFACE). Do not add colors, blues, or icon packages; inline SVG only. Currency only via formatLocalCurrency().
+- Rule-based/statistical logic only. No ML libraries. No new dependency without stating why in your final report.
+- My machine is Windows. Any shell command you tell me to run must work in CMD (not PowerShell, not bash).
+- Do exactly ONE task per session. Do not refactor unrelated code. Stay inside the files listed in the task; if you need to widen scope, stop and ask.
+- Read the listed files first. After editing, run the verify steps, then give a final report: files changed, what to test manually, anything uncertain. Never run git commit or git push; I do that.

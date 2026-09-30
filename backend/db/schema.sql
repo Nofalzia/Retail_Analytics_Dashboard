@@ -322,7 +322,13 @@ CREATE TABLE anomaly_alerts (
   acknowledged_by UUID            NULL REFERENCES users(id) ON DELETE SET NULL,
   dismissed_at    TIMESTAMPTZ     NULL,
   dismissed_by    UUID            NULL REFERENCES users(id) ON DELETE SET NULL,
-  created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+  created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+  -- One alert per (tenant, store, product, type, day). The detection engines in
+  -- services/detectionEngine.js rely on this dedup guard with
+  --   INSERT ... ON CONFLICT ON CONSTRAINT uq_anomaly_per_product_per_day
+  -- PostgreSQL names a UNIQUE constraint "uq_anomaly_per_product_per_day".
+  CONSTRAINT uq_anomaly_per_product_per_day
+    UNIQUE (tenant_id, store_id, product_id, alert_type, alert_date)
 );
 
 CREATE INDEX idx_anomaly_tenant_store_date   ON anomaly_alerts(tenant_id, store_id, alert_date DESC);
