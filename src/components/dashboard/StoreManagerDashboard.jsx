@@ -6,6 +6,7 @@ import {
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
+import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 /**
  * StoreManagerDashboard — Manager & in-depth analytics scaffold.
@@ -689,21 +690,32 @@ const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
 const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 
 const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMode = 'live' }) => {
-  const [alerts, setAlerts] = useState(INITIAL_ALERTS);
+  const isLive = dataMode === 'live';
+
+  // Live mode starts empty — alerts come from the API. Non-live demo modes keep
+  // the curated mock alert sets untouched.
+  const [alerts, setAlerts] = useState(
+    isLive ? [] : (dataMode === 'struggling' ? STRUGGLING_ALERTS : INITIAL_ALERTS),
+  );
+  const [alertsError, setAlertsError] = useState(false);
+  const [alertsLoaded, setAlertsLoaded] = useState(!isLive);
+  const [retryTick, setRetryTick] = useState(0);
 
   const fetchAlerts = () => {
     if (dataMode !== 'live') {
       setAlerts(dataMode === 'struggling' ? STRUGGLING_ALERTS : INITIAL_ALERTS);
+      setAlertsError(false);
+      setAlertsLoaded(true);
       return;
     }
+
+    // Live mode: never fall back to mock alerts. A failed request shows the
+    // error notice; an empty-but-successful response shows the All Clear state.
     api.getAlerts({ storeId: DEMO_STORE_ID })
       .then(({ alerts: apiAlerts }) => {
-        if (!apiAlerts || apiAlerts.length === 0) {
-          setAlerts(INITIAL_ALERTS);
-          return;
-        }
+        const list = Array.isArray(apiAlerts) ? apiAlerts : [];
         setAlerts(
-          apiAlerts.map((a) => ({
+          list.map((a) => ({
             id:          a.id,
             severity:    (a.severity || 'info').charAt(0).toUpperCase() + (a.severity || 'info').slice(1),
             title:       a.title,
@@ -714,12 +726,13 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
           }))
         );
       })
-      .catch(() => setAlerts(INITIAL_ALERTS));
+      .catch(() => setAlertsError(true))
+      .finally(() => setAlertsLoaded(true));
   };
 
   useEffect(() => {
     fetchAlerts();
-  }, [dataMode]);
+  }, [dataMode, retryTick]);
 
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
@@ -734,13 +747,26 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
     );
   }
 
+  // Live mode never renders mock alerts: error → notice, loading → placeholder.
+  if (isLive) {
+    if (alertsError) {
+      return <ApiErrorNotice onRetry={() => {
+        setAlertsLoaded(false);
+        setRetryTick((t) => t + 1);
+      }} />;
+    }
+    if (!alertsLoaded) {
+      return <LoadingState label="Loading store alerts…" />;
+    }
+  }
+
   const isStruggling = dataMode === 'struggling';
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
           <AnomalyDetectionPanel
         alerts={isStruggling ? STRUGGLING_ALERTS : alerts}
-        storeId={dataMode === 'live' ? DEMO_STORE_ID : null}
+        storeId={isLive ? DEMO_STORE_ID : null}
         onRefreshAlerts={fetchAlerts}
       />
       <ScenarioSimulationPanel baseline={isStruggling ? STRUGGLING_BASELINE : BASELINE} />

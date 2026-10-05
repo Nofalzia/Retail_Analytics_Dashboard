@@ -37,7 +37,7 @@ function AppContent() {
           activeView !== 'stockout-prediction' &&
           activeView !== 'recommendations'
         ) {
-          return <DataIngestionHub />;
+          return <DataIngestionHub dataMode={dataMode} />;
         }
 
         switch (activeView) {
@@ -50,7 +50,7 @@ function AppContent() {
           case 'recommendations':
             return <RecommendationsPanel hasData={hasData} dataMode={dataMode} />;
           case 'data-ingestion':
-            return <DataIngestionHub />;
+            return <DataIngestionHub dataMode={dataMode} />;
           default:
             return <BusinessOwnerDashboard activeRole={activeRole} hasData={hasData} dataMode={dataMode} />;
         }

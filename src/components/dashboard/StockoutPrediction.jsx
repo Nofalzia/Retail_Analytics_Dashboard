@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
+import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 /**
  * StockoutPrediction — "Days of Inventory Left" bento grid.
@@ -163,37 +164,48 @@ const StockoutCard = ({ product }) => {
 
 const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   const { PALETTE } = useDesignTokens();
+  const isLive = dataMode === 'live';
+
+  // Live mode starts empty — products come from the API. Non-live demo modes
+  // keep the curated mock product sets untouched.
   const [sourceProducts, setSourceProducts] = useState(
-    dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS,
+    isLive ? [] : (dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS),
   );
+  const [loadError, setLoadError] = useState(false);
+  const [productsLoaded, setProductsLoaded] = useState(!isLive);
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
-    // Non-live modes use static mock datasets — no API call needed.
     if (dataMode !== 'live') {
       setSourceProducts(dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS);
+      setLoadError(false);
+      setProductsLoaded(true);
       return;
     }
 
+    // Live mode: never fall back to mock products. Failure shows the error
+    // notice; an empty-but-successful response shows the proper empty state.
+    setLoadError(false);
+    setProductsLoaded(false);
     api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
       .then(({ products }) => {
-        if (!Array.isArray(products) || products.length === 0) return; // keep current state
         setSourceProducts(
-          products.map((p) => ({
-            id:           p.product_id,
-            name:         p.product_name,
-            // category column holds the SKU until the API returns category name —
-            // Phase 3 will join categories into the stockout view.
-            category:     p.sku,
-            currentStock: parseInt(p.quantity_on_hand)    || 0,
-            avgDailySales: parseFloat(p.avg_daily_velocity) || 0,
-          })),
+          Array.isArray(products)
+            ? products.map((p) => ({
+                id:            p.product_id,
+                name:          p.product_name,
+                // category column holds the SKU until the API returns category name —
+                // Phase 3 will join categories into the stockout view.
+                category:      p.sku,
+                currentStock:  parseInt(p.quantity_on_hand)    || 0,
+                avgDailySales: parseFloat(p.avg_daily_velocity) || 0,
+              }))
+            : [],
         );
       })
-      .catch(() => {
-        // API unreachable — silently fall back to the demo mock data.
-        setSourceProducts(PRODUCTS);
-      });
-  }, [dataMode]);
+      .catch(() => setLoadError(true))
+      .finally(() => setProductsLoaded(true));
+  }, [dataMode, retryTick]);
 
   const sortedProducts = useMemo(
     () =>
@@ -212,6 +224,25 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
         description="Upload your product and inventory data to start tracking depletion rates and stockout risk."
       />
     );
+  }
+
+  // Live mode never renders mocks: error → notice, loading → placeholder,
+  // empty-but-successful → proper empty state.
+  if (isLive) {
+    if (loadError) {
+      return <ApiErrorNotice onRetry={() => setRetryTick((t) => t + 1)} />;
+    }
+    if (!productsLoaded) {
+      return <LoadingState label="Loading stockout projections…" />;
+    }
+    if (sourceProducts.length === 0) {
+      return (
+        <EmptyState
+          title="No stock levels to watch yet"
+          description="Upload your product and inventory data to start tracking depletion rates and stockout risk."
+        />
+      );
+    }
   }
 
   return (

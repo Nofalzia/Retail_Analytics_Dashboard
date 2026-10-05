@@ -75,6 +75,65 @@ export const api = {
     return apiFetch(`/api/alerts/run-detection${qs ? `?${qs}` : ''}`, { method: 'POST' });
   },
 
+  /**
+   * POST /api/upload — multipart file ingest (CSV/XLSX).
+   * Uses XMLHttpRequest instead of fetch because fetch cannot report upload
+   * byte progress. onProgress(percent) fires with real progress (0-100);
+   * pipeline progress is tracked by polling getUploadStatus(jobId).
+   */
+  uploadFile: (storeId, file, onProgress) => {
+    const token = getToken();
+    const form  = new FormData();
+    form.append('storeId', storeId);
+    form.append('file', file);
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/api/upload`);
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      // Real upload progress (unavailable on fetch). Safely a no-op where the
+      // browser lacks XMLHttpRequestUploadEvents — callers should poll the job.
+      if (onProgress && xhr.upload) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e && e.length > 0 && e.total > 0) {
+            onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+          }
+        });
+      }
+
+      xhr.onload = () => {
+        let body = {};
+        try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON body */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(body);
+        const err = new Error(body.message || 'Upload failed');
+        err.status = xhr.status;
+        err.data   = body;
+        reject(err);
+      };
+      xhr.onerror = () => {
+        const err = new Error('Upload request failed');
+        err.status = 0;
+        err.data   = null;
+        reject(err);
+      };
+
+      xhr.send(form);
+    });
+  },
+
+  /** GET /api/upload/:jobId/status — poll an ingestion job's progress */
+  getUploadStatus: (jobId) =>
+    apiFetch(`/api/upload/${encodeURIComponent(jobId)}/status`),
+
+  /** PATCH /api/alerts/:id/ack — acknowledge an alert (manager/owner only) */
+  acknowledgeAlert: (id) =>
+    apiFetch(`/api/alerts/${encodeURIComponent(id)}/ack`, { method: 'PATCH' }),
+
+  /** PATCH /api/alerts/:id/dismiss — dismiss an alert (manager/owner only) */
+  dismissAlert: (id) =>
+    apiFetch(`/api/alerts/${encodeURIComponent(id)}/dismiss`, { method: 'PATCH' }),
+
   /** GET /health — used by login screen to verify server is reachable */
   health: () => apiFetch('/health'),
 };

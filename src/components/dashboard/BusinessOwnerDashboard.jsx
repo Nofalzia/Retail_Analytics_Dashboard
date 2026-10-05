@@ -16,6 +16,7 @@ import {
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
+import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
@@ -149,31 +150,42 @@ const getInventoryUrgency = (daysLeft, EARTH) => {
 
 const DaysOfInventoryCard = ({ daysLeft }) => {
   const { EARTH, PALETTE } = useDesignTokens();
-  const { tone, color, soft } = getInventoryUrgency(daysLeft, EARTH);
-  const fillPercent = Math.max(4, Math.min(100, (daysLeft / INVENTORY_CAP_DAYS) * 100));
+  const hasEstimate = typeof daysLeft === 'number' && Number.isFinite(daysLeft);
+  const { tone, color, soft } = hasEstimate
+    ? getInventoryUrgency(daysLeft, EARTH)
+    : { tone: null, color: null, soft: PALETTE.sand };
+  const fillPercent = hasEstimate
+    ? Math.max(4, Math.min(100, (daysLeft / INVENTORY_CAP_DAYS) * 100))
+    : 0;
 
   return (
     <MetricCard icon={<InventoryIcon className="h-4.5 w-4.5" />} label="Days of Inventory Left">
       <div className="flex items-baseline justify-between gap-4">
         <p className="text-4xl font-bold tracking-tight sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
-          {daysLeft}
-          <span className="ml-1 text-sm font-semibold" style={{ color: PALETTE.charcoalMuted }}>days</span>
+          {hasEstimate ? daysLeft : '—'}
+          {hasEstimate && (
+            <span className="ml-1 text-sm font-semibold" style={{ color: PALETTE.charcoalMuted }}>days</span>
+          )}
         </p>
         <span
           className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wider"
-          style={{ backgroundColor: soft, color: PALETTE.charcoalMuted }}
+          style={{ backgroundColor: hasEstimate ? soft : PALETTE.sand, color: PALETTE.charcoalMuted }}
         >
-          {tone}
+          {hasEstimate ? tone : 'Not enough data'}
         </span>
       </div>
       <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: PALETTE.sand }}>
-        <div
-          className="h-full rounded-full transition-all duration-700 ease-out"
-          style={{ width: `${fillPercent}%`, backgroundColor: color }}
-        />
+        {hasEstimate && (
+          <div
+            className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${fillPercent}%`, backgroundColor: color }}
+          />
+        )}
       </div>
       <p className="mt-2.5 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-        Based on current sell-through rate across all stocked products.
+        {hasEstimate
+          ? 'Based on current sell-through rate across all stocked products.'
+          : 'Not enough stock or sales history yet to estimate a depletion date.'}
       </p>
     </MetricCard>
   );
@@ -259,7 +271,10 @@ function mapOverviewToMetrics(data) {
     totalOrders:          parseInt(kpi.total_transactions) || 0,
     ordersToday,
     averageOrdersPerDay:  avgPerDay,
-    daysOfInventoryLeft:  9, // placeholder — stockout API is wired in StockoutPrediction
+    // NOTE: no daysOfInventoryLeft here. In live mode the inventory card is
+    // driven by the /api/stockout-derived median (see main component), and in
+    // demo modes by the DATASETS mocks. A missing value renders the explicit
+    // "Not enough data" state in DaysOfInventoryCard.
     chartRevenue,
     chartLabels,
   };
@@ -380,55 +395,76 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
 };
 
 const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode = 'live' }) => {
-  const [metrics, setMetrics] = useState(DATASETS[dataMode] ?? DATASETS.live);
-  const [inventoryDays, setInventoryDays] = useState(null);
+  const isLive = dataMode === 'live';
 
-  // When dataMode is 'live', fetch real data from the API.
-  // Falls back silently to the mock DATASETS.live if the API is unreachable.
+  // Live mode starts empty — data comes from the API. Non-live demo modes keep
+  // the curated mock datasets untouched.
+  const [metrics, setMetrics] = useState(isLive ? null : (DATASETS[dataMode] ?? DATASETS.live));
+  const [inventoryDays, setInventoryDays] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+  const [hasLiveData, setHasLiveData] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(!isLive);
+  const [retryTick, setRetryTick] = useState(0);
+
+  // Live mode: fetch real data from the API. On failure show the error notice —
+  // NEVER fall back to the mock DATASETS. Empty-but-successful responses render
+  // the proper empty state instead of mocks.
   useEffect(() => {
     if (dataMode !== 'live') {
       setMetrics(DATASETS[dataMode] ?? DATASETS.live);
-      return;
-    }
-    api.getOverview({ storeId: DEMO_STORE_ID, startDate: (() => {
-      const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
-    })() })
-      .then((data) => setMetrics(mapOverviewToMetrics(data)))
-      .catch(() => setMetrics(DATASETS.live)); // silent fallback
-  }, [dataMode]);
-
-  // Live inventory health: derive "days of inventory left" from the same
-  // stockout API that powers Stockout Watch — never a hardcoded placeholder.
-  useEffect(() => {
-    if (dataMode !== 'live') {
       setInventoryDays(null);
+      setLoadError(false);
+      setHasLiveData(true);
+      setIsLoaded(true);
       return;
     }
-    api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
-      .then(({ products }) => {
-        if (!Array.isArray(products) || products.length === 0) {
-          setInventoryDays(null);
-          return;
-        }
-        const days = products
-          .map((p) => {
-            const velocity = parseFloat(p.avg_daily_velocity);
-            const stock    = parseInt(p.quantity_on_hand) || 0;
-            return velocity > 0 ? stock / velocity : null;
-          })
-          .filter((d) => d !== null && Number.isFinite(d))
-          .sort((a, b) => a - b);
-        if (days.length === 0) {
-          setInventoryDays(null);
-          return;
-        }
-        const mid = Math.floor(days.length / 2);
-        const median =
-          days.length % 2 === 1 ? days[mid] : (days[mid - 1] + days[mid]) / 2;
-        setInventoryDays(+median.toFixed(1));
-      })
-      .catch(() => setInventoryDays(null));
-  }, [dataMode]);
+
+    setLoadError(false);
+    setHasLiveData(true);
+    setIsLoaded(false);
+    setMetrics(null);
+    setInventoryDays(null);
+
+    Promise.all([
+      // KPI snapshot + daily trend chart.
+      api.getOverview({ storeId: DEMO_STORE_ID, startDate: (() => {
+        const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
+      })() })
+        .then((data) => {
+          const hasTransactions = (parseInt(data?.kpi?.total_transactions) || 0) > 0;
+          setHasLiveData(hasTransactions);
+          setMetrics(hasTransactions ? mapOverviewToMetrics(data) : null);
+        }),
+
+      // Days-of-inventory health — median of each product's stock/velocity
+      // projection from the same stockout API that powers Stockout Watch.
+      api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
+        .then(({ products }) => {
+          if (!Array.isArray(products) || products.length === 0) {
+            setInventoryDays(null);
+            return;
+          }
+          const days = products
+            .map((p) => {
+              const velocity = parseFloat(p.avg_daily_velocity);
+              const stock    = parseInt(p.quantity_on_hand) || 0;
+              return velocity > 0 ? stock / velocity : null;
+            })
+            .filter((d) => d !== null && Number.isFinite(d))
+            .sort((a, b) => a - b);
+          if (days.length === 0) {
+            setInventoryDays(null);
+            return;
+          }
+          const mid = Math.floor(days.length / 2);
+          const median =
+            days.length % 2 === 1 ? days[mid] : (days[mid - 1] + days[mid]) / 2;
+          setInventoryDays(+median.toFixed(1));
+        }),
+    ])
+      .catch(() => setLoadError(true))
+      .finally(() => setIsLoaded(true));
+  }, [dataMode, retryTick]);
 
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
@@ -441,6 +477,25 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
         description="Once your store's sales start coming in, your revenue, orders, and inventory health will show up here automatically."
       />
     );
+  }
+
+  // Live mode never renders mocks: error → notice, loading → placeholder,
+  // empty-but-successful → proper empty state.
+  if (isLive) {
+    if (loadError) {
+      return <ApiErrorNotice onRetry={() => setRetryTick((t) => t + 1)} />;
+    }
+    if (!isLoaded) {
+      return <LoadingState label="Loading store data…" />;
+    }
+    if (!hasLiveData || metrics === null) {
+      return (
+        <EmptyState
+          title="No sales data yet"
+          description="Once your store's sales start coming in, your revenue, orders, and inventory health will show up here automatically."
+        />
+      );
+    }
   }
 
   return (
