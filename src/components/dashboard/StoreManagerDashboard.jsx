@@ -34,6 +34,22 @@ const ALERT_METRIC_LABELS = {
   sales_drop:    'Sales vs Average',
 };
 
+// Live stock status, derived from real alert data so the label can never
+// contradict the alert description. `metric_value` carries a different meaning
+// per alert type:
+//   stockout_risk → days of stock remaining (units on hand is NOT exposed by
+//                   /api/alerts for this type, so 0-or-fewer days is our only
+//                   faithful "the shelf is empty" signal)
+//   low_stock     → units currently on hand
+// In both cases a positive value means stock is still there, so we only say
+// "Out of stock" when it has genuinely run out. An unparseable value is treated
+// as "Low stock" rather than over-claiming an empty shelf.
+const formatStockStatus = (alert) => {
+  const value = parseFloat(alert.metric_value);
+  const hasStockLeft = !Number.isFinite(value) || value > 0;
+  return hasStockLeft ? 'Low stock' : 'Out of stock';
+};
+
 const formatAlertValue = (alert) => {
   const fmt = (v) => {
     const n = parseFloat(v);
@@ -45,9 +61,9 @@ const formatAlertValue = (alert) => {
 
   switch (alert.alert_type) {
     case 'stockout_risk':
-      return 'Out of stock';
     case 'low_stock':
-      return `${metric} units left (reorder at ${threshold})`;
+      // Stock-status alerts: report the real stock state, not a fixed string.
+      return formatStockStatus(alert);
     case 'sales_spike':
     case 'sales_drop':
       return `Sales ${metric} units (avg ~${threshold})`;

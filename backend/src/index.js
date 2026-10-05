@@ -26,6 +26,7 @@ import overviewRouter   from './routes/overview.js';
 import alertsRouter     from './routes/alerts.js';
 import stockoutRouter   from './routes/stockout.js';
 import uploadRouter     from './routes/upload.js';
+import recommendationsRouter from './routes/recommendations.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -79,6 +80,7 @@ app.use('/api/overview', overviewRouter);
 app.use('/api/alerts',   alertsRouter);
 app.use('/api/stockout', stockoutRouter);
 app.use('/api/upload',   uploadRouter);
+app.use('/api/recommendations', recommendationsRouter);
 
 // ── Minimal auth endpoint ─────────────────────────────────────────────────────
 // A full auth system is out of Phase 2 scope, but we need something to issue

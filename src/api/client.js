@@ -78,6 +78,12 @@ export const api = {
     return apiFetch(`/api/stockout${qs ? `?${qs}` : ''}`);
   },
 
+  /** GET /api/recommendations — powers RecommendationsPanel */
+  getRecommendations: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/recommendations${qs ? `?${qs}` : ''}`);
+  },
+
   /** POST /api/alerts/run-detection — triggers Phase 3 detection engine */
   runDetection: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
@@ -143,6 +149,10 @@ export const api = {
   /** PATCH /api/alerts/:id/dismiss — dismiss an alert (manager/owner only) */
   dismissAlert: (id) =>
     apiFetch(`/api/alerts/${encodeURIComponent(id)}/dismiss`, { method: 'PATCH' }),
+
+  /** PATCH /api/recommendations/:id/complete — mark a recommendation done */
+  completeRecommendation: (id) =>
+    apiFetch(`/api/recommendations/${encodeURIComponent(id)}/complete`, { method: 'PATCH' }),
 
   /** GET /health — used by login screen to verify server is reachable */
   health: () => apiFetch('/health'),

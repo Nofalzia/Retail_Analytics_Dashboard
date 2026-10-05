@@ -15,8 +15,9 @@ import { Router }       from 'express';
 import { requireAuth }  from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { requireRole }  from '../middleware/auth.js';
-import { query }          from '../db/pool.js';
+import { query, getClient } from '../db/pool.js';
 import { runAllDetection } from '../services/detectionEngine.js';
+import { generateRecommendations } from '../services/recommendationEngine.js';
 
 const router = Router();
 
@@ -137,7 +138,23 @@ router.post(
       console.log(`[alerts/run-detection] Starting — tenant=${tenantId} store=${storeId}`);
       const result = await runAllDetection(tenantId, storeId);
       console.log(`[alerts/run-detection] Done in ${result.durationMs}ms — ${result.alertsCreated.total} new alerts`);
-      return res.json({ success: true, runSummary: result });
+
+      // Phase 4: turn the fresh alerts into recommendations inside one transaction.
+      const client = await getClient();
+      let recommendationsCreated = 0;
+      try {
+        await client.query('BEGIN');
+        recommendationsCreated = await generateRecommendations(client, tenantId, storeId);
+        await client.query('COMMIT');
+      } catch (recErr) {
+        await client.query('ROLLBACK');
+        throw recErr;
+      } finally {
+        client.release();
+      }
+      console.log(`[alerts/run-detection] ${recommendationsCreated} recommendation(s) created`);
+
+      return res.json({ success: true, runSummary: result, recommendationsCreated });
 
     } catch (err) {
       console.error('[alerts/run-detection] Engine error:', err.message);

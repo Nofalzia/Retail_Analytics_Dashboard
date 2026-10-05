@@ -345,15 +345,23 @@ CREATE TABLE recommendations (
   tenant_id       UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   store_id        UUID          NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
   alert_id        UUID          NULL REFERENCES anomaly_alerts(id) ON DELETE SET NULL,
+  product_id      UUID          NULL REFERENCES products(id) ON DELETE SET NULL,
+  rec_type        VARCHAR(40)   NOT NULL DEFAULT 'reorder',  -- reorder|low_stock|sales_drop|demand_surge
   priority        INTEGER       NOT NULL DEFAULT 5    -- 1 = highest urgency, 10 = lowest
                   CHECK (priority BETWEEN 1 AND 10),
   title           VARCHAR(255)  NOT NULL,             -- "Reorder Basmati Rice by Friday"
   body            TEXT          NOT NULL,             -- full action description
+  suggested_quantity INTEGER    NULL,                 -- units to order (reorder / low_stock)
+  revenue_at_risk    NUMERIC(15, 2) NULL,             -- revenue exposed if the alert is ignored
   due_date        DATE          NULL,                 -- optional deadline
   completed_at    TIMESTAMPTZ   NULL,                 -- null = pending, set = done
   completed_by    UUID          NULL REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+  updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  -- One recommendation per source alert. The Phase 4 engine relies on this
+  -- dedup guard with
+  --   INSERT ... ON CONFLICT ON CONSTRAINT uq_recommendation_per_alert DO NOTHING
+  CONSTRAINT uq_recommendation_per_alert UNIQUE (alert_id)
 );
 
 CREATE TRIGGER trg_recommendations_updated_at
