@@ -237,10 +237,12 @@ const CurrencyFigure = ({ amount, size = 'md' }) => {
   );
 };
 
-const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
+const AlertCard = ({ alert, onAcknowledge, isAcknowledged, onDismiss, isPending = false, actionError = null }) => {
   const { ALERT_SURFACE, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
   const styles = ALERT_SURFACE[alert.severity.toLowerCase()] ?? ALERT_SURFACE.warning;
   const SeverityIcon = alert.severity === 'Critical' ? CriticalIcon : WarningIcon;
+  const showDismiss = typeof onDismiss === 'function';
+  const disabled = isPending || isAcknowledged;
 
   return (
     <div
@@ -280,23 +282,47 @@ const AlertCard = ({ alert, onAcknowledge, isAcknowledged }) => {
             </span>{' '}
             {alert.metricValue}
           </p>
-          <button
-            type="button"
-            onClick={() => onAcknowledge(alert.id)}
-            disabled={isAcknowledged}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all duration-150 ease-out disabled:cursor-default disabled:opacity-70"
-            style={{ backgroundColor: PANEL_SURFACE.backgroundColor, color: PALETTE.charcoalMuted }}
-            onMouseEnter={(e) => {
-              if (!isAcknowledged) e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
-            }}
-          >
-            <CheckIcon className="h-3.5 w-3.5" />
-            {isAcknowledged ? 'Acknowledged' : 'Acknowledge'}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {showDismiss && (
+              <button
+                type="button"
+                onClick={() => onDismiss(alert.id)}
+                disabled={disabled}
+                className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ color: PALETTE.charcoalMuted, backgroundColor: 'transparent' }}
+                onMouseEnter={(e) => {
+                  if (!disabled) e.currentTarget.style.backgroundColor = PALETTE.sand;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                Dismiss
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onAcknowledge(alert.id)}
+              disabled={disabled}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all duration-150 ease-out disabled:cursor-default disabled:opacity-70"
+              style={{ backgroundColor: PANEL_SURFACE.backgroundColor, color: PALETTE.charcoalMuted }}
+              onMouseEnter={(e) => {
+                if (!disabled) e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
+              }}
+            >
+              <CheckIcon className="h-3.5 w-3.5" />
+              {isAcknowledged ? 'Acknowledged' : 'Acknowledge'}
+            </button>
+          </div>
         </div>
+        {actionError && (
+          <p className="mt-2 text-xs" style={{ color: ALERT_SURFACE.warning.borderColor }}>
+            {actionError}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -386,18 +412,68 @@ const RunDetectionButton = ({ storeId, onComplete }) => {
 
 const AnomalyDetectionPanel = ({ alerts = INITIAL_ALERTS, storeId, onRefreshAlerts }) => {
   const { CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
-  const [acknowledgedIds, setAcknowledgedIds] = useState(() => new Set());
-  const [showAllAlerts, setShowAllAlerts] = useState(false);
-  const openCount = alerts.length - acknowledgedIds.size;
+  const isLive = storeId != null;
 
-  const visibleAlerts = showAllAlerts
-    ? alerts
-    : alerts.slice(0, ALERT_DISPLAY_CAP);
-  const hiddenCount = alerts.length - visibleAlerts.length;
+  // Mock mode keeps the original local-only acknowledgement (a Set of ids).
+  const [acknowledgedIds, setAcknowledgedIds] = useState(() => new Set());
+  // Live mode tracks resolved (acknowledged/dismissed) alerts optimistically.
+  const [resolvedIds, setResolvedIds] = useState(() => new Set());
+  const [pendingIds, setPendingIds] = useState(() => new Set());
+  const [actionErrors, setActionErrors] = useState(() => new Map());
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
+
+  const activeAlerts = isLive ? alerts.filter((a) => !resolvedIds.has(a.id)) : alerts;
+  const openCount = isLive ? activeAlerts.length : (alerts.length - acknowledgedIds.size);
+  const visibleAlerts = showAllAlerts ? activeAlerts : activeAlerts.slice(0, ALERT_DISPLAY_CAP);
+  const hiddenCount = activeAlerts.length - visibleAlerts.length;
+
+  const performAction = async (id, kind) => {
+    setPendingIds((prev) => new Set(prev).add(id));
+    setActionErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+
+    try {
+      if (kind === 'acknowledge') await api.acknowledgeAlert(id);
+      else await api.dismissAlert(id);
+      // Success: drop the card and decrement the open counter.
+      setResolvedIds((prev) => new Set(prev).add(id));
+    } catch (err) {
+      // Failure: keep the card and show a calm inline message.
+      setActionErrors((prev) => {
+        const next = new Map(prev);
+        next.set(
+          id,
+          err.status === 403
+            ? 'Only managers and owners can do this.'
+            : "Couldn't update this alert. Please try again.",
+        );
+        return next;
+      });
+    } finally {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleAcknowledge = (id) => {
+    if (!isLive) {
+      setAcknowledgedIds((prev) => new Set(prev).add(id));
+      return;
+    }
+    performAction(id, 'acknowledge');
+  };
+
+  const handleDismiss = (id) => performAction(id, 'dismiss');
 
   return (
     <div className="rounded-xl p-6 sm:p-8 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
-            <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
             Threshold Alerts
@@ -425,8 +501,11 @@ const AnomalyDetectionPanel = ({ alerts = INITIAL_ALERTS, storeId, onRefreshAler
               <AlertCard
                 key={alert.id}
                 alert={alert}
-                onAcknowledge={(id) => setAcknowledgedIds((prev) => new Set(prev).add(id))}
-                isAcknowledged={acknowledgedIds.has(alert.id)}
+                onAcknowledge={handleAcknowledge}
+                isAcknowledged={isLive ? false : acknowledgedIds.has(alert.id)}
+                onDismiss={isLive ? handleDismiss : undefined}
+                isPending={pendingIds.has(alert.id)}
+                actionError={actionErrors.get(alert.id) ?? null}
               />
             ))}
             {hiddenCount > 0 && (

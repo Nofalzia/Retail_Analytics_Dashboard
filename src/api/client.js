@@ -16,6 +16,14 @@ export const getToken  = ()      => localStorage.getItem(TOKEN_KEY);
 export const setToken  = (token) => localStorage.setItem(TOKEN_KEY, token);
 export const clearToken = ()     => localStorage.removeItem(TOKEN_KEY);
 
+// Emitted whenever an authenticated request comes back 401 — the auth provider
+// listens for this and returns the user to the login screen (session expiry).
+const notifyUnauthorized = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rad:unauthorized'));
+  }
+};
+
 // ── Base fetch wrapper ────────────────────────────────────────────────────────
 
 async function apiFetch(path, options = {}) {
@@ -35,6 +43,7 @@ async function apiFetch(path, options = {}) {
     const err  = new Error(body.message || 'API request failed');
     err.status = res.status;
     err.data   = body;
+    if (res.status === 401) notifyUnauthorized();
     throw err;
   }
 
@@ -109,6 +118,7 @@ export const api = {
         const err = new Error(body.message || 'Upload failed');
         err.status = xhr.status;
         err.data   = body;
+        if (xhr.status === 401) notifyUnauthorized();
         reject(err);
       };
       xhr.onerror = () => {

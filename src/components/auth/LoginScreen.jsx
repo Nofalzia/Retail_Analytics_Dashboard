@@ -94,14 +94,16 @@ function StoreMark() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, sessionExpired } = useAuth();
 
   const [form, setForm] = useState({
     email:      'owner@demo.com',
     password:   'Demo@1234',
     tenantSlug: 'demo-kiryana',
   });
-  const [error,   setError]   = useState(null);
+  const [error,   setError]   = useState(
+    sessionExpired ? 'Your session has expired. Please sign in again.' : null,
+  );
   const [loading, setLoading] = useState(false);
 
   const set = (field) => (value) => setForm((prev) => ({ ...prev, [field]: value }));
