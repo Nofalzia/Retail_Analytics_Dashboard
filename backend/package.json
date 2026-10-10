@@ -9,7 +9,9 @@
     "start": "node src/index.js",
     "db:migrate": "psql $DATABASE_URL -f db/schema.sql",
     "smoke:recs": "node scripts/smokeRecommendations.js",
-    "validate:detection": "node scripts/validation/runDetectionValidation.js"
+    "validate:detection": "node scripts/validation/runDetectionValidation.js",
+    "validate:detection:v2": "node scripts/validation/runDetectionValidationV2.js",
+    "test:zscore": "node scripts/validation/rollingZScore.selftest.js"
  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
