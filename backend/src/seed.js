@@ -1,17 +1,18 @@
 /**
  * src/seed.js
  * ──────────────────────────────────────────────────────────────────────────────
- * One-time seed script for the demo tenant.
- * Run from the backend/ directory: node src/seed.js
+ * Demo-tenant RESET + reseed script.
+ * Run from the backend/ directory: node src/seed.js   (or: npm run seed:reset)
  *
- * Seeds:
- *   - 1 demo user   (owner@demo.com / Demo@1234)
- *   - 4 categories
- *   - 12 products
- *   - 90 days of sale_transactions (~1080 rows)
- *   - 1 inventory snapshot (today's stock levels, some products near depletion)
+ * Inside one transaction it:
+ *   1. resets the demo tenant's transactional data — deletes ONLY this tenant's
+ *      recommendations, anomaly_alerts, sale_transactions, inventory_logs and
+ *      ingestion_jobs (all other tenants are untouched), then
+ *   2. seeds 2 demo users, 4 categories, 12 products, 90 days of
+ *      sale_transactions (~1080 rows) ending today, and today's inventory snapshot.
  *
- * Safe to re-run — uses ON CONFLICT DO UPDATE / DO NOTHING throughout.
+ * Idempotent: every run yields the same 1080 sale rows and no duplicates.
+ * Users, stores, categories and products are upserted, never deleted.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -62,6 +63,19 @@ async function seed() {
 
   try {
     await client.query('BEGIN');
+
+    // ── 0. Reset the demo tenant's transactional data ─────────────────────────
+    // Delete ONLY this tenant's rows so a re-run is a clean reset instead of
+    // piling up duplicates. Order matters: recommendations → anomaly_alerts →
+    // sale_transactions → inventory_logs → ingestion_jobs (sales and inventory
+    // both reference ingestion_jobs). Users, stores, categories and products are
+    // deliberately left intact — they are upserted in the steps below.
+    console.log('  Resetting demo tenant transactional data...');
+    await client.query('DELETE FROM recommendations   WHERE tenant_id = $1', [TENANT_ID]);
+    await client.query('DELETE FROM anomaly_alerts    WHERE tenant_id = $1', [TENANT_ID]);
+    await client.query('DELETE FROM sale_transactions WHERE tenant_id = $1', [TENANT_ID]);
+    await client.query('DELETE FROM inventory_logs    WHERE tenant_id = $1', [TENANT_ID]);
+    await client.query('DELETE FROM ingestion_jobs    WHERE tenant_id = $1', [TENANT_ID]);
 
     // ── 1. Demo user ──────────────────────────────────────────────────────────
     console.log('  Creating demo user...');

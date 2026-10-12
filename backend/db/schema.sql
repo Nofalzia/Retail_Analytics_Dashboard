@@ -216,6 +216,10 @@ CREATE TABLE ingestion_jobs (
   -- Column mapping: how the file's columns map to our standard schema
   -- e.g. {"date": "Sale Date", "sku": "Item Code", "quantity_sold": "Qty"}
   column_map      JSONB         NULL,
+  -- SHA-256 hex digest of the uploaded file. Used for file-level dedup: the same
+  -- file cannot be imported twice for one store (see uq_ingestion_file_per_store).
+  -- NULL for jobs not created from a file upload (e.g. the seed job).
+  file_hash       VARCHAR(64)   NULL,
   started_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   completed_at    TIMESTAMPTZ   NULL
 );
@@ -223,6 +227,13 @@ CREATE TABLE ingestion_jobs (
 CREATE INDEX idx_ingestion_jobs_tenant_id ON ingestion_jobs(tenant_id);
 CREATE INDEX idx_ingestion_jobs_status    ON ingestion_jobs(status);
 CREATE INDEX idx_ingestion_jobs_store_id  ON ingestion_jobs(tenant_id, store_id);
+
+-- File-level dedup: a given file (by SHA-256 hash) can be imported at most once
+-- per (tenant, store). Partial so seed jobs (file_hash NULL) and failed jobs are
+-- excluded — a file that failed to import can always be retried.
+CREATE UNIQUE INDEX uq_ingestion_file_per_store
+  ON ingestion_jobs (tenant_id, store_id, file_hash)
+  WHERE file_hash IS NOT NULL AND status <> 'failed';
 
 
 -- =============================================================================

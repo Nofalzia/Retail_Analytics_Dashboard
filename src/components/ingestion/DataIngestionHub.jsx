@@ -1017,6 +1017,16 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
           setActiveJobIds((ids) => [...ids, jobId]);
         })
         .catch((err) => {
+          // 409 DUPLICATE_FILE — the exact same file was already imported for this
+          // store. Shown as the calm ochre NoticeBanner (warning surface), not a
+          // red error, because nothing is broken — the data is simply already in.
+          if (err.status === 409 || err.code === 'DUPLICATE_FILE') {
+            setNotice({
+              tone: 'warning',
+              message: `${err.data?.message || 'This file was already imported.'} Upload a different file.`,
+            });
+            return;
+          }
           setNotice({
             tone: 'error',
             message: err.status === 413

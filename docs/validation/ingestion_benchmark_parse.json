@@ -1,0 +1,157 @@
+{
+  "generatedAt": "2026-10-12T14:29:20.193Z",
+  "seed": 20261012,
+  "sizes": [
+    100000,
+    250000,
+    500000,
+    1000000
+  ],
+  "repetitions": 3,
+  "results": [
+    {
+      "rowCount": 100000,
+      "mode": "naive",
+      "bytes": 5735630,
+      "repetitions": 3,
+      "secondsMedian": 0.115,
+      "peakRssMbMedian": 107.3,
+      "secondsSamples": [
+        0.136,
+        0.115,
+        0.113
+      ],
+      "peakRssMbSamples": [
+        107.2,
+        107.3,
+        107.3
+      ]
+    },
+    {
+      "rowCount": 100000,
+      "mode": "stream",
+      "bytes": 5735630,
+      "repetitions": 3,
+      "secondsMedian": 0.322,
+      "peakRssMbMedian": 50,
+      "secondsSamples": [
+        0.322,
+        0.33,
+        0.268
+      ],
+      "peakRssMbSamples": [
+        50.2,
+        50,
+        49.8
+      ]
+    },
+    {
+      "rowCount": 250000,
+      "mode": "naive",
+      "bytes": 14339528,
+      "repetitions": 3,
+      "secondsMedian": 0.346,
+      "peakRssMbMedian": 175.9,
+      "secondsSamples": [
+        0.384,
+        0.334,
+        0.346
+      ],
+      "peakRssMbSamples": [
+        175.6,
+        176,
+        175.9
+      ]
+    },
+    {
+      "rowCount": 250000,
+      "mode": "stream",
+      "bytes": 14339528,
+      "repetitions": 3,
+      "secondsMedian": 0.71,
+      "peakRssMbMedian": 54.4,
+      "secondsSamples": [
+        0.71,
+        0.57,
+        0.799
+      ],
+      "peakRssMbSamples": [
+        54,
+        54.8,
+        54.4
+      ]
+    },
+    {
+      "rowCount": 500000,
+      "mode": "naive",
+      "bytes": 28679530,
+      "repetitions": 3,
+      "secondsMedian": 0.764,
+      "peakRssMbMedian": 306.5,
+      "secondsSamples": [
+        0.764,
+        0.725,
+        0.779
+      ],
+      "peakRssMbSamples": [
+        306.3,
+        306.8,
+        306.5
+      ]
+    },
+    {
+      "rowCount": 500000,
+      "mode": "stream",
+      "bytes": 28679530,
+      "repetitions": 3,
+      "secondsMedian": 1.21,
+      "peakRssMbMedian": 54.6,
+      "secondsSamples": [
+        1.094,
+        1.21,
+        1.6
+      ],
+      "peakRssMbSamples": [
+        54.4,
+        54.6,
+        55.4
+      ]
+    },
+    {
+      "rowCount": 1000000,
+      "mode": "naive",
+      "bytes": 57358498,
+      "repetitions": 3,
+      "secondsMedian": 1.683,
+      "peakRssMbMedian": 483.7,
+      "secondsSamples": [
+        1.683,
+        1.58,
+        1.713
+      ],
+      "peakRssMbSamples": [
+        483.7,
+        482.3,
+        483.8
+      ]
+    },
+    {
+      "rowCount": 1000000,
+      "mode": "stream",
+      "bytes": 57358498,
+      "repetitions": 3,
+      "secondsMedian": 2.472,
+      "peakRssMbMedian": 61.6,
+      "secondsSamples": [
+        2.498,
+        2.396,
+        2.472
+      ],
+      "peakRssMbSamples": [
+        61.9,
+        61.6,
+        61
+      ]
+    }
+  ]
+}

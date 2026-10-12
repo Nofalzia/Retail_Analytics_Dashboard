@@ -42,6 +42,7 @@ async function apiFetch(path, options = {}) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
     const err  = new Error(body.message || 'API request failed');
     err.status = res.status;
+    err.code   = body.error;   // machine-readable code, e.g. 'DUPLICATE_FILE'
     err.data   = body;
     if (res.status === 401) notifyUnauthorized();
     throw err;
@@ -123,6 +124,7 @@ export const api = {
         if (xhr.status >= 200 && xhr.status < 300) return resolve(body);
         const err = new Error(body.message || 'Upload failed');
         err.status = xhr.status;
+        err.code   = body.error;   // machine-readable code, e.g. 'DUPLICATE_FILE'
         err.data   = body;
         if (xhr.status === 401) notifyUnauthorized();
         reject(err);

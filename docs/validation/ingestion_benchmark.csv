@@ -1,0 +1,12 @@
+section,rows,mode,seconds,peak_rss_mb,rows_per_second,health_median_ms,health_p95_ms,health_max_ms,rows_processed,rows_failed,status
+parse,100000,naive,0.115,107.3,,,,,,,
+parse,100000,stream,0.322,50.0,,,,,,,
+parse,250000,naive,0.346,175.9,,,,,,,
+parse,250000,stream,0.710,54.4,,,,,,,
+parse,500000,naive,0.764,306.5,,,,,,,
+parse,500000,stream,1.210,54.6,,,,,,,
+parse,1000000,naive,1.683,483.7,,,,,,,
+parse,1000000,stream,2.472,61.6,,,,,,,
+e2e,10000,,29.38,,340,158.7,176.1,841.3,10000,0,completed
+e2e,50000,,129.63,,386,157.1,165.2,419.2,50000,0,completed
+e2e,100000,,274.04,,365,151.7,161.2,812.8,100000,0,completed

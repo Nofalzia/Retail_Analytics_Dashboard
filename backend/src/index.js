@@ -56,9 +56,11 @@ app.use(cors({
 
 // Rate limiting — 200 requests per 15 minutes per IP.
 // Tighten this for production; loosen for development if needed.
+// RATE_LIMIT_MAX raises the cap for load benchmarks that poll job status and
+// probe /health far more often than a human would; unset ⇒ unchanged 200.
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: Number(process.env.RATE_LIMIT_MAX) || 200,
   standardHeaders: true,
   legacyHeaders: false,
 }));

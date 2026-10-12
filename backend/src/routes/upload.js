@@ -32,6 +32,7 @@ import multer             from 'multer';
 import fs                 from 'fs';
 import path               from 'path';
 import { createReadStream } from 'fs';
+import { createHash }       from 'node:crypto';
 import csvParser          from 'csv-parser';
 import XLSX               from 'xlsx';
 import { requireAuth }    from '../middleware/auth.js';
@@ -107,15 +108,54 @@ router.post(
     const fileExt  = path.extname(file.originalname).toLowerCase().replace('.', '');
     const fileType = fileExt === 'csv' ? 'csv' : 'xlsx';
 
+    // ── File-level dedup ──────────────────────────────────────────────────────
+    // sale_transactions has no natural unique key, so re-uploading the same file
+    // would duplicate every row. We hash the bytes on disk (streamed — never read
+    // fully into memory) and reject a file already imported for this store.
+    let fileHash;
+    try {
+      fileHash = await computeFileHash(file.path);
+    } catch (err) {
+      fs.unlinkSync(file.path);
+      return res.status(500).json({ error: 'HASH_FAILED', message: 'Could not read the uploaded file.' });
+    }
+
+    const priorJob = await findExistingJob(tenantId, storeId, fileHash);
+    if (priorJob) {
+      fs.unlinkSync(file.path);
+      return res.status(409).json({
+        error: 'DUPLICATE_FILE',
+        message: `This file was already imported on ${formatJobDate(priorJob)}.`,
+        existingJobId: priorJob.id,
+      });
+    }
+
     // ── Create ingestion job record ───────────────────────────────────────────
     // The job record is created immediately and returned to the client.
     // The client can then poll GET /api/upload/:jobId/status to track progress.
-    const { rows: [job] } = await query(
-      `INSERT INTO ingestion_jobs (tenant_id, store_id, uploaded_by, original_filename, file_type, status)
-       VALUES ($1, $2, $3, $4, $5, 'validating')
-       RETURNING id`,
-      [tenantId, storeId, req.user.id, file.originalname, fileType],
-    );
+    let job;
+    try {
+      const { rows: [created] } = await query(
+        `INSERT INTO ingestion_jobs (tenant_id, store_id, uploaded_by, original_filename, file_type, status, file_hash)
+         VALUES ($1, $2, $3, $4, $5, 'validating', $6)
+         RETURNING id`,
+        [tenantId, storeId, req.user.id, file.originalname, fileType, fileHash],
+      );
+      job = created;
+    } catch (err) {
+      // 23505 = unique_violation on uq_ingestion_file_per_store. A concurrent
+      // upload of the same file won the race — treat it exactly like the pre-check.
+      if (err.code === '23505') {
+        fs.unlinkSync(file.path);
+        const conflict = await findExistingJob(tenantId, storeId, fileHash);
+        return res.status(409).json({
+          error: 'DUPLICATE_FILE',
+          message: `This file was already imported on ${formatJobDate(conflict)}.`,
+          existingJobId: conflict ? conflict.id : null,
+        });
+      }
+      throw err;
+    }
 
     // Respond immediately so the client has the jobId to poll.
     res.status(202).json({ jobId: job.id, status: 'validating' });
@@ -227,12 +267,14 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
       }
 
       if (values.length > 0) {
+        // Plain INSERT — this pipeline performs FILE-level dedup (see the upload
+        // route), not row-level dedup. sale_transactions has no unique key, so
+        // ON CONFLICT DO NOTHING here would have been a silent no-op.
         await query(
           `INSERT INTO sale_transactions
              (tenant_id, store_id, product_id, ingestion_job_id,
               quantity_sold, unit_price_at_sale, cost_price_at_sale, sale_date)
-           VALUES ${values.join(', ')}
-           ON CONFLICT DO NOTHING`,
+           VALUES ${values.join(', ')}`,
           params,
         );
         rowsProcessed += rows.length;
@@ -363,6 +405,49 @@ function streamRows(filePath, fileType, onRow) {
       processNext(0).catch(reject);
     }
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeFileHash(filePath)
+// Streams a file from disk and returns its SHA-256 hex digest. Streaming keeps
+// peak memory flat regardless of file size (same principle as the parser).
+// ─────────────────────────────────────────────────────────────────────────────
+function computeFileHash(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash   = createHash('sha256');
+    const stream = createReadStream(filePath);
+    stream.on('data',  (chunk) => hash.update(chunk));
+    stream.on('end',   () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// findExistingJob(tenantId, storeId, fileHash)
+// Returns the newest non-failed ingestion job for a (tenant, store, hash) tuple,
+// or null. Matches the uq_ingestion_file_per_store partial index predicate.
+// ─────────────────────────────────────────────────────────────────────────────
+async function findExistingJob(tenantId, storeId, fileHash) {
+  const { rows } = await query(
+    `SELECT id, completed_at, started_at
+       FROM ingestion_jobs
+      WHERE tenant_id = $1 AND store_id = $2 AND file_hash = $3 AND status <> 'failed'
+      ORDER BY started_at DESC
+      LIMIT 1`,
+    [tenantId, storeId, fileHash],
+  );
+  return rows[0] || null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatJobDate(job)
+// YYYY-MM-DD of a job's completion (or start) date, for the DUPLICATE_FILE
+// message. Falls back to today if the timestamp is somehow missing.
+// ─────────────────────────────────────────────────────────────────────────────
+function formatJobDate(job) {
+  const when = job && (job.completed_at || job.started_at);
+  const d    = when ? new Date(when) : new Date();
+  return d.toISOString().slice(0, 10);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

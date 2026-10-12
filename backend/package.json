@@ -7,11 +7,14 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "seed:reset": "node src/seed.js",
     "db:migrate": "psql $DATABASE_URL -f db/schema.sql",
     "smoke:recs": "node scripts/smokeRecommendations.js",
     "validate:detection": "node scripts/validation/runDetectionValidation.js",
     "validate:detection:v2": "node scripts/validation/runDetectionValidationV2.js",
-    "test:zscore": "node scripts/validation/rollingZScore.selftest.js"
+    "test:zscore": "node scripts/validation/rollingZScore.selftest.js",
+    "bench:parse": "node scripts/benchmark/runParseBenchmark.js",
+    "bench:ingest": "node scripts/benchmark/runIngestionBenchmark.js"
  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
