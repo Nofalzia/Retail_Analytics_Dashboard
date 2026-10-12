@@ -54,16 +54,44 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
 }));
 
-// Rate limiting — 200 requests per 15 minutes per IP.
-// Tighten this for production; loosen for development if needed.
-// RATE_LIMIT_MAX raises the cap for load benchmarks that poll job status and
-// probe /health far more often than a human would; unset ⇒ unchanged 200.
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX) || 200,
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+// Two limiters, deliberately different, both in the same express-rate-limit
+// style used before:
+//
+//   * general — a generous ceiling on /api so ordinary use (including a client
+//     polling a long-running import) never trips it. RATE_LIMIT_MAX overrides.
+//   * login   — a strict ceiling on POST /api/auth/login only, to blunt
+//     credential stuffing. 20/15min is plenty for a human, far too little for
+//     an attacker.
+//
+// GET /api/upload/:jobId/status is exempt from the general limiter: a client
+// polling a 10-minute, 1M-row import every second would otherwise exhaust the
+// budget and get 429s on a request that costs one indexed SELECT.
+// /health is registered outside both limiters so monitoring always works.
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+
+const generalLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  max: Number(process.env.RATE_LIMIT_MAX) || 3000,
   standardHeaders: true,
   legacyHeaders: false,
-}));
+  skip: (req) => req.method === 'GET'
+    && /^(\/api)?\/upload\/[^/]+\/status\/?$/.test(req.path),
+});
+
+const loginLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'RATE_LIMITED',
+    message: 'Too many login attempts. Please wait a few minutes.',
+  },
+});
+
+app.use('/api', generalLimiter);
+app.use('/api/auth/login', loginLimiter);
 
 app.use(express.json({ limit: '1mb' }));
 

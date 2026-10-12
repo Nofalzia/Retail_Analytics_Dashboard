@@ -39,8 +39,18 @@ const TEMPLATE_FILENAME = 'retail-import-template.csv';
 const MAX_FILE_SIZE_MB = parseInt(import.meta.env.VITE_MAX_FILE_SIZE_MB, 10) || 25;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ['.csv', '.xlsx'];
-const POLL_INTERVAL_MS = 1000;
-const MAX_POLL_DURATION_MS = 120_000;
+// Progress polling cadence: brisk at first (imports of a few thousand rows
+// finish in seconds), then gentler so a long import does not hammer the API.
+const POLL_FAST_INTERVAL_MS = 1000;
+const POLL_SLOW_INTERVAL_MS = 2000;
+const POLL_FAST_TICKS = 30;
+// A job is only "stuck" when neither its status nor its processed-row count has
+// moved for this long. A fixed total cap is wrong: a large import can
+// legitimately run for minutes, so we watch for lack of *progress* instead.
+const STALL_TIMEOUT_MS = 90_000;
+const ABSOLUTE_MAX_POLL_MS = 30 * 60 * 1000;
+// A 429 on a status poll is a speed bump, not a failure: back off and retry.
+const RATE_LIMIT_BACKOFF_MS = 5000;
 
 const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 
@@ -939,30 +949,61 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
   useEffect(() => {
     if (activeKey === '') return undefined;
     const jobIds = activeKey.split(',');
-    const started = Date.now();
+    const startedAt = Date.now();
+    // jobId → { signature, changedAt }: the stall detector's memory. A job only
+    // counts as stuck when its (status, rows_processed) pair stops moving.
+    const progressTrack = new Map();
+    let cancelled = false;
+    let timer     = null;
+    let ticks     = 0;
+
+    const scheduleNext = (delayMs) => {
+      if (!cancelled) timer = setTimeout(tick, delayMs);
+    };
+
+    // The friendly timeout, kept in one place so the stall path and the
+    // absolute-cap path cannot drift apart. Every job still in flight is marked
+    // failed, exactly as the old fixed cap did.
+    const giveUp = (message) => {
+      jobIds.forEach((jobId) => {
+        setUploads((prev) => prev.map((u) =>
+          u.jobId === jobId && u.status !== 'completed' && u.status !== 'failed'
+            ? { ...u, status: 'failed', errorLog: [{ type: 'TIMEOUT', message }] }
+            : u));
+      });
+      setActiveJobIds([]);
+    };
 
     const tick = async () => {
-      if (busyRef.current) return;
+      if (cancelled) return;
+      // An overlapping tick yields to the one already in flight rather than
+      // piling up requests — but it must still reschedule the next one.
+      if (busyRef.current) return scheduleNext(POLL_FAST_INTERVAL_MS);
       busyRef.current = true;
+      let delayMs = POLL_FAST_INTERVAL_MS;
       try {
-        // Sane cap: stop polling after MAX_POLL_DURATION_MS and surface a
-        // friendlier timeout on every job still in flight.
-        if (Date.now() - started > MAX_POLL_DURATION_MS) {
-          jobIds.forEach((jobId) => {
-            setUploads((prev) => prev.map((u) =>
-              u.jobId === jobId && u.status !== 'completed' && u.status !== 'failed'
-                ? { ...u, status: 'failed', errorLog: [{ type: 'TIMEOUT', message: 'Still processing after 2 minutes — check the server logs.' }] }
-                : u));
-          });
-          setActiveJobIds([]);
-          return;
+        ticks += 1;
+        // Absolute cap: the last resort, well beyond any honest import.
+        if (Date.now() - startedAt > ABSOLUTE_MAX_POLL_MS) {
+          giveUp('Still processing after 30 minutes — check the server logs.');
+          return; // stopped for good — no reschedule
         }
 
         const settled = await Promise.allSettled(
           jobIds.map(async (jobId) => ({ jobId, job: await api.getUploadStatus(jobId) })),
         );
-        settled.forEach(({ status, value }) => {
-          if (status === 'rejected' || !value) return; // transient — retried next tick
+
+        let rateLimited = false;
+        let stalled     = false;
+        const now       = Date.now();
+
+        settled.forEach(({ status, value, reason }) => {
+          if (status === 'rejected') {
+            // 429 means we asked too often: wait, then carry on. It is never a
+            // reason to fail the job. Anything else is transient — retried next tick.
+            if (reason && reason.status === 429) rateLimited = true;
+            return;
+          }
 
           const { jobId, job } = value;
           setUploads((prev) => prev.map((u) => u.jobId === jobId
@@ -978,6 +1019,7 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
             : u));
 
           if (job.status === 'completed' || job.status === 'failed') {
+            progressTrack.delete(jobId);
             setActiveJobIds((ids) => ids.filter((id) => id !== jobId));
             setLastResultJobId(jobId);
             if (job.status === 'completed') {
@@ -986,16 +1028,37 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
                 message: `Import complete — ${job.rows_processed} rows imported${job.rows_failed ? `, ${job.rows_failed} failed validation` : ''}.`,
               });
             }
+            return;
+          }
+
+          // Still in flight — feed the stall detector.
+          const signature = `${job.status}:${job.rows_processed || 0}`;
+          const previous  = progressTrack.get(jobId);
+          if (!previous || previous.signature !== signature) {
+            progressTrack.set(jobId, { signature, changedAt: now });
+          } else if (now - previous.changedAt > STALL_TIMEOUT_MS) {
+            stalled = true;
           }
         });
+
+        if (stalled) {
+          giveUp(`Still processing — no progress for ${STALL_TIMEOUT_MS / 1000} seconds. Check the server logs.`);
+          return;
+        }
+
+        if (rateLimited)                  delayMs = RATE_LIMIT_BACKOFF_MS;
+        else if (ticks > POLL_FAST_TICKS) delayMs = POLL_SLOW_INTERVAL_MS;
       } finally {
         busyRef.current = false;
       }
+      scheduleNext(delayMs);
     };
 
     tick();
-    const interval = setInterval(tick, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [activeKey]);
           const handleFilesAccepted = (files) => {
     files.forEach((file) => {

@@ -13,13 +13,19 @@
  *
  * 1. Memory safety: a 10MB CSV with 50k rows would create a 50k-element
  *    JavaScript array in the sync approach. With streams, the parser emits
- *    rows one at a time; we buffer them in a small chunk (CHUNK_SIZE = 250)
- *    and flush to the database via a single multi-row INSERT before moving on.
+ *    rows one at a time; we buffer them in a chunk (CHUNK_ROWS = 1000) and
+ *    flush to the database via a single multi-row INSERT before moving on.
  *    Peak memory stays flat regardless of file size.
  *
  * 2. Event loop safety: synchronous file.toString().split('\n') blocks the
  *    event loop for the entire parse duration. The stream-based approach
  *    yields control back to the event loop between chunks.
+ *
+ * 3. Round-trip economy (T8c): once parsing stopped being the bottleneck, the
+ *    remote database's latency was — the old pipeline issued 4 statements per
+ *    250-row chunk. Product ids are now cached per job (a SKU is written once),
+ *    chunks hold 1000 rows, and rows_processed is refreshed every 5 chunks
+ *    rather than every chunk: ~1.2 statements per 1000 rows in steady state.
  *
  * For XLSX files, we use XLSX.stream.to_csv() (SheetJS streaming API) to
  * convert the sheet to a CSV stream in-process, then pipe it through the same
@@ -68,7 +74,36 @@ const upload = multer({
 });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CHUNK_SIZE = 250; // rows per database INSERT batch
+// T8c: this pipeline is round-trip bound, not CPU bound — every statement pays
+// the remote database's latency (~150 ms measured), so the cheapest win is to
+// need fewer statements. Three levers: larger chunks, product ids cached per
+// job, and a progress counter that is no longer written on every single chunk.
+const CHUNK_ROWS = 1000;            // rows per database INSERT batch
+const PROGRESS_EVERY_N_CHUNKS = 5;  // how often ingestion_jobs.rows_processed is refreshed
+
+const SALE_INSERT_PARAMS_PER_ROW    = 8; // sale_transactions binds 8 columns per row
+const PRODUCT_INSERT_PARAMS_PER_ROW = 3; // products binds 3 columns per row (+ tenant_id)
+const PG_MAX_PARAMS                 = 65535; // PostgreSQL wire-protocol parameter limit
+
+// Guard rail: a chunk must never exceed the Postgres parameter limit, or the
+// insert dies at runtime with "bind message supplies N parameters". These are
+// cheap arithmetic checks — fail loudly at boot rather than mid-import.
+if (CHUNK_ROWS * SALE_INSERT_PARAMS_PER_ROW >= PG_MAX_PARAMS) {
+  throw new Error(
+    `CHUNK_ROWS (${CHUNK_ROWS}) x ${SALE_INSERT_PARAMS_PER_ROW} sale columns exceeds ` +
+    `the Postgres parameter limit (${PG_MAX_PARAMS}).`,
+  );
+}
+if (CHUNK_ROWS * PRODUCT_INSERT_PARAMS_PER_ROW + 1 >= PG_MAX_PARAMS) {
+  throw new Error(
+    `CHUNK_ROWS (${CHUNK_ROWS}) x ${PRODUCT_INSERT_PARAMS_PER_ROW} product columns exceeds ` +
+    `the Postgres parameter limit (${PG_MAX_PARAMS}).`,
+  );
+}
+
+// INGEST_DEBUG=1 logs one line per chunk with the number of database queries it
+// cost — the metric T8c exists to move. Off by default; costs one comparison.
+const INGEST_DEBUG = process.env.INGEST_DEBUG === '1';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/upload
@@ -236,13 +271,31 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     let rowsProcessed     = 0;
     let chunk             = [];
 
+    // Product ids resolved during THIS job, keyed by SKU. A SKU is written once
+    // and then served from memory, so steady-state chunks pay no product
+    // round-trips at all (previously: two per chunk, every chunk, forever).
+    const productIdBySku    = new Map();
+    let chunkIndex          = 0;
+    let queryCount          = 0; // database queries charged to the chunk being flushed
+    let chunksSinceProgress = 0;
+
     const flushChunk = async (rows) => {
       if (rows.length === 0) return;
+      chunkIndex += 1;
+      queryCount = 0;
 
-      // Resolve or create product records for the SKUs in this chunk.
-      // We do this in one query per chunk to avoid N+1 database calls.
-      const skus   = [...new Set(rows.map((r) => r.sku))];
-      const prods  = await upsertProducts(tenantId, rows, skus);
+      // Only SKUs we have never resolved in this job need a database trip.
+      // upsertProducts() still batches them into a single statement.
+      const newSkus = [...new Set(rows.map((r) => r.sku))]
+        .filter((sku) => !productIdBySku.has(sku));
+
+      if (newSkus.length > 0) {
+        const resolved = await upsertProducts(tenantId, rows, newSkus);
+        queryCount += 2; // products: INSERT ... ON CONFLICT + SELECT ids
+        // A SKU missing from `resolved` stays uncached, so the next chunk
+        // retries it — and its rows are skipped, exactly as before.
+        for (const [sku, id] of Object.entries(resolved)) productIdBySku.set(sku, id);
+      }
 
       // Build multi-row INSERT for sale_transactions
       const values  = [];
@@ -250,8 +303,8 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
       let   pIdx    = 1;
 
       for (const row of rows) {
-        const productId = prods[row.sku];
-        if (!productId) continue; // skip rows where product upsert failed
+        const productId = productIdBySku.get(row.sku);
+        if (!productId) continue; // skip rows whose product could not be resolved
 
         values.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`);
         params.push(
@@ -278,11 +331,27 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
           params,
         );
         rowsProcessed += rows.length;
+        queryCount += 1; // sale_transactions multi-row INSERT
 
-        // Update progress counter in the DB so the polling endpoint stays fresh
-        await query(
-          'UPDATE ingestion_jobs SET rows_processed = $1 WHERE id = $2',
-          [rowsProcessed, jobId],
+        // Refresh the progress counter that status polling reads — but not on
+        // every chunk. At ~150 ms per round-trip this write used to cost about as
+        // much as the insert it was reporting on. The run's final UPDATE (step 3)
+        // guarantees the last value always lands, whatever this interval is.
+        chunksSinceProgress += 1;
+        if (chunksSinceProgress >= PROGRESS_EVERY_N_CHUNKS) {
+          await query(
+            'UPDATE ingestion_jobs SET rows_processed = $1 WHERE id = $2',
+            [rowsProcessed, jobId],
+          );
+          queryCount += 1; // ingestion_jobs progress UPDATE
+          chunksSinceProgress = 0;
+        }
+      }
+
+      if (INGEST_DEBUG) {
+        console.log(
+          `[ingest] chunk ${chunkIndex}: ${rows.length} rows, ${newSkus.length} new skus, ` +
+          `${queryCount} queries, rowsProcessed=${rowsProcessed}`,
         );
       }
     };
@@ -298,7 +367,7 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
 
       chunk.push(data);
 
-      if (chunk.length >= CHUNK_SIZE) {
+      if (chunk.length >= CHUNK_ROWS) {
         await flushChunk(chunk);
         chunk = [];
       }
