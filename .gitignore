@@ -22,4 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env 
+
+# Local env files — the templates (.env.example, backend/.env.example) stay committed
+.env
+.env.local
+
+# Runtime upload scratch space, created on boot by backend/src/routes/upload.js.
+# Not needed in git: the server mkdir -p's it.
+backend/uploads/
+
+# Generated benchmark CSVs. A bench run writes them into the OS temp dir; this
+# pattern keeps a run from a repo checkout from dirtying the tree. The published
+# reports under docs/validation/ are committed on purpose.
+bench_*.csv
+
+# Local agent / editor tooling — not part of the application
+.claude/
+.github/hooks/

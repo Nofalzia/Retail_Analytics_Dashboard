@@ -10,8 +10,8 @@
  *            on commas and build an array of row objects. This is what a careless
  *            implementation does: it is blocking and memory grows with the file.
  *   stream — the SAME csv-parser the real pipeline uses (src/routes/upload.js),
- *            buffering rows in 250-row chunks and discarding each chunk. No
- *            database here — we only count rows.
+ *            buffering rows in CHUNK_SIZE-row chunks and discarding each chunk.
+ *            No database here — we only count rows.
  *
  * Both modes only parse and count. RSS is sampled every 50 ms (and inline during
  * the blocking naive loop, which would otherwise starve the timer).
@@ -24,7 +24,11 @@
 import { readFileSync, createReadStream } from 'node:fs';
 import csvParser from 'csv-parser';
 
-const CHUNK_SIZE = 250;          // matches CHUNK_SIZE in src/routes/upload.js
+// Deliberately 250 here — NOT the ingest route's batch size. This worker measures
+// PARSING only, and every published parse number was produced at 250 rows/chunk.
+// upload.js now flushes 1000-row batches (CHUNK_ROWS); the two constants are
+// independent on purpose, so do not "sync" them.
+const CHUNK_SIZE = 250;
 const SAMPLE_INTERVAL_MS = 50;   // RSS sampling cadence
 const NAIVE_SAMPLE_EVERY = 100_000; // inline samples for the blocking naive loop
 
@@ -79,7 +83,7 @@ function parseNaive(filePath, sample) {
 }
 
 /**
- * Stream parse: the real pipeline's csv-parser, 250-row chunks, rows discarded.
+ * Stream parse: the real pipeline's csv-parser, CHUNK_SIZE-row chunks, rows discarded.
  * @param {string} filePath CSV path.
  * @returns {Promise<number>} Number of data rows parsed.
  */

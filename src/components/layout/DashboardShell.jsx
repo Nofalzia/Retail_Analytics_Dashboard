@@ -92,7 +92,10 @@ export const NAV_ITEMS = [
   { id: 'data-ingestion', label: 'Data Ingestion', Icon: (p) => <IngestionIcon {...p} /> },
 ];
 
-export const ROLES = ['Owner', 'Manager', 'System Administrator'];
+// Roles offered by the header preview switcher. 'System Administrator' is
+// deliberately absent: it is a backend/platform role that never sees storefront
+// financial data, so it is not something a user previews (T9).
+export const ROLES = ['Owner', 'Manager'];
 
 // ----------------------------------------------------------------------------
 // Icon primitives (hand-rolled, consistent 1.5px stroke — no icon packages)
@@ -567,14 +570,21 @@ const DataModeSwitcher = ({ dataMode, onSelect }) => {
 // Top header
 // ----------------------------------------------------------------------------
 
-const getGreeting = () => {
+/**
+ * Greets the active role, using the local clock for the time of day.
+ * The role comes from AuthContext (via initialRole) — no display name is
+ * invented from the sign-in email (T9).
+ * @param {string} activeRole Role currently previewed ('Owner' | 'Manager').
+ * @returns {string} e.g. "Good morning, Owner."
+ */
+const getGreeting = (activeRole) => {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  const timeOfDay =
+    hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  return `${timeOfDay}, ${activeRole}.`;
 };
 
-const TopHeader = ({ userName, activeRole, onRoleSelect, dataMode, onDataModeSelect }) => {
+const TopHeader = ({ activeRole, onRoleSelect, dataMode, onDataModeSelect }) => {
   const { isDark, theme, toggleTheme } = useTheme();
 
   return (
@@ -593,7 +603,7 @@ const TopHeader = ({ userName, activeRole, onRoleSelect, dataMode, onDataModeSel
           className="truncate text-base font-semibold sm:text-lg"
           style={{ color: theme.charcoal }}
         >
-          {getGreeting()}, {userName}.
+          {getGreeting(activeRole)}
         </h1>
         <p className="mt-0.5 text-xs" style={{ color: theme.charcoalMuted }}>
           Viewing as <span style={{ color: theme.bottleGreen, fontWeight: 600 }}>{activeRole}</span>
@@ -637,7 +647,6 @@ const TopHeader = ({ userName, activeRole, onRoleSelect, dataMode, onDataModeSel
 
 const DashboardShell = ({
   children,
-  userName = 'there',
   initialView = 'overview',
   initialRole = 'Owner',
   initialDataMode = 'live',
@@ -674,7 +683,6 @@ const DashboardShell = ({
       {/* Main column — offset for the docked sidebar on lg+ */}
       <div className="lg:ml-64">
         <TopHeader
-          userName={userName}
           activeRole={activeRole}
           onRoleSelect={handleRoleChange}
           dataMode={dataMode}

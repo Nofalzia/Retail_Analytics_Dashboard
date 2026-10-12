@@ -1023,10 +1023,22 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
             setActiveJobIds((ids) => ids.filter((id) => id !== jobId));
             setLastResultJobId(jobId);
             if (job.status === 'completed') {
-              setSuccessBanner({
-                id: Date.now(),
-                message: `Import complete — ${job.rows_processed} rows imported${job.rows_failed ? `, ${job.rows_failed} failed validation` : ''}.`,
-              });
+              // T9 edge case: a job can legitimately finish having imported
+              // NOTHING (a header-only file, or every row rejected). That is not
+              // a success — it goes out on the calm ochre warning surface.
+              if ((job.rows_processed || 0) === 0) {
+                setNotice({
+                  tone: 'warning',
+                  message: job.rows_failed
+                    ? `Nothing imported — 0 rows accepted and ${job.rows_failed} row(s) failed validation. Check the file against the template.`
+                    : 'Nothing imported — the file parsed but contained 0 data rows. Check that it has a header row plus at least one data row.',
+                });
+              } else {
+                setSuccessBanner({
+                  id: Date.now(),
+                  message: `Import complete — ${job.rows_processed} rows imported${job.rows_failed ? `, ${job.rows_failed} failed validation` : ''}.`,
+                });
+              }
             }
             return;
           }

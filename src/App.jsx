@@ -19,26 +19,18 @@ const ROLE_LABELS = {
 
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
-  const userName = (user?.email || '').split('@')[0] || 'there';
 
   // Gate the entire dashboard behind authentication.
   // LoginScreen handles its own styling — no DashboardShell wrapper needed.
   if (!isAuthenticated) return <LoginScreen />;
 
   return (
-    <DashboardShell initialRole={ROLE_LABELS[user?.role] ?? 'Owner'} userName={userName}>
+    <DashboardShell initialRole={ROLE_LABELS[user?.role] ?? 'Owner'}>
       {(activeView, activeRole, dataMode) => {
         const hasData = dataMode !== 'empty';
-        // System Administrator is scoped to data ingestion only — no financial
-        // data. Stockout Watch and Recommendations are operational views
-        // accessible to all roles.
-        if (
-          activeRole === 'System Administrator' &&
-          activeView !== 'stockout-prediction' &&
-          activeView !== 'recommendations'
-        ) {
-          return <DataIngestionHub dataMode={dataMode} />;
-        }
+        // T9: the preview switcher only offers Owner and Manager, so there is no
+        // System Administrator route left. Stockout Watch and Recommendations
+        // remain operational views open to every role.
 
         switch (activeView) {
           case 'overview':
