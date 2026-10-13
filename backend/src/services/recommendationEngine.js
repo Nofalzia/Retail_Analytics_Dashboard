@@ -69,10 +69,23 @@ function priorityFor(severity, bonus) {
 
 /**
  * Build the full recommendation row (or null to skip) for a single alert.
+ * Returns null when the alert cannot be acted on: an inventory-driven alert whose
+ * product has no snapshot (unknown stock), or an unusable z-score.
  * Pure function — no DB access — so the rules stay easy to read and test.
  */
 function buildRecommendation(alert) {
   const name = alert.product_name;
+
+  // The two inventory-driven alert types need a real snapshot: without one the
+  // on-hand figure would be a fabricated 0, and the suggested order quantity
+  // would be made up. Returns null (skip) instead of guessing. Z-score alerts
+  // carry their own numbers and are unaffected — and `=== false` keeps this
+  // backwards compatible for callers that do not supply the flag.
+  if (alert.has_inventory_snapshot === false
+      && (alert.alert_type === 'stockout_risk' || alert.alert_type === 'low_stock')) {
+    return null;
+  }
+
   const onHand = Number(alert.on_hand) || 0;
   const velocity = Number(alert.velocity) || 0;
   const unitPrice = Number(alert.standard_unit_price) || 0;
@@ -181,6 +194,8 @@ export async function generateRecommendations(client, tenantId, storeId) {
        p.name                       AS product_name,
        p.standard_unit_price,
        p.reorder_threshold,
+       -- No snapshot row means the stock level is unknown, not zero.
+       (li.product_id IS NOT NULL)      AS has_inventory_snapshot,
        COALESCE(li.quantity_on_hand, 0) AS on_hand,
        COALESCE(vel.velocity, 0)        AS velocity
      FROM anomaly_alerts aa

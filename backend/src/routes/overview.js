@@ -48,6 +48,11 @@ router.get('/', requireAuth, resolveTenant, async (req, res) => {
          COALESCE(SUM(st.total_revenue) - SUM(st.total_cost), 0)        AS gross_profit,
          COALESCE(COUNT(DISTINCT st.id), 0)                              AS total_transactions,
          COALESCE(SUM(st.quantity_sold), 0)                              AS total_units_sold,
+         -- Additive camelCase alias of the same window/store as the totals above:
+         -- the dashboard's units-sold KPI reads the unitsSold field. This route
+         -- has no previous-period/growth comparison to mirror (the client derives
+         -- growth from dailyTrend), so there is no previous-period units field.
+         COALESCE(SUM(st.quantity_sold), 0)                              AS "unitsSold",
          CASE WHEN SUM(st.total_revenue) > 0
               THEN ROUND(
                 ((SUM(st.total_revenue) - SUM(st.total_cost)) / SUM(st.total_revenue)) * 100, 2

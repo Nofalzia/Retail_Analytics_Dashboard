@@ -62,6 +62,7 @@ CREATE TABLE tenants (
   slug          VARCHAR(100)  NOT NULL UNIQUE,            -- "al-rehman-mart" (URL-safe)
   currency_code CHAR(3)       NOT NULL DEFAULT 'PKR',     -- ISO 4217
   locale        VARCHAR(20)   NOT NULL DEFAULT 'en-PK',   -- for number formatting
+  brand_accent  VARCHAR(9)    NULL,                       -- optional hex colour, e.g. '#8A5A2B'
   is_active     BOOLEAN       NOT NULL DEFAULT TRUE,
   created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()

@@ -174,7 +174,7 @@ export async function runZScoreDetection(tenantId, storeId) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function runStockoutRiskDetection(tenantId, storeId) {
   const client = await getClient();
-  const summary = { created: 0, skipped_no_velocity: 0, products_scanned: 0 };
+  const summary = { created: 0, skipped_no_velocity: 0, skipped_no_snapshot: 0, products_scanned: 0 };
 
   try {
     await client.query('BEGIN');
@@ -195,6 +195,9 @@ export async function runStockoutRiskDetection(tenantId, storeId) {
          p.name                                              AS product_name,
          p.sku,
          p.reorder_threshold,
+         -- No snapshot row means the stock level is unknown, not zero; the loop
+         -- below skips those products so absent data never raises an alert.
+         (li.product_id IS NOT NULL)                         AS has_inventory_snapshot,
          COALESCE(li.quantity_on_hand, 0)                    AS quantity_on_hand,
          COALESCE(v.avg_daily_units, 0)                      AS avg_daily_velocity,
          CASE
@@ -216,6 +219,13 @@ export async function runStockoutRiskDetection(tenantId, storeId) {
       const avgVelocity    = Number(row.avg_daily_velocity);
       const quantityOnHand = Number(row.quantity_on_hand);
 
+      // Skipped BEFORE the velocity check so the counters stay honest: a product
+      // that has never been counted cannot be running out of stock. Products that
+      // do have a snapshot behave exactly as before.
+      if (!row.has_inventory_snapshot) {
+        summary.skipped_no_snapshot++;
+        continue;
+      }
       if (avgVelocity === 0 || daysRemaining === null) {
         summary.skipped_no_velocity++;
         continue;
@@ -261,7 +271,7 @@ export async function runStockoutRiskDetection(tenantId, storeId) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function runLowStockDetection(tenantId, storeId) {
   const client = await getClient();
-  const summary = { created: 0, skipped_no_threshold: 0, products_scanned: 0 };
+  const summary = { created: 0, skipped_no_threshold: 0, skipped_no_snapshot: 0, products_scanned: 0 };
 
   try {
     await client.query('BEGIN');
@@ -272,6 +282,9 @@ export async function runLowStockDetection(tenantId, storeId) {
          p.name                           AS product_name,
          p.sku,
          p.reorder_threshold,
+         -- Unknown stock (no snapshot) is not "zero stock"; the loop below skips
+         -- those products instead of alerting on data that does not exist.
+         (li.product_id IS NOT NULL)      AS has_inventory_snapshot,
          COALESCE(li.quantity_on_hand, 0) AS quantity_on_hand
        FROM products p
        LEFT JOIN latest_inventory_per_product li
@@ -287,6 +300,12 @@ export async function runLowStockDetection(tenantId, storeId) {
     for (const row of rows) {
       const quantityOnHand = Number(row.quantity_on_hand);
       const threshold      = Number(row.reorder_threshold);
+
+      // A product that has never been counted cannot be below its reorder point.
+      if (!row.has_inventory_snapshot) {
+        summary.skipped_no_snapshot++;
+        continue;
+      }
       if (quantityOnHand >= threshold) continue;
 
       const ratioRemaining = threshold > 0 ? quantityOnHand / threshold : 0;
@@ -346,6 +365,9 @@ export async function runAllDetection(tenantId, storeId) {
     skipped: {
       insufficientData: zScoreSummary.skipped_insufficient_data,
       noVelocityData:   stockoutSummary.skipped_no_velocity,
+      // Additive: products with no inventory snapshot have unknown stock levels
+      // and are never alerted on, so they are counted here instead.
+      noInventorySnapshot: stockoutSummary.skipped_no_snapshot + lowStockSummary.skipped_no_snapshot,
     },
     productsScanned: {
       zScore:   zScoreSummary.products_scanned,

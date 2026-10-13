@@ -128,7 +128,8 @@ app.post('/api/auth/login', async (req, res) => {
 
   try {
     const { rows } = await query(
-      `SELECT u.id, u.password_hash, u.role, u.store_id, u.tenant_id
+      `SELECT u.id, u.password_hash, u.role, u.store_id, u.tenant_id,
+              t.name AS tenant_name, t.slug AS tenant_slug, t.brand_accent
        FROM users u
        JOIN tenants t ON t.id = u.tenant_id
        WHERE u.email = $1 AND t.slug = $2 AND u.is_active = TRUE AND t.is_active = TRUE`,
@@ -159,7 +160,16 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
     );
 
-    return res.json({ token, role: user.role, tenantId: user.tenant_id });
+    // Branding for the signed-in store's own UI (additive: the existing token,
+    // role and tenantId fields are unchanged, and the JWT payload is untouched).
+    // brandAccent is null when no brand colour has been configured for the tenant.
+    const tenant = {
+      name:        user.tenant_name,
+      slug:        user.tenant_slug,
+      brandAccent: user.brand_accent ?? null,
+    };
+
+    return res.json({ token, role: user.role, tenantId: user.tenant_id, tenant });
   } catch (err) {
     console.error('[auth/login] Error:', err.message);
     return res.status(500).json({ error: 'INTERNAL_ERROR' });

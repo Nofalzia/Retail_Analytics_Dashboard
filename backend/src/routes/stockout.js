@@ -8,6 +8,11 @@
  *   2. Calculates average daily sales velocity over the last N days
  *   3. Computes estimated days remaining = quantity_on_hand / avg_daily_velocity
  *
+ * Products with NO inventory snapshot at all are omitted from `products`: an
+ * unknown stock level must never be reported as 0 units on hand. The response
+ * carries hasInventoryData so the UI can tell "nothing counted yet" apart from
+ * "everything is out of stock".
+ *
  * This is the same depletion-rate math already in StockoutPrediction.jsx
  * (the Phase 1 static version), but now driven by real database data.
  *
@@ -76,7 +81,10 @@ router.get('/', requireAuth, resolveTenant, async (req, res) => {
            ELSE 'healthy'
          END                                                AS urgency_tier
        FROM products p
-       LEFT JOIN latest_inventory_per_product li
+       -- INNER JOIN on purpose: a product with no inventory snapshot has an
+       -- unknown stock level, so it is left out of the list rather than reported
+       -- as 0 units on hand (which would read as "already out of stock").
+       JOIN latest_inventory_per_product li
          ON li.product_id = p.id AND li.store_id = $2 AND li.tenant_id = $1
        LEFT JOIN velocity v ON v.product_id = p.id
        WHERE p.tenant_id = $1
@@ -90,6 +98,22 @@ router.get('/', requireAuth, resolveTenant, async (req, res) => {
       [tenantId, storeId, velocityDays],
     );
 
+    // Does this store have any inventory data at all? An empty products list
+    // cannot answer that on its own, and "nothing has been counted yet" is a very
+    // different thing to say than "every product is out of stock". Scoped to the
+    // tenant + store, and to the same active products the list above considers.
+    const { rows: [{ has_inventory_data: hasInventoryData }] } = await query(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM latest_inventory_per_product li
+         JOIN products p ON p.id = li.product_id AND p.tenant_id = li.tenant_id
+         WHERE li.tenant_id = $1
+           AND li.store_id  = $2
+           AND p.is_active  = TRUE
+       ) AS has_inventory_data`,
+      [tenantId, storeId],
+    );
+
     // Summary counts for the dashboard badges
     const summary = rows.reduce(
       (acc, row) => { acc[row.urgency_tier] = (acc[row.urgency_tier] || 0) + 1; return acc; },
@@ -98,6 +122,8 @@ router.get('/', requireAuth, resolveTenant, async (req, res) => {
 
     return res.json({
       velocityWindowDays: velocityDays,
+      // Additive: false when this store has never had an inventory count.
+      hasInventoryData,
       summary,
       products: rows,
     });
