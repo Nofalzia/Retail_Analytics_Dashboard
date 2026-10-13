@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme, useDesignTokens } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { DEMO_TENANTS, PRIMARY_DEMO_SLUG } from '../../config/demoTenants';
 
 /**
  * ============================================================================
@@ -96,6 +98,45 @@ export const NAV_ITEMS = [
 // deliberately absent: it is a backend/platform role that never sees storefront
 // financial data, so it is not something a user previews (T9).
 export const ROLES = ['Owner', 'Manager'];
+
+// ----------------------------------------------------------------------------
+// Tenant helpers — store identity is data, so it only ever arrives as props
+// ----------------------------------------------------------------------------
+
+/**
+ * True when a tenant accent is a real hex colour worth applying. Anything else
+ * (null, '', 'brand-blue') falls back to the shared token palette.
+ * @param {unknown} value Candidate accent from the tenant record.
+ * @returns {boolean}
+ */
+const isHexColor = (value) =>
+  typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim());
+
+/**
+ * Picks ink that stays legible on an arbitrary accent. Light accents take the
+ * charcoal ink, dark ones keep the cream ink — only the two existing ink tokens
+ * are used, so the warm palette is unchanged.
+ * @param {string} accent Valid hex colour.
+ * @param {Record<string, string>} PALETTE Active design tokens.
+ * @returns {string} Ink colour.
+ */
+const readableInkOn = (accent, PALETTE) => {
+  const digits = accent.trim().replace('#', '');
+  const full   = digits.length === 3 ? digits.split('').map((c) => c + c).join('') : digits;
+  const linear = (channel) =>
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  const [r, g, b] = [0, 2, 4].map((i) => linear(parseInt(full.slice(i, i + 2), 16) / 255));
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.45 ? PALETTE.charcoal : PALETTE.cream;
+};
+
+/**
+ * The mocked preview states (Healthy / Struggling / No data) were written
+ * against the seeded demo store only, so every other tenant is always live.
+ * @param {{slug?: string}|null} tenant Signed-in tenant.
+ * @returns {boolean}
+ */
+const isPrimaryDemoTenant = (tenant) => !tenant || tenant.slug === PRIMARY_DEMO_SLUG;
 
 // ----------------------------------------------------------------------------
 // Icon primitives (hand-rolled, consistent 1.5px stroke — no icon packages)
@@ -210,7 +251,7 @@ function MoonIcon({ className }) {
 // Sidebar (desktop, persistent)
 // ----------------------------------------------------------------------------
 
-const SidebarNavLink = ({ item, isActive, onSelect }) => {
+const SidebarNavLink = ({ item, isActive, onSelect, accent = null, accentInk = null }) => {
   const { label, Icon } = item;
   const { PALETTE } = useDesignTokens();
 
@@ -221,7 +262,7 @@ const SidebarNavLink = ({ item, isActive, onSelect }) => {
       className="group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors duration-150"
       style={
         isActive
-          ? { backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }
+          ? { backgroundColor: accent ?? PALETTE.bottleGreen, color: accentInk ?? PALETTE.cream }
           : { color: PALETTE.charcoalMuted }
       }
       onMouseEnter={(e) => {
@@ -237,9 +278,15 @@ const SidebarNavLink = ({ item, isActive, onSelect }) => {
   );
 };
 
-const Sidebar = ({ activeView, onSelect }) => {
+const Sidebar = ({ activeView, onSelect, tenant = null }) => {
   const { theme, isDark } = useTheme();
   const { PALETTE } = useDesignTokens();
+
+  // Tenant branding: the accent is applied to the logo mark and the active nav
+  // pill only, and only when it is a real hex colour. Everything else keeps the
+  // shared token palette.
+  const accent    = isHexColor(tenant?.brandAccent) ? tenant.brandAccent.trim() : null;
+  const accentInk = accent ? readableInkOn(accent, PALETTE) : PALETTE.cream;
 
   return (
     <aside
@@ -255,16 +302,18 @@ const Sidebar = ({ activeView, onSelect }) => {
       <div className="flex items-center gap-3 px-6 py-6">
         <div
           className="flex h-9 w-9 items-center justify-center rounded-lg"
-          style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
+          style={{ backgroundColor: accent ?? PALETTE.bottleGreen, color: accentInk }}
         >
           <StoreMarkIcon className="h-4.5 w-4.5" />
         </div>
-        <div className="leading-tight">
-          <p className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-            Retail Analytics
+        <div className="min-w-0 leading-tight">
+          {/* Signed in → the store's own name heads the sidebar, with the
+              platform name kept as a small caption beneath it. */}
+          <p className="truncate text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
+            {tenant?.name ?? 'Retail Analytics'}
           </p>
-          <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
-            Store Intelligence
+          <p className="truncate text-xs" style={{ color: PALETTE.charcoalMuted }}>
+            {tenant ? 'Retail Analytics' : 'Store Intelligence'}
           </p>
         </div>
       </div>
@@ -278,6 +327,8 @@ const Sidebar = ({ activeView, onSelect }) => {
             item={item}
             isActive={activeView === item.id}
             onSelect={onSelect}
+            accent={accent}
+            accentInk={accentInk}
           />
         ))}
       </nav>
@@ -465,12 +516,20 @@ const DATA_MODES = [
   { id: 'empty', label: 'New Tenant (No Data)' },
 ];
 
-const DataModeSwitcher = ({ dataMode, onSelect }) => {
+const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = () => {} }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
   const { theme } = useTheme();
   const { CARD_SURFACE, PALETTE, EARTH } = useDesignTokens();
-  const activeLabel = DATA_MODES.find((mode) => mode.id === dataMode)?.label ?? 'Healthy Store';
+
+  // The mocked preview states were written against the seeded demo store only.
+  // For every other tenant the switcher reports the live source instead of
+  // offering fakes, and still lets you switch back to another store.
+  const isPrimaryDemo = isPrimaryDemoTenant(tenant);
+  const otherTenants  = DEMO_TENANTS.filter((entry) => entry.slug !== tenant?.slug);
+  const activeLabel   = isPrimaryDemo
+    ? (DATA_MODES.find((mode) => mode.id === dataMode)?.label ?? 'Healthy Store')
+    : 'Live data';
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -527,9 +586,19 @@ const DataModeSwitcher = ({ dataMode, onSelect }) => {
             className="border-b px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide"
             style={{ borderColor: theme.sandBorder, color: PALETTE.charcoalMuted }}
           >
-            Preview data state
+            {isPrimaryDemo ? 'Preview data state' : 'Data source'}
           </p>
-          {DATA_MODES.map((mode) => {
+          {!isPrimaryDemo && (
+            /* Non-interactive by design: this store only ever has live data. */
+            <div
+              className="flex items-center justify-between px-4 py-2.5 text-sm"
+              style={{ backgroundColor: PALETTE.bottleGreenSoft, color: PALETTE.charcoalMuted }}
+            >
+              Live data
+              <CheckIcon className="h-4 w-4" style={{ color: PALETTE.bottleGreen }} />
+            </div>
+          )}
+          {isPrimaryDemo && DATA_MODES.map((mode) => {
             const isSelected = mode.id === dataMode;
             return (
               <button
@@ -560,6 +629,41 @@ const DataModeSwitcher = ({ dataMode, onSelect }) => {
               </button>
             );
           })}
+
+          {/* Switch store — every demo tenant except the one already signed in. */}
+          {otherTenants.length > 0 && (
+            <>
+              <div className="h-px" style={{ backgroundColor: theme.sandBorder }} />
+              <p
+                className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide"
+                style={{ color: PALETTE.charcoalMuted }}
+              >
+                Switch store
+              </p>
+              {otherTenants.map((entry) => (
+                <button
+                  key={entry.slug}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => {
+                    onSwitchTenant(entry.slug, entry.email);
+                    setIsOpen(false);
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm transition-colors"
+                  style={{ color: PALETTE.charcoal, backgroundColor: 'transparent' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = PALETTE.sand;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -579,7 +683,14 @@ const DataModeSwitcher = ({ dataMode, onSelect }) => {
  */
 const getGreeting = (activeRole) => `Assalam-o-Alaikum, ${activeRole}.`;
 
-const TopHeader = ({ activeRole, onRoleSelect, dataMode, onDataModeSelect }) => {
+const TopHeader = ({
+  activeRole,
+  onRoleSelect,
+  dataMode,
+  onDataModeSelect,
+  tenant,
+  onSwitchTenant,
+}) => {
   const { isDark, theme, toggleTheme } = useTheme();
 
   return (
@@ -631,7 +742,12 @@ const TopHeader = ({ activeRole, onRoleSelect, dataMode, onDataModeSelect }) => 
             <MoonIcon className="h-4 w-4" />
           )}
         </button>
-        <DataModeSwitcher dataMode={dataMode} onSelect={onDataModeSelect} />
+        <DataModeSwitcher
+          dataMode={dataMode}
+          onSelect={onDataModeSelect}
+          tenant={tenant}
+          onSwitchTenant={onSwitchTenant}
+        />
         <RoleSwitcher activeRole={activeRole} onSelect={onRoleSelect} />
       </div>
     </header>
@@ -652,9 +768,14 @@ const DashboardShell = ({
   onDataModeChange = () => {},
 }) => {
   const { theme } = useTheme();
+  const { tenant, switchTenant } = useAuth();
   const [activeView, setActiveView] = useState(initialView);
   const [activeRole, setActiveRole] = useState(initialRole);
   const [dataMode, setDataMode] = useState(initialDataMode);
+
+  // Mock preview data only exists for the seeded demo store, so every other
+  // tenant is pinned to live mode whatever the switcher was left on.
+  const effectiveDataMode = isPrimaryDemoTenant(tenant) ? dataMode : 'live';
 
   const handleNavigate = (id) => {
     setActiveView(id);
@@ -672,18 +793,22 @@ const DashboardShell = ({
   };
 
   const content =
-    typeof children === 'function' ? children(activeView, activeRole, dataMode) : children;
+    typeof children === 'function'
+      ? children(activeView, activeRole, effectiveDataMode)
+      : children;
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.background }}>
-      <Sidebar activeView={activeView} onSelect={handleNavigate} />
+      <Sidebar activeView={activeView} onSelect={handleNavigate} tenant={tenant} />
 
       {/* Main column — offset for the docked sidebar on lg+ */}
       <div className="lg:ml-64">
         <TopHeader
           activeRole={activeRole}
           onRoleSelect={handleRoleChange}
-          dataMode={dataMode}
+          dataMode={effectiveDataMode}
           onDataModeSelect={handleDataModeChange}
+          tenant={tenant}
+          onSwitchTenant={switchTenant}
         />
 
         <main className="p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">

@@ -16,6 +16,7 @@ import {
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../context/AuthContext';
 import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
@@ -125,16 +126,18 @@ const TotalRevenueCard = ({ amount, growthPercent }) => {
   );
 };
 
-const TotalOrdersCard = ({ count, ordersToday, averagePerDay }) => {
+const UnitsSoldCard = ({ count, salesToday, averagePerDay }) => {
   const { PALETTE } = useDesignTokens();
 
   return (
-    <MetricCard icon={<OrdersIcon className="h-4.5 w-4.5" />} label="Total Orders">
+    <MetricCard icon={<OrdersIcon className="h-4.5 w-4.5" />} label="Units sold">
       <p className="text-4xl font-bold tracking-tight sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
         {count.toLocaleString('en-PK')}
       </p>
+      {/* The footer still counts sale records — the API exposes no per-day unit
+          total yet, so it is labelled for what it actually measures. */}
       <p className="mt-3 text-xs tracking-wide uppercase" style={{ color: PALETTE.charcoalMuted }}>
-        <span className="font-semibold" style={{ color: PALETTE.charcoal }}>{ordersToday} orders</span> today · {averagePerDay}/day average
+        <span className="font-semibold" style={{ color: PALETTE.charcoal }}>{salesToday} sales</span> today · {averagePerDay}/day average
       </p>
     </MetricCard>
   );
@@ -269,6 +272,12 @@ function mapOverviewToMetrics(data) {
     totalRevenue:         parseFloat(kpi.total_revenue) || 0,
     revenueGrowthPercent: growthPct,
     totalOrders:          parseInt(kpi.total_transactions) || 0,
+    // Units sold (T10b-2): the API's unitsSold field when present, then the
+    // existing total_units_sold aggregate, and only then the old transaction
+    // count. totalOrders stays for the mock preview datasets.
+    unitsSold:            parseInt(
+      data?.unitsSold ?? kpi.unitsSold ?? kpi.total_units_sold ?? kpi.total_transactions,
+    ) || 0,
     ordersToday,
     averageOrdersPerDay:  avgPerDay,
     // NOTE: no daysOfInventoryLeft here. In live mode the inventory card is
@@ -395,6 +404,10 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
 };
 
 const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode = 'live' }) => {
+  // Scope every query to the store inside the signed-in account's token; the
+  // demo store id is only a fallback for tokens whose claims cannot be read.
+  const { user } = useAuth();
+  const storeId = user?.storeId ?? DEMO_STORE_ID;
   const isLive = dataMode === 'live';
 
   // Live mode starts empty — data comes from the API. Non-live demo modes keep
@@ -427,7 +440,7 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
 
     Promise.all([
       // KPI snapshot + daily trend chart.
-      api.getOverview({ storeId: DEMO_STORE_ID, startDate: (() => {
+      api.getOverview({ storeId, startDate: (() => {
         const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
       })() })
         .then((data) => {
@@ -438,13 +451,19 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
 
       // Days-of-inventory health — median of each product's stock/velocity
       // projection from the same stockout API that powers Stockout Watch.
-      api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
-        .then(({ products }) => {
-          if (!Array.isArray(products) || products.length === 0) {
+      api.getStockout({ storeId, velocityDays: 14 })
+        .then((response) => {
+          const rows = Array.isArray(response?.products) ? response.products : [];
+          // Only products that have actually been counted can project a
+          // depletion date. When the store has no inventory at all — the API
+          // says so via hasInventoryData — the card keeps its "Not enough data"
+          // state instead of estimating from zero stock.
+          const stocked = rows.filter((p) => p?.last_counted_date != null);
+          if (response?.hasInventoryData === false || rows.length === 0 || stocked.length === 0) {
             setInventoryDays(null);
             return;
           }
-          const days = products
+          const days = stocked
             .map((p) => {
               const velocity = parseFloat(p.avg_daily_velocity);
               const stock    = parseInt(p.quantity_on_hand) || 0;
@@ -464,7 +483,7 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
     ])
       .catch(() => setLoadError(true))
       .finally(() => setIsLoaded(true));
-  }, [dataMode, retryTick]);
+  }, [dataMode, retryTick, storeId]);
 
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
@@ -502,9 +521,9 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <TotalRevenueCard amount={metrics.totalRevenue} growthPercent={metrics.revenueGrowthPercent} />
-        <TotalOrdersCard
-          count={metrics.totalOrders}
-          ordersToday={metrics.ordersToday}
+        <UnitsSoldCard
+          count={metrics.unitsSold ?? metrics.totalOrders}
+          salesToday={metrics.ordersToday}
           averagePerDay={metrics.averageOrdersPerDay}
         />
         <DaysOfInventoryCard daysLeft={inventoryDays ?? metrics.daysOfInventoryLeft} />

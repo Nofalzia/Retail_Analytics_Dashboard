@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../context/AuthContext';
 import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 /**
@@ -13,6 +14,7 @@ import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
  * dataMode === 'live'      → fetches real stock + velocity from /api/stockout
  * dataMode === 'struggling' → uses STRUGGLING_PRODUCTS mock
  * dataMode === 'empty'     → shows EmptyState
+ * live + hasInventoryData === false → calm "no inventory data yet" empty state
  */
 
 const strokeProps = {
@@ -164,6 +166,10 @@ const StockoutCard = ({ product }) => {
 
 const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   const { PALETTE } = useDesignTokens();
+  // Scope the query to the store inside the signed-in account's token; the demo
+  // store id is only a fallback for tokens whose claims cannot be read.
+  const { user } = useAuth();
+  const storeId = user?.storeId ?? DEMO_STORE_ID;
   const isLive = dataMode === 'live';
 
   // Live mode starts empty — products come from the API. Non-live demo modes
@@ -174,6 +180,7 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   const [loadError, setLoadError] = useState(false);
   const [productsLoaded, setProductsLoaded] = useState(!isLive);
   const [retryTick, setRetryTick] = useState(0);
+  const [inventoryMissing, setInventoryMissing] = useState(false);
 
   useEffect(() => {
     if (dataMode !== 'live') {
@@ -187,11 +194,23 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
     // notice; an empty-but-successful response shows the proper empty state.
     setLoadError(false);
     setProductsLoaded(false);
-    api.getStockout({ storeId: DEMO_STORE_ID, velocityDays: 14 })
-      .then(({ products }) => {
+    api.getStockout({ storeId, velocityDays: 14 })
+      .then((response) => {
+        const rows = Array.isArray(response?.products) ? response.products : [];
+
+        // A row with no last_counted_date has never been counted, so it carries
+        // no stock level to project from. The API drops such products and reports
+        // hasInventoryData === false when none are left; the same rule is applied
+        // here so an older response can never invent "reorder now" for every SKU.
+        const stocked = rows.filter((p) => p?.last_counted_date != null);
+        const missing = response?.hasInventoryData === false
+          || (rows.length > 0 && stocked.length === 0);
+
+        setInventoryMissing(missing);
         setSourceProducts(
-          Array.isArray(products)
-            ? products.map((p) => ({
+          missing
+            ? []
+            : stocked.map((p) => ({
                 id:            p.product_id,
                 name:          p.product_name,
                 // category column holds the SKU until the API returns category name —
@@ -199,13 +218,12 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
                 category:      p.sku,
                 currentStock:  parseInt(p.quantity_on_hand)    || 0,
                 avgDailySales: parseFloat(p.avg_daily_velocity) || 0,
-              }))
-            : [],
+              })),
         );
       })
       .catch(() => setLoadError(true))
       .finally(() => setProductsLoaded(true));
-  }, [dataMode, retryTick]);
+  }, [dataMode, retryTick, storeId]);
 
   const sortedProducts = useMemo(
     () =>
@@ -234,6 +252,16 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
     }
     if (!productsLoaded) {
       return <LoadingState label="Loading stockout projections…" />;
+    }
+    // No inventory has ever been recorded for this store: a calm empty state,
+    // never an error and never a grid of fake "reorder now" cards.
+    if (inventoryMissing) {
+      return (
+        <EmptyState
+          title="No inventory data for this store yet"
+          description="Upload an inventory file to see days of stock left."
+        />
+      );
     }
     if (sourceProducts.length === 0) {
       return (

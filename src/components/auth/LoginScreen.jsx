@@ -7,12 +7,19 @@
  * Demo credentials (pre-filled):
  *   Email      : owner@demo.com
  *   Password   : Demo@1234
- *   Tenant slug: demo-kiryana
+ *   Tenant slug: from src/config/demoTenants.js (default: demo-kiryana)
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { DEMO_TENANTS, findDemoTenantBySlug } from '../../config/demoTenants.js';
+
+/** Store offered when no switch is pending — also the mock-preview tenant. */
+const DEFAULT_TENANT = DEMO_TENANTS[0];
+
+/** Shared demo password. Prefilled only for the default demo store. */
+const DEMO_PASSWORD = 'Demo@1234';
 
 // ── Design tokens (kept local — no DashboardShell dependency at login time) ──
 
@@ -94,17 +101,30 @@ function StoreMark() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function LoginScreen() {
-  const { login, sessionExpired } = useAuth();
+  const { login, sessionExpired, pendingTenant, clearPendingTenant } = useAuth();
+
+  // The store switcher parks its pick in sessionStorage and the auth provider
+  // hands it to us here: when one is pending we prefill the slug + email and
+  // leave the password blank for the user to type. The hand-off is cleared once,
+  // in the effect below, so StrictMode's double render changes nothing.
+  useEffect(() => clearPendingTenant(), [clearPendingTenant]);
 
   const [form, setForm] = useState({
-    email:      'owner@demo.com',
-    password:   'Demo@1234',
-    tenantSlug: 'demo-kiryana',
+    email:      pendingTenant ? pendingTenant.email : DEFAULT_TENANT.email,
+    password:   pendingTenant ? '' : DEMO_PASSWORD,
+    tenantSlug: pendingTenant ? pendingTenant.slug : DEFAULT_TENANT.slug,
   });
   const [error,   setError]   = useState(
     sessionExpired ? 'Your session has expired. Please sign in again.' : null,
   );
   const [loading, setLoading] = useState(false);
+
+  // Calm hand-off notice: name the store the switcher picked, if there was one.
+  // Snapshotted, because clearing the hand-off turns the context value null on
+  // the next render.
+  const [pendingLabel] = useState(() =>
+    pendingTenant ? (findDemoTenantBySlug(pendingTenant.slug)?.label ?? pendingTenant.slug) : null,
+  );
 
   const set = (field) => (value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -161,6 +181,21 @@ export default function LoginScreen() {
           <p className="mt-1 text-sm" style={{ color: PALETTE.charcoalMuted }}>
             Sign in to your store dashboard.
           </p>
+
+          {/* Hand-off notice from the store switcher — states which store the
+              pending slug belongs to. Never reveals or prefills a password. */}
+          {pendingLabel && (
+            <p
+              className="mt-5 rounded-xl px-4 py-3 text-sm"
+              style={{
+                backgroundColor: PALETTE.sand,
+                color:            PALETTE.charcoal,
+                border:           `1px solid ${PALETTE.sandBorder}`,
+              }}
+            >
+              Sign in to {pendingLabel}.
+            </p>
+          )}
 
           <div className="mt-8 flex flex-col gap-5" onKeyDown={handleKeyDown}>
             <Field
@@ -226,7 +261,9 @@ export default function LoginScreen() {
 
         {/* Demo hint */}
         <p className="mt-6 text-center text-xs" style={{ color: PALETTE.charcoalMuted }}>
-          Demo credentials are pre-filled above.
+          {pendingLabel
+            ? 'Enter your password for this store to continue.'
+            : 'Demo credentials are pre-filled above.'}
         </p>
       </div>
     </div>
