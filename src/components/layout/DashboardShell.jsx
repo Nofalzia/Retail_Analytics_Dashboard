@@ -281,6 +281,7 @@ const SidebarNavLink = ({ item, isActive, onSelect, accent = null, accentInk = n
 const Sidebar = ({ activeView, onSelect, tenant = null }) => {
   const { theme, isDark } = useTheme();
   const { PALETTE } = useDesignTokens();
+  const { logout } = useAuth();
 
   // Tenant branding: the accent is applied to the logo mark and the active nav
   // pill only, and only when it is a real hex colour. Everything else keeps the
@@ -334,6 +335,16 @@ const Sidebar = ({ activeView, onSelect, tenant = null }) => {
       </nav>
 
       <div className="px-6 py-6">
+        <button
+          type="button"
+          onClick={logout}
+          className="mb-3 block w-full rounded-lg px-1 py-1 text-left text-xs font-medium transition-colors duration-150"
+          style={{ color: PALETTE.charcoalMuted }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = PALETTE.charcoal; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = PALETTE.charcoalMuted; }}
+        >
+          Sign out
+        </button>
         <div
           className="rounded-xl p-4"
           style={{

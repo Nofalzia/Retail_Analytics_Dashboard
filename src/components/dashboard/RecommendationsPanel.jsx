@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { EmptyState, formatLocalCurrency } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../context/AuthContext';
+import { resolveStoreId } from '../../utils/resolveStoreId.js';
 import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 import { INITIAL_ALERTS, STRUGGLING_ALERTS } from './StoreManagerDashboard';
 import { PRODUCTS, STRUGGLING_PRODUCTS, getUrgencyTier } from './StockoutPrediction';
@@ -133,9 +135,6 @@ const RecommendationCard = ({ recommendation, onAcknowledge, isAcknowledged }) =
 };
 
 // ── Live recommendation helpers ──────────────────────────────────────────────
-
-// Demo store ID — matches the seed data and the other live panels.
-const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 
 // Human labels for the engine's `rec_type` codes.
 const REC_TYPE_LABELS = {
@@ -301,6 +300,12 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
   const { PALETTE } = useDesignTokens();
   const isLive = dataMode === 'live';
 
+  // Scope live queries to the store inside the signed-in account's token. The
+  // demo tenant keeps its historic id as a fallback (see resolveStoreId); any
+  // other tenant with no store claim resolves to null and is told so below.
+  const { user, tenant } = useAuth();
+  const storeId = resolveStoreId(user?.storeId, tenant?.slug);
+
   // ── Mock (non-live) state — "done" marks persist per data mode ──
   const [doneIds, setDoneIds] = useState(() => readMockDoneIds(dataMode));
 
@@ -317,16 +322,18 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
   // calm all-clear state, a pending request shows the loading placeholder.
   useEffect(() => {
     if (!isLive) return undefined;
+    // No store on the account: the render path shows the not-linked notice.
+    if (!storeId) { setLoading(false); return undefined; }
     setLoading(true);
     setLoadError(false);
-    api.getRecommendations({ storeId: DEMO_STORE_ID })
+    api.getRecommendations({ storeId })
       .then(({ recommendations: apiRecs }) => {
         setItems(Array.isArray(apiRecs) ? apiRecs : []);
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
     return undefined;
-  }, [isLive, dataMode, retryTick]);
+  }, [isLive, dataMode, retryTick, storeId]);
 
   // Re-read the active mode's saved marks when the demo mode changes (for
   // example on the way back from live), so each mode keeps its own done list.
@@ -400,6 +407,9 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
 
   // ── Live mode: real data only — never mocks ──
   if (isLive) {
+    if (!storeId) {
+      return <ApiErrorNotice message="Your account is not linked to a store. Please contact support." />;
+    }
     if (loadError) {
       return <ApiErrorNotice onRetry={() => setRetryTick((t) => t + 1)} />;
     }

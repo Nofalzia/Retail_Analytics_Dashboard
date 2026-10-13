@@ -17,9 +17,14 @@ import {
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext';
+import { resolveStoreId } from '../../utils/resolveStoreId.js';
 import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
+
+// Window the /api/overview KPI snapshot covers: the request asks for the last
+// 30 days, so the units-sold footer can name that window for live data.
+const KPI_WINDOW_DAYS = 30;
 
 /**
  * BusinessOwnerDashboard — Owner-facing overview scaffold.
@@ -126,19 +131,24 @@ const TotalRevenueCard = ({ amount, growthPercent }) => {
   );
 };
 
-const UnitsSoldCard = ({ count, salesToday, averagePerDay }) => {
+const UnitsSoldCard = ({ count, windowDays = null }) => {
   const { PALETTE } = useDesignTokens();
+  const formatted = count.toLocaleString('en-PK');
 
   return (
     <MetricCard icon={<OrdersIcon className="h-4.5 w-4.5" />} label="Units sold">
       <p className="text-4xl font-bold tracking-tight sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
-        {count.toLocaleString('en-PK')}
+        {formatted}
       </p>
-      {/* The footer still counts sale records — the API exposes no per-day unit
-          total yet, so it is labelled for what it actually measures. */}
-      <p className="mt-3 text-xs tracking-wide uppercase" style={{ color: PALETTE.charcoalMuted }}>
-        <span className="font-semibold" style={{ color: PALETTE.charcoal }}>{salesToday} sales</span> today · {averagePerDay}/day average
-      </p>
+      {/* The value is a period total, never a daily figure. Only name a window
+          when the number really was aggregated over one (the live overview
+          request); the mock datasets expose no window, so they show the total
+          on its own rather than claim one. */}
+      {windowDays != null && (
+        <p className="mt-3 text-xs tracking-wide uppercase" style={{ color: PALETTE.charcoalMuted }}>
+          <span className="font-semibold" style={{ color: PALETTE.charcoal }}>{formatted} units</span> in the last {windowDays} days
+        </p>
+      )}
     </MetricCard>
   );
 };
@@ -237,9 +247,6 @@ const DATASETS = {
     chartLabels: CHART_LABELS,
   },
 };
-
-// Demo store ID — matches the seed data
-const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 
 /** Maps /api/overview response → the metrics shape this component already uses. */
 function mapOverviewToMetrics(data) {
@@ -404,10 +411,11 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
 };
 
 const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode = 'live' }) => {
-  // Scope every query to the store inside the signed-in account's token; the
-  // demo store id is only a fallback for tokens whose claims cannot be read.
-  const { user } = useAuth();
-  const storeId = user?.storeId ?? DEMO_STORE_ID;
+  // Scope every query to the store inside the signed-in account's token. The
+  // demo tenant keeps its historic id as a fallback (see resolveStoreId); any
+  // other tenant with no store claim resolves to null and is told so below.
+  const { user, tenant } = useAuth();
+  const storeId = resolveStoreId(user?.storeId, tenant?.slug);
   const isLive = dataMode === 'live';
 
   // Live mode starts empty — data comes from the API. Non-live demo modes keep
@@ -438,10 +446,14 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
     setMetrics(null);
     setInventoryDays(null);
 
+    // No store on the account: the render path shows the not-linked-to-a-store
+    // notice, so there is nothing to fetch.
+    if (!storeId) return undefined;
+
     Promise.all([
       // KPI snapshot + daily trend chart.
       api.getOverview({ storeId, startDate: (() => {
-        const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10);
+        const d = new Date(); d.setDate(d.getDate() - KPI_WINDOW_DAYS); return d.toISOString().slice(0, 10);
       })() })
         .then((data) => {
           const hasTransactions = (parseInt(data?.kpi?.total_transactions) || 0) > 0;
@@ -501,6 +513,9 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
   // Live mode never renders mocks: error → notice, loading → placeholder,
   // empty-but-successful → proper empty state.
   if (isLive) {
+    if (!storeId) {
+      return <ApiErrorNotice message="Your account is not linked to a store. Please contact support." />;
+    }
     if (loadError) {
       return <ApiErrorNotice onRetry={() => setRetryTick((t) => t + 1)} />;
     }
@@ -523,8 +538,7 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
         <TotalRevenueCard amount={metrics.totalRevenue} growthPercent={metrics.revenueGrowthPercent} />
         <UnitsSoldCard
           count={metrics.unitsSold ?? metrics.totalOrders}
-          salesToday={metrics.ordersToday}
-          averagePerDay={metrics.averageOrdersPerDay}
+          windowDays={isLive ? KPI_WINDOW_DAYS : null}
         />
         <DaysOfInventoryCard daysLeft={inventoryDays ?? metrics.daysOfInventoryLeft} />
       </div>

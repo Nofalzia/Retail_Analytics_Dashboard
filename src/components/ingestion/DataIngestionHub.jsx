@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDesignTokens, useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { resolveStoreId } from '../../utils/resolveStoreId.js';
+import ApiErrorNotice from '../ApiErrorNotice';
 
 // Demo-mode simulation banner (only reachable when dataMode !== 'live').
 const SUCCESS_BANNER_MESSAGE =
@@ -18,8 +21,8 @@ const STAGE_DEFINITIONS = [
 // Required headers: same canonical names as REQUIRED_COLUMNS in
 // backend/src/utils/validators.js (the backend also accepts aliases, e.g.
 // "sale date"). The size cap mirrors MAX_FILE_SIZE_MB in
-// backend/src/routes/upload.js (default 25). The store is the seeded demo
-// store — the same UUID every dashboard uses.
+// backend/src/routes/upload.js (default 25). The target store is resolved from
+// the signed-in account's token (see resolveStoreId), never pinned here.
 // ----------------------------------------------------------------------------
 
 const REQUIRED_COLUMNS = ['date', 'sku', 'product_name', 'quantity_sold', 'unit_price', 'unit_cost'];
@@ -51,8 +54,6 @@ const STALL_TIMEOUT_MS = 90_000;
 const ABSOLUTE_MAX_POLL_MS = 30 * 60 * 1000;
 // A 429 on a status poll is a speed bump, not a failure: back off and retry.
 const RATE_LIMIT_BACKOFF_MS = 5000;
-
-const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 
 /** Generates a CSV with the exact required headers, client-side. */
 const downloadTemplate = () => {
@@ -943,6 +944,11 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
   const [lastResultJobId, setLastResultJobId] = useState(null);
   const busyRef = useRef(false);
   const { PALETTE } = useDesignTokens();
+  // Scope uploads to the store inside the signed-in account's token. The demo
+  // tenant keeps its historic id as a fallback (see resolveStoreId); any other
+  // tenant with no store claim is told so rather than writing to another store.
+  const { user, tenant } = useAuth();
+  const storeId = resolveStoreId(user?.storeId, tenant?.slug);
   const activeKey = activeJobIds.join(',');
 
   // Poll active jobs. Cleaned up on unmount so polling stops when leaving.
@@ -1074,7 +1080,7 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
   }, [activeKey]);
           const handleFilesAccepted = (files) => {
     files.forEach((file) => {
-      api.uploadFile(DEMO_STORE_ID, file)
+      api.uploadFile(storeId, file)
         .then(({ jobId }) => {
           setUploads((prev) => [...prev, {
             id: jobId,
@@ -1116,6 +1122,12 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
 
   const hasCompletedUpload = uploads.some((u) => u.status === 'completed');
   const lastResult = uploads.find((u) => u.id === lastResultJobId) ?? null;
+
+  // No store on the account: there is nowhere to write the rows, so show the
+  // not-linked notice instead of a dropzone whose every upload would fail.
+  if (!storeId) {
+    return <ApiErrorNotice message="Your account is not linked to a store. Please contact support." />;
+  }
 
   return (
     <div className="space-y-6">

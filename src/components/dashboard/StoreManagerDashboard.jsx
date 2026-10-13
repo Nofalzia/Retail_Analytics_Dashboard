@@ -6,6 +6,8 @@ import {
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../context/AuthContext';
+import { resolveStoreId } from '../../utils/resolveStoreId.js';
 import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 /**
@@ -782,10 +784,14 @@ const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
   );
 };
 
-const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
-
 const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMode = 'live' }) => {
   const isLive = dataMode === 'live';
+
+  // Scope live queries to the store inside the signed-in account's token. The
+  // demo tenant keeps its historic id as a fallback (see resolveStoreId); any
+  // other tenant with no store claim resolves to null and is told so below.
+  const { user, tenant } = useAuth();
+  const storeId = resolveStoreId(user?.storeId, tenant?.slug);
 
   // Live mode starts empty — alerts come from the API. Non-live demo modes keep
   // the curated mock alert sets untouched.
@@ -804,9 +810,12 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
       return;
     }
 
+    // No store on the account: the render path shows the not-linked notice.
+    if (!storeId) return;
+
     // Live mode: never fall back to mock alerts. A failed request shows the
     // error notice; an empty-but-successful response shows the All Clear state.
-    api.getAlerts({ storeId: DEMO_STORE_ID })
+    api.getAlerts({ storeId })
       .then(({ alerts: apiAlerts }) => {
         const list = Array.isArray(apiAlerts) ? apiAlerts : [];
         setAlerts(
@@ -827,7 +836,7 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
 
   useEffect(() => {
     fetchAlerts();
-  }, [dataMode, retryTick]);
+  }, [dataMode, retryTick, storeId]);
 
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
@@ -844,6 +853,9 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
 
   // Live mode never renders mock alerts: error → notice, loading → placeholder.
   if (isLive) {
+    if (!storeId) {
+      return <ApiErrorNotice message="Your account is not linked to a store. Please contact support." />;
+    }
     if (alertsError) {
       return <ApiErrorNotice onRetry={() => {
         setAlertsLoaded(false);
@@ -861,7 +873,7 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
           <AnomalyDetectionPanel
         alerts={isStruggling ? STRUGGLING_ALERTS : alerts}
-        storeId={isLive ? DEMO_STORE_ID : null}
+        storeId={isLive ? storeId : null}
         onRefreshAlerts={fetchAlerts}
       />
       <ScenarioSimulationPanel baseline={isStruggling ? STRUGGLING_BASELINE : BASELINE} />

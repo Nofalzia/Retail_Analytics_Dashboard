@@ -3,6 +3,7 @@ import { EmptyState } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext';
+import { resolveStoreId } from '../../utils/resolveStoreId.js';
 import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 /**
@@ -73,9 +74,6 @@ export const getUrgencyTier = (daysRemaining) => {
   if (daysRemaining <= URGENCY.warning.maxDays)  return 'warning';
   return 'healthy';
 };
-
-// Demo store ID — matches the seed data and backend middleware
-const DEMO_STORE_ID = '00000000-0000-0000-0000-000000000010';
 
 // ── Card ─────────────────────────────────────────────────────────────────────
 
@@ -166,10 +164,11 @@ const StockoutCard = ({ product }) => {
 
 const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   const { PALETTE } = useDesignTokens();
-  // Scope the query to the store inside the signed-in account's token; the demo
-  // store id is only a fallback for tokens whose claims cannot be read.
-  const { user } = useAuth();
-  const storeId = user?.storeId ?? DEMO_STORE_ID;
+  // Scope the query to the store inside the signed-in account's token. The demo
+  // tenant keeps its historic id as a fallback (see resolveStoreId); any other
+  // tenant with no store claim resolves to null and is told so below.
+  const { user, tenant } = useAuth();
+  const storeId = resolveStoreId(user?.storeId, tenant?.slug);
   const isLive = dataMode === 'live';
 
   // Live mode starts empty — products come from the API. Non-live demo modes
@@ -189,6 +188,9 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
       setProductsLoaded(true);
       return;
     }
+
+    // No store on the account: the render path shows the not-linked notice.
+    if (!storeId) return;
 
     // Live mode: never fall back to mock products. Failure shows the error
     // notice; an empty-but-successful response shows the proper empty state.
@@ -247,6 +249,9 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   // Live mode never renders mocks: error → notice, loading → placeholder,
   // empty-but-successful → proper empty state.
   if (isLive) {
+    if (!storeId) {
+      return <ApiErrorNotice message="Your account is not linked to a store. Please contact support." />;
+    }
     if (loadError) {
       return <ApiErrorNotice onRetry={() => setRetryTick((t) => t + 1)} />;
     }
