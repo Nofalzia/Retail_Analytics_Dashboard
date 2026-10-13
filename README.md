@@ -29,6 +29,7 @@ where a naive in-memory read peaks at ~484 MB
 - [API](#api)
 - [Getting started (Windows CMD)](#getting-started-windows-cmd)
 - [Demo accounts](#demo-accounts)
+  - [Second demo tenant — London Bakers I-10](#second-demo-tenant--london-bakers-i-10)
 - [npm scripts](#npm-scripts)
 - [Validation & published evidence](#validation--published-evidence)
 - [Project structure](#project-structure)
@@ -261,6 +262,32 @@ users and 90 days of transactions, so the charts have something real to draw.
 | Owner | `owner@demo.com` | `Demo@1234` | `demo-kiryana` |
 | Manager | `manager@demo.com` | `Demo@1234` | `demo-kiryana` |
 
+### Second demo tenant — London Bakers I-10
+
+A second, much larger tenant proves multi-tenant isolation and exercises the real ingestion path: a
+731-day point-of-sale export (304,614 line items, 50 SKUs, ~131.9 M PKR) is prepared into an
+upload-ready CSV and seeded by `bakery:prepare` + `bakery:seed`.
+
+```cmd
+:: run from backend/ — prepare the datasets from the raw export kept outside the repo
+npm run bakery:prepare -- --input "<pos_sales_log.csv>" --daily "<daily_performance.csv>"
+:: reset + seed this tenant only (idempotent — a re-run deletes and rewrites 36,002 rows)
+npm run bakery:seed
+```
+
+| Role | Email | Password | Tenant slug |
+|---|---|---|---|
+| Owner | `owner@londonbakers.demo` | `Demo@1234` | `london-bakers-i10` |
+| Manager | `manager@londonbakers.demo` | `Demo@1234` | `london-bakers-i10` |
+
+The last day of the export is deliberately held out of the seed into
+`data/processed/london-bakers/london_bakers_live_day.csv`, so the Data Ingestion screen can be
+demonstrated on a file that has never been imported. Unit cost is an **allocation** (mean daily
+COGS ÷ gross revenue), not recorded cost, and this tenant has **no inventory rows** — so upload an
+inventory CSV before showing Stockout Watch, which otherwise lists every product as out of stock. See
+[`docs/data/london_bakers_provenance.md`](docs/data/london_bakers_provenance.md) for the exact
+columns, filters, date shift, revenue conservation check and full limitations.
+
 ---
 
 ## npm scripts
@@ -274,6 +301,8 @@ users and 90 days of transactions, so the charts have something real to draw.
 | `backend/` | `npm run dev` | API with `node --watch` |
 | `backend/` | `npm start` | plain `node src/index.js` (production) |
 | `backend/` | `npm run seed:reset` | reset + reseed the demo tenant |
+| `backend/` | `npm run bakery:prepare -- --input <pos.csv> --daily <daily.csv>` | build the London Bakers upload CSVs from the raw POS export |
+| `backend/` | `npm run bakery:seed` | reset + seed the `london-bakers-i10` tenant from those CSVs |
 | `backend/` | `npm run db:migrate` | `psql $DATABASE_URL -f db/schema.sql` |
 | `backend/` | `npm run test:zscore` | rolling z-score self-test (assertions, no database) |
 | `backend/` | `npm run validate:detection` | v1 detection validation harness |
@@ -361,8 +390,10 @@ Retail_Analytics_Dashboard/
 |  |  +- utils/validators.js     per-row CSV validation + error log
 |  |  +- seed.js                 demo-tenant reset + reseed
 |  +- db/                        schema.sql + migrations/ (002-004, idempotent)
-|  +- scripts/                   benchmark/ and validation/ harnesses, smoke tests
+|  +- scripts/                   benchmark/ and validation/ harnesses, smoke tests;
+|  |                             bakery/ (prepareData.js, seedTenant.js) — the London Bakers pipeline
 +- docs/validation/              published reports (md) and raw results (csv / json)
++- docs/data/                    dataset provenance (london_bakers_provenance.md)
 ```
 
 ---

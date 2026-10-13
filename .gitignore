@@ -36,6 +36,14 @@ backend/uploads/
 # reports under docs/validation/ are committed on purpose.
 bench_*.csv
 
+# Second demo tenant's datasets. The raw export lives outside the repository; the
+# prepared CSVs are regenerated on demand by backend/scripts/bakery/prepareData.js
+# (npm run --prefix backend bakery:prepare) and the catalogue by its seed step.
+# Committed instead: docs/data/london_bakers_provenance.md, which records exactly
+# which source files, columns and assumptions produced them.
+data/raw/
+data/processed/
+
 # Local agent / editor tooling — not part of the application
 .claude/
 .github/hooks/
