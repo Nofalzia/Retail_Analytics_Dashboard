@@ -14,7 +14,7 @@ suggestions from a decision rule set (`backend/src/services/recommendationEngine
 alert can be explained to a shopkeeper in one sentence.
 
 Ingestion is **streamed, not buffered**: the production route parses CSV with pause/resume,
-writes 1,000-row batches and holds a flat ~50–62 MB peak RSS from 10,000 to 1,000,000 rows,
+writes 1,000-row batches and holds a flat ~50–62 MB peak RSS from 100,000 to 1,000,000 rows,
 where a naive in-memory read peaks at ~484 MB
 (see [Validation & published evidence](#validation--published-evidence)).
 
@@ -35,6 +35,7 @@ where a naive in-memory read peaks at ~484 MB
 - [Deployment](#deployment)
 - [Known limitations](#known-limitations)
 - [Design conventions](#design-conventions)
+- [Credits](#credits)
 
 ---
 
@@ -53,12 +54,15 @@ where a naive in-memory read peaks at ~484 MB
 
 ### Owner
 
-**Overview** — revenue and unit KPIs, revenue trend, category mix, top products, and store health
-signals driven by open alerts.
+**Overview** — revenue and order KPIs, a 14-day revenue trend, and a days-of-inventory health
+indicator.
 
 ### Manager
 
-- **Deep Analytics** — product velocity, anomaly history, day-of-week behaviour.
+- **Deep Analytics** — the store's threshold anomaly alerts (with a manual *Run Detection* control)
+  and a baseline **scenario simulator** that projects margin from two levers (supply-chain cost
+  increase / price adjustment). The simulator starts from **fixed sample baseline figures**
+  (monthly revenue / COGS %), not the tenant's uploaded data.
 - **Stockout Watch** — days-of-cover against recent velocity, ranked by urgency.
 - **Recommendations** — generated from active alerts, with suggested quantity and revenue at risk;
   an acknowledge / complete flow.
@@ -109,7 +113,7 @@ PostgreSQL — 10 tables + 4 read views, every query scoped by tenant_id
 POST /api/upload
   -> multer writes to UPLOAD_TEMP_DIR (cap: MAX_FILE_SIZE_MB)
   -> SHA-256 hash -> ingestion_jobs row (status = processing)     duplicate file -> 409
-  -> background: csv-parser stream (SheetJS stream->CSV for XLSX)
+  -> background: csv-parser stream (CSV only; XLSX/XLS are read into memory by SheetJS)
        -> 1,000-row batches -> products upsert + sale_transactions insert
        -> rows_processed / rows_failed / error_log refreshed every 5 chunks
   -> client polls GET /api/upload/:jobId/status until completed / failed
@@ -192,8 +196,8 @@ open, and login carries its own strict rate limiter.
 
 ```cmd
 :: 1. Frontend dependencies (repo root)
-git clone https://github.com/<your-username>/Retail_Analystics_Dashboard.git
-cd Retail_Analystics_Dashboard
+git clone https://github.com/Nofalzia/Retail_Analytics_Dashboard.git
+cd Retail_Analytics_Dashboard
 npm install
 
 :: 2. Backend dependencies + local env file
@@ -303,8 +307,10 @@ v2 replaces one global mean/σ — which a large anomaly inflates, hiding itself
 previous-14-**calendar**-day baseline per product, zero-filled on days with no sale, σ floored at the
 Poisson counting-noise level, and three guards that must all pass (`|z| >= 2.5`, relative deviation
 >= 25 %, absolute deviation >= 3 units). F1 roughly doubles while flags per seed drop from ~201 to
-~50, which is the precision-first trade the storefront needs: the fixed-percentage baselines reach
-only 0.129 F1 at 30 %.
+~50, which is the precision-first trade the storefront needs. On the held-out seeds neither
+fixed-percentage baseline comes close: a 30 % deviation rule scores precision 0.072 / recall 0.900 /
+F1 0.134 and a 50 % rule 0.168 / 0.722 / 0.270, against v2's 0.379 / 0.544 / 0.446. v2 beats both
+baselines on precision and F1 and only concedes on recall.
 
 ### Ingestion scalability (`ingestion_benchmark.md`)
 
@@ -336,7 +342,7 @@ asserts `rows_processed == file rows` and `rows_failed == 0` on each run.
 ## Project structure
 
 ```
-Retail_Analystics_Dashboard/
+Retail_Analytics_Dashboard/
 +- src/                          React app (entry: src/main.jsx -> src/App.jsx)
 |  +- api/client.js              fetch wrapper, Bearer JWT, VITE_API_URL
 |  +- components/
@@ -387,6 +393,8 @@ Retail_Analystics_Dashboard/
 - **Round-trip latency dominates ingestion, not parsing.** Roughly two thirds of a 100,000-row import
   is database round-trips. The next real lever is one round-trip per file (`COPY ... FROM STDIN`) or a
   database nearer the API, not more JavaScript tuning.
+- **XLSX files are parsed in memory, bounded by the 25 MB upload cap.** Streaming applies to CSV;
+  the SheetJS path reads the whole workbook before rows are written.
 - **Synthetic data.** Validation uses uniformly random rows from a seeded PRNG; real exports have
   skewed distributions, encoding quirks and duplicate SKUs.
 - **Detection is deliberately conservative.** Precision stays below 0.5 by design: the guards trade
@@ -411,4 +419,13 @@ Retail_Analystics_Dashboard/
 - **Explainable analytics** — rule-based / statistical logic only; no ML dependency, no hidden model.
 - **Node scripts over frameworks** — validation, smoke tests and benchmarks are plain Node files that
   can run against a real database with no extra infrastructure.
+
+---
+
+## Credits
+
+- **Developer:** Nofal Zia
+- **Supervisor:** <!-- TODO: add supervisor name -->
+- **Institution:** Bahria University Islamabad
+- **Term:** Fall 2026
 

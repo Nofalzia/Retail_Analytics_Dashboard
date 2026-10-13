@@ -571,18 +571,13 @@ const DataModeSwitcher = ({ dataMode, onSelect }) => {
 // ----------------------------------------------------------------------------
 
 /**
- * Greets the active role, using the local clock for the time of day.
+ * Greets the active role with the store's customary greeting.
  * The role comes from AuthContext (via initialRole) — no display name is
  * invented from the sign-in email (T9).
  * @param {string} activeRole Role currently previewed ('Owner' | 'Manager').
- * @returns {string} e.g. "Good morning, Owner."
+ * @returns {string} e.g. "Assalam-o-Alaikum, Owner."
  */
-const getGreeting = (activeRole) => {
-  const hour = new Date().getHours();
-  const timeOfDay =
-    hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  return `${timeOfDay}, ${activeRole}.`;
-};
+const getGreeting = (activeRole) => `Assalam-o-Alaikum, ${activeRole}.`;
 
 const TopHeader = ({ activeRole, onRoleSelect, dataMode, onDataModeSelect }) => {
   const { isDark, theme, toggleTheme } = useTheme();
@@ -606,7 +601,9 @@ const TopHeader = ({ activeRole, onRoleSelect, dataMode, onDataModeSelect }) => 
           {getGreeting(activeRole)}
         </h1>
         <p className="mt-0.5 text-xs" style={{ color: theme.charcoalMuted }}>
-          Viewing as <span style={{ color: theme.bottleGreen, fontWeight: 600 }}>{activeRole}</span>
+          {activeRole === 'Manager'
+            ? "Here is what needs attention today."
+            : "Here is your store's health today."}
         </p>
       </div>
 
