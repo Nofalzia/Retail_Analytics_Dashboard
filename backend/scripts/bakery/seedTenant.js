@@ -9,7 +9,7 @@
  *      is exactly the expected one — this happens BEFORE any DELETE;
  *   2. inside one transaction, delete ONLY that tenant's recommendations,
  *      anomaly_alerts, sale_transactions, inventory_logs and ingestion_jobs;
- *   3. upsert two users, one store, the categories and the products from
+ *   3. upsert three users, one store, the categories and the products from
  *      products.json, then load the history CSV through one ingestion_jobs row;
  *   4. print the tenant id, users, product count, sale rows, date range and the
  *      credentials, and assert that every count for the other demonstration tenant
@@ -57,6 +57,7 @@ const STORE_NAME      = 'I-10 Branch';
 
 const OWNER_EMAIL   = 'owner@londonbakers.demo';
 const MANAGER_EMAIL = 'manager@londonbakers.demo';
+const CASHIER_EMAIL = 'cashier@londonbakers.demo';
 const PASSWORD      = 'Demo@1234';
 const BCRYPT_ROUNDS = 10;
 
@@ -435,9 +436,15 @@ async function main() {
     }
 
     // ── 4. Users ─────────────────────────────────────────────────────────────
+    // Same store, same password hashing, same upsert shape for all three: the
+    // clerk can only upload (the dashboard READ routes reject the role).
     const passwordHash = await bcrypt.hash(PASSWORD, BCRYPT_ROUNDS);
     const userIds = new Map();
-    for (const [email, role] of [[OWNER_EMAIL, 'owner'], [MANAGER_EMAIL, 'manager']]) {
+    for (const [email, role] of [
+      [OWNER_EMAIL, 'owner'],
+      [MANAGER_EMAIL, 'manager'],
+      [CASHIER_EMAIL, 'data_entry_clerk'],
+    ]) {
       const { rows: [user] } = await client.query(
         `INSERT INTO users (tenant_id, email, password_hash, role, store_id)
          VALUES ($1, $2, $3, $4, $5)
@@ -564,6 +571,7 @@ async function main() {
   console.log('\n  Credentials:');
   console.log(`    ${OWNER_EMAIL.padEnd(30)} / ${PASSWORD}   (owner)`);
   console.log(`    ${MANAGER_EMAIL.padEnd(30)} / ${PASSWORD}   (manager)`);
+  console.log(`    ${CASHIER_EMAIL.padEnd(30)} / ${PASSWORD}   (data_entry_clerk)`);
 
   // ── 10. Isolation check — the other demo tenant must be byte-for-byte unchanged ──
   const demoAfter = await countTenantRows(query, DEMO_TENANT_SLUG);

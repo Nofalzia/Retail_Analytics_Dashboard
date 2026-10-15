@@ -17,13 +17,14 @@
  */
 
 import { Router }       from 'express';
-import { requireAuth }  from '../middleware/auth.js';
+import { requireAuth, requireDashboardRead } from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { query }        from '../db/pool.js';
 
 const router = Router();
 
-router.get('/', requireAuth, resolveTenant, async (req, res) => {
+// Read-only route: owner / manager / system_admin only.
+router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, res) => {
   const { tenantId } = req;
 
   // ── Parse query params ─────────────────────────────────────────────────────

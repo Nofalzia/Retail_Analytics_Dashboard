@@ -8,7 +8,7 @@
  */
 
 import { Router } from 'express';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireRole, requireDashboardRead } from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { query, getClient } from '../db/pool.js';
 import { generateRecommendations } from '../services/recommendationEngine.js';
@@ -16,7 +16,8 @@ import { generateRecommendations } from '../services/recommendationEngine.js';
 const router = Router();
 
 // ── GET /api/recommendations?storeId= ─────────────────────────────────────────
-router.get('/', requireAuth, resolveTenant, async (req, res) => {
+// Read-only route: owner / manager / system_admin only.
+router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, res) => {
   const { tenantId } = req;
   const storeId = req.query.storeId || null;
 

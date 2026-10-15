@@ -3,6 +3,7 @@
  * ──────────────────────────────────────────────────────────────────────────────
  * POST /api/upload
  * GET  /api/upload/:jobId/status
+ * GET  /api/upload/:jobId/summary
  *
  * The file parsing pipeline. This is the Phase 2 scalability centrepiece.
  *
@@ -229,6 +230,87 @@ router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
     : null;
 
   return res.json({ ...job, progress_pct: progressPct });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/upload/:jobId/summary
+// A roll-up of ONE import job: how much of the file landed, the dates it covers
+// and which products it moved most. Tenant-scoped — a job belonging to another
+// tenant is indistinguishable from a job that does not exist (404).
+//
+//   jobId         — echo of the requested id
+//   status        — ingestion_jobs.status
+//   fileName      — ingestion_jobs.original_filename, read through to_jsonb so a
+//                   schema without that column yields null instead of an error
+//   dateFrom/dateTo — min/max sale_date among THIS job's rows (null if none)
+//   itemsCount    — distinct products in this job's rows
+//   unitsSold     — Σ quantity_sold
+//   revenue       — Σ total_revenue (the generated column)
+//   topItems      — the three products with the highest units, descending
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
+  const { tenantId } = req;
+  const { jobId }    = req.params;
+
+  try {
+    // The job must belong to this tenant; otherwise it does not exist for us.
+    const { rows: jobRows } = await query(
+      `SELECT j.id,
+              j.status,
+              to_jsonb(j) ->> 'original_filename' AS file_name,
+              j.rows_processed,
+              j.rows_failed
+         FROM ingestion_jobs j
+        WHERE j.id = $1 AND j.tenant_id = $2`,
+      [jobId, tenantId],
+    );
+
+    if (jobRows.length === 0) {
+      return res.status(404).json({ error: 'JOB_NOT_FOUND', message: 'Import job not found.' });
+    }
+    const job = jobRows[0];
+
+    const { rows: [totals] } = await query(
+      `SELECT count(DISTINCT st.product_id)::int                AS items_count,
+              coalesce(sum(st.quantity_sold), 0)::int             AS units_sold,
+              coalesce(sum(st.total_revenue), 0)::numeric(15, 2)  AS revenue,
+              min(st.sale_date)::text                             AS date_from,
+              max(st.sale_date)::text                             AS date_to
+         FROM sale_transactions st
+        WHERE st.ingestion_job_id = $1 AND st.tenant_id = $2`,
+      [jobId, tenantId],
+    );
+
+    const { rows: topRows } = await query(
+      `SELECT p.name                        AS name,
+              sum(st.quantity_sold)::int    AS units
+         FROM sale_transactions st
+         JOIN products p
+           ON p.id = st.product_id AND p.tenant_id = st.tenant_id
+        WHERE st.ingestion_job_id = $1 AND st.tenant_id = $2
+        GROUP BY p.name
+        ORDER BY units DESC, p.name ASC
+        LIMIT 3`,
+      [jobId, tenantId],
+    );
+
+    return res.json({
+      jobId:         job.id,
+      status:        job.status,
+      fileName:      job.file_name ?? null,
+      rowsProcessed: job.rows_processed,
+      rowsFailed:    job.rows_failed,
+      dateFrom:      totals.date_from,
+      dateTo:        totals.date_to,
+      itemsCount:    totals.items_count,
+      unitsSold:     totals.units_sold,
+      revenue:       Number(totals.revenue),
+      topItems:      topRows.map((row) => ({ name: row.name, units: row.units })),
+    });
+  } catch (err) {
+    console.error('[upload] GET summary error:', err.message);
+    return res.status(500).json({ error: 'QUERY_ERROR' });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@
 import { Router }       from 'express';
 import { requireAuth }  from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
-import { requireRole }  from '../middleware/auth.js';
+import { requireRole, requireDashboardRead } from '../middleware/auth.js';
 import { query, getClient } from '../db/pool.js';
 import { runAllDetection } from '../services/detectionEngine.js';
 import { generateRecommendations } from '../services/recommendationEngine.js';
@@ -22,7 +22,8 @@ import { generateRecommendations } from '../services/recommendationEngine.js';
 const router = Router();
 
 // ── GET /api/alerts ───────────────────────────────────────────────────────────
-router.get('/', requireAuth, resolveTenant, async (req, res) => {
+// Read-only route: owner / manager / system_admin only.
+router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, res) => {
   const { tenantId }  = req;
   const storeId       = req.query.storeId || null;
   const limit         = Math.min(parseInt(req.query.limit) || 20, 100);

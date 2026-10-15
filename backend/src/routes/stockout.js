@@ -26,13 +26,14 @@
  */
 
 import { Router }        from 'express';
-import { requireAuth }   from '../middleware/auth.js';
+import { requireAuth, requireDashboardRead } from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { query }         from '../db/pool.js';
 
 const router = Router();
 
-router.get('/', requireAuth, resolveTenant, async (req, res) => {
+// Read-only route: owner / manager / system_admin only.
+router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, res) => {
   const { tenantId } = req;
   const storeId      = req.query.storeId;
   const velocityDays = Math.max(1, Math.min(parseInt(req.query.velocityDays) || 14, 90));
