@@ -2,6 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDesignTokens, useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { resolveStoreId } from '../../utils/resolveStoreId.js';
+import {
+  MAX_FILE_SIZE_MB,
+  REQUIRED_COLUMN_LABELS,
+  REQUIRED_COLUMNS,
+  TEMPLATE_FILENAME,
+  downloadTemplate,
+  missingColumnsFromLog,
+  validateSalesFile,
+} from '../../utils/salesUpload.js';
 import ApiErrorNotice from '../ApiErrorNotice';
 
 // Demo-mode simulation banner (only reachable when dataMode !== 'live').
@@ -17,31 +26,14 @@ const STAGE_DEFINITIONS = [
 ];
 
 // ----------------------------------------------------------------------------
-// Live ingestion constants — mirror the backend contract.
-// Required headers: same canonical names as REQUIRED_COLUMNS in
-// backend/src/utils/validators.js (the backend also accepts aliases, e.g.
-// "sale date"). The size cap mirrors MAX_FILE_SIZE_MB in
-// backend/src/routes/upload.js (default 25). The target store is resolved from
-// the signed-in account's token (see resolveStoreId), never pinned here.
+// Live ingestion contract + cadence.
+// The file contract itself — required headers, size cap, example-file download,
+// plain-language failure wording — lives in src/utils/salesUpload.js so this hub
+// and the cashier upload screen can never drift apart. The target store is
+// resolved from the signed-in account's token (see resolveStoreId), never pinned
+// here.
 // ----------------------------------------------------------------------------
 
-const REQUIRED_COLUMNS = ['date', 'sku', 'product_name', 'quantity_sold', 'unit_price', 'unit_cost'];
-
-const REQUIRED_COLUMN_LABELS = {
-  date: 'Sale date',
-  sku: 'SKU / product code',
-  product_name: 'Product name',
-  quantity_sold: 'Quantity sold',
-  unit_price: 'Unit price',
-  unit_cost: 'Unit cost',
-};
-
-const TEMPLATE_HEADER = 'date,sku,product_name,quantity_sold,unit_price,unit_cost';
-const TEMPLATE_FILENAME = 'retail-import-template.csv';
-
-const MAX_FILE_SIZE_MB = parseInt(import.meta.env.VITE_MAX_FILE_SIZE_MB, 10) || 25;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const ALLOWED_EXTENSIONS = ['.csv', '.xlsx'];
 // Progress polling cadence: brisk at first (imports of a few thousand rows
 // finish in seconds), then gentler so a long import does not hammer the API.
 const POLL_FAST_INTERVAL_MS = 1000;
@@ -54,20 +46,6 @@ const STALL_TIMEOUT_MS = 90_000;
 const ABSOLUTE_MAX_POLL_MS = 30 * 60 * 1000;
 // A 429 on a status poll is a speed bump, not a failure: back off and retry.
 const RATE_LIMIT_BACKOFF_MS = 5000;
-
-/** Generates a CSV with the exact required headers, client-side. */
-const downloadTemplate = () => {
-  const blob = new Blob(
-    [`${TEMPLATE_HEADER}\n2026-10-01,SKU-TPLT-001,Sample Product,10,120.00,80.00\n`],
-    { type: 'text/csv' },
-  );
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = TEMPLATE_FILENAME;
-  anchor.click();
-  URL.revokeObjectURL(url);
-};
 
 const strokeProps = {
   fill: 'none',
@@ -263,18 +241,14 @@ const UploadDropzone = ({ onFiles, onReject, onDownloadTemplate, showLoadSample 
   const { CARD_SURFACE, PALETTE } = useDesignTokens();
 
   // Client-side pre-checks that mirror the backend contract in
-  // backend/src/routes/upload.js — extension filter + MAX_FILE_SIZE_MB cap.
+  // backend/src/routes/upload.js — extension filter + MAX_FILE_SIZE_MB cap. The
+  // wording comes from the shared module so both upload screens say the same thing.
   const acceptFiles = useCallback((files) => {
     const accepted = [];
     files.forEach((file) => {
-      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-      if (!ALLOWED_EXTENSIONS.includes(ext)) {
-        onReject?.(`"${file.name}" is not supported. Only .csv and .xlsx files can be imported.`);
-      } else if (file.size > MAX_FILE_SIZE_BYTES) {
-        onReject?.(`"${file.name}" is larger than the ${MAX_FILE_SIZE_MB}MB upload limit.`);
-      } else {
-        accepted.push(file);
-      }
+      const check = validateSalesFile(file);
+      if (check.ok) accepted.push(file);
+      else onReject?.(check.message);
     });
     if (accepted.length) onFiles?.(accepted);
   }, [onFiles, onReject]);
@@ -556,16 +530,6 @@ const MockProcessingJobCard = ({ job }) => {
 // Real-job helpers (live mode)
 // ----------------------------------------------------------------------------
 
-const extractMissingColumns = (errorLog) => {
-  if (!Array.isArray(errorLog)) return [];
-  for (const entry of errorLog) {
-    if (entry && entry.type === 'MISSING_COLUMNS' && Array.isArray(entry.columns)) {
-      return entry.columns;
-    }
-  }
-  return [];
-};
-
 const describeErrors = (errorLog) => {
   if (!Array.isArray(errorLog)) return [];
   const lines = [];
@@ -591,7 +555,7 @@ const describeErrors = (errorLog) => {
 // rows_processed, rows_failed. A null percent renders the pulsing "working"
 // ring; nothing here is fabricated.
 const deriveRealStages = (upload) => {
-  const missing = extractMissingColumns(upload.errorLog);
+  const missing = missingColumnsFromLog(upload.errorLog);
   const isFailed = upload.status === 'failed';
   const isSchemaError = isFailed && missing.length > 0;
   const rowsPct = upload.totalRows
@@ -797,7 +761,7 @@ const ResultsPanel = ({ upload }) => {
   const isFailed = upload.status === 'failed';
   const surface = isFailed ? ALERT_SURFACE.warning : null;
   const errors = describeErrors(upload.errorLog);
-  const missing = extractMissingColumns(upload.errorLog);
+  const missing = missingColumnsFromLog(upload.errorLog);
   const totalRows = upload.totalRows ?? (upload.rowsProcessed + upload.rowsFailed);
 
   return (

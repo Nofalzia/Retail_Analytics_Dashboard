@@ -144,6 +144,13 @@ export const api = {
   getUploadStatus: (jobId) =>
     apiFetch(`/api/upload/${encodeURIComponent(jobId)}/status`),
 
+  /**
+   * GET /api/upload/:jobId/summary — roll-up of one import job
+   * (rows, dates covered, items, units, revenue, top items).
+   */
+  getUploadSummary: (jobId) =>
+    apiFetch(`/api/upload/${encodeURIComponent(jobId)}/summary`),
+
   /** PATCH /api/alerts/:id/ack — acknowledge an alert (manager/owner only) */
   acknowledgeAlert: (id) =>
     apiFetch(`/api/alerts/${encodeURIComponent(id)}/ack`, { method: 'PATCH' }),

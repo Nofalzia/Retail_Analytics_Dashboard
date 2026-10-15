@@ -335,16 +335,32 @@ const Sidebar = ({ activeView, onSelect, tenant = null }) => {
       </nav>
 
       <div className="px-6 py-6">
-        <button
-          type="button"
-          onClick={logout}
-          className="mb-3 block w-full rounded-lg px-1 py-1 text-left text-xs font-medium transition-colors duration-150"
-          style={{ color: PALETTE.charcoalMuted }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = PALETTE.charcoal; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = PALETTE.charcoalMuted; }}
-        >
-          Sign out
-        </button>
+        {/* Sign out and Switch user do the same thing — the second name exists so
+            the hand-over is obvious while presenting (the sign-in screen offers
+            the demo accounts, see src/config/demoTenants.js). */}
+        <div className="mb-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={logout}
+            className="rounded-lg px-1 py-1 text-left text-xs font-medium transition-colors duration-150"
+            style={{ color: PALETTE.charcoalMuted }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = PALETTE.charcoal; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = PALETTE.charcoalMuted; }}
+          >
+            Sign out
+          </button>
+          <span aria-hidden="true" className="text-xs" style={{ color: PALETTE.charcoalMuted }}>·</span>
+          <button
+            type="button"
+            onClick={logout}
+            className="rounded-lg px-1 py-1 text-left text-xs font-medium transition-colors duration-150"
+            style={{ color: PALETTE.charcoalMuted }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = PALETTE.charcoal; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = PALETTE.charcoalMuted; }}
+          >
+            Switch user
+          </button>
+        </div>
         <div
           className="rounded-xl p-4"
           style={{

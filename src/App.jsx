@@ -3,6 +3,8 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginScreen from './components/auth/LoginScreen';
 import DashboardShell from './components/layout/DashboardShell';
+import CashierWorkspace from './components/cashier/CashierWorkspace';
+import { readTokenClaims } from './utils/tokenClaims.js';
 import BusinessOwnerDashboard from './components/dashboard/BusinessOwnerDashboard';
 import StoreManagerDashboard from './components/dashboard/StoreManagerDashboard';
 import DataIngestionHub from './components/ingestion/DataIngestionHub';
@@ -17,15 +19,29 @@ const ROLE_LABELS = {
   system_admin: 'System Administrator',
 };
 
+/**
+ * API role for till-side accounts (see the role CHECK in backend/db/schema.sql).
+ * They may upload files but may not read dashboards, so they get their own shell
+ * instead of DashboardShell — no dashboard view is reachable from it.
+ */
+const TILL_ROLE = 'data_entry_clerk';
+
 function AppContent() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, token } = useAuth();
 
   // Gate the entire dashboard behind authentication.
   // LoginScreen handles its own styling — no DashboardShell wrapper needed.
   if (!isAuthenticated) return <LoginScreen />;
 
+  // The user object lives in React state, so a refresh keeps the token but loses
+  // the role. Read the role back off the token so the account always lands in the
+  // shell that matches it — the server still re-checks every request.
+  const role = user?.role ?? readTokenClaims(token)?.role ?? null;
+
+  if (role === TILL_ROLE) return <CashierWorkspace />;
+
   return (
-    <DashboardShell initialRole={ROLE_LABELS[user?.role] ?? 'Owner'}>
+    <DashboardShell initialRole={ROLE_LABELS[role] ?? 'Owner'}>
       {(activeView, activeRole, dataMode) => {
         const hasData = dataMode !== 'empty';
         // T9: the preview switcher only offers Owner and Manager, so there is no

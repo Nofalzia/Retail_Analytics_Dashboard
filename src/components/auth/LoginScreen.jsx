@@ -6,20 +6,33 @@
  *
  * Demo credentials (pre-filled):
  *   Email      : owner@demo.com
- *   Password   : Demo@1234
+ *   Password   : Demo@1234 (or VITE_DEMO_PASSWORD when the build sets one)
  *   Tenant slug: from src/config/demoTenants.js (default: demo-kiryana)
+ *
+ * With VITE_DEMO_MODE=true the card also offers "Quick sign-in" chips: one per
+ * demo user of the store named in the slug field (labels + emails come from
+ * src/config/demoTenants.js, the password from VITE_DEMO_PASSWORD).
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { DEMO_TENANTS, findDemoTenantBySlug } from '../../config/demoTenants.js';
+import { DEMO_TENANTS, findDemoTenantBySlug, findDemoUsersBySlug } from '../../config/demoTenants.js';
 
 /** Store offered when no switch is pending — also the mock-preview tenant. */
 const DEFAULT_TENANT = DEMO_TENANTS[0];
 
-/** Shared demo password. Prefilled only for the default demo store. */
-const DEMO_PASSWORD = 'Demo@1234';
+/**
+ * Fallback prefill for the seeded demo store, so behaviour is unchanged when the
+ * environment variable is not set. The quick sign-in chips never fall back to it:
+ * they only ever use VITE_DEMO_PASSWORD.
+ */
+const LEGACY_DEMO_PASSWORD = 'Demo@1234';
+const ENV_DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || '';
+const PREFILL_PASSWORD = ENV_DEMO_PASSWORD || LEGACY_DEMO_PASSWORD;
+
+/** Quick sign-in chips are opt-in per build — see .env.example. */
+const SHOW_QUICK_SIGN_IN = import.meta.env.VITE_DEMO_MODE === 'true';
 
 // ── Design tokens (kept local — no DashboardShell dependency at login time) ──
 
@@ -32,6 +45,7 @@ const PALETTE = {
   bottleGreen:     '#1E362D',
   bottleGreenHover:'#294A3D',
   bottleGreenSoft: 'rgba(30, 54, 45, 0.08)',
+  bottleGreenSoftStrong: 'rgba(30, 54, 45, 0.14)',
   terracottaSoft:  'rgba(190, 106, 75, 0.10)',
   terracotta:      '#BE6A4B',
 };
@@ -111,7 +125,7 @@ export default function LoginScreen() {
 
   const [form, setForm] = useState({
     email:      pendingTenant ? pendingTenant.email : DEFAULT_TENANT.email,
-    password:   pendingTenant ? '' : DEMO_PASSWORD,
+    password:   pendingTenant ? '' : PREFILL_PASSWORD,
     tenantSlug: pendingTenant ? pendingTenant.slug : DEFAULT_TENANT.slug,
   });
   const [error,   setError]   = useState(
@@ -128,11 +142,19 @@ export default function LoginScreen() {
 
   const set = (field) => (value) => setForm((prev) => ({ ...prev, [field]: value }));
 
-  const handleLogin = async () => {
+  // Quick sign-in chips describe whichever demo store the slug field currently
+  // names. An unknown slug simply offers no chips, and the whole block is hidden
+  // unless the build turned demo mode on.
+  const demoUsers = useMemo(
+    () => (SHOW_QUICK_SIGN_IN ? findDemoUsersBySlug(form.tenantSlug.trim()) : []),
+    [form.tenantSlug],
+  );
+
+  const submit = async (email, password, tenantSlug) => {
     setError(null);
     setLoading(true);
     try {
-      await login(form.email.trim(), form.password, form.tenantSlug.trim());
+      await login(email, password, tenantSlug);
     } catch (err) {
       setError(
         err.status === 401
@@ -142,6 +164,22 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogin = () => submit(form.email.trim(), form.password, form.tenantSlug.trim());
+
+  /**
+   * Quick sign-in chip: fill the store slug and that account's email, add the
+   * demo password when the build provides one, and submit. Without
+   * VITE_DEMO_PASSWORD only the email is filled — typing the password stays a
+   * deliberate act, and no password is ever hardcoded here.
+   * @param {import('../../config/demoTenants.js').DemoUser} entry Chip pressed.
+   */
+  const handleQuickSignIn = (entry) => {
+    const tenantSlug = form.tenantSlug.trim() || DEFAULT_TENANT.slug;
+    setForm({ email: entry.email, password: ENV_DEMO_PASSWORD, tenantSlug });
+    setError(null);
+    if (ENV_DEMO_PASSWORD) submit(entry.email, ENV_DEMO_PASSWORD, tenantSlug);
   };
 
   const handleKeyDown = (e) => {
@@ -257,6 +295,52 @@ export default function LoginScreen() {
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          {/* Quick sign-in — demo builds only. Labels and emails are tenant data
+              (src/config/demoTenants.js); the password is never stored in code. */}
+          {demoUsers.length > 0 && (
+            <div
+              className="mt-5 rounded-xl px-4 py-4"
+              style={{ backgroundColor: PALETTE.sand, border: `1px solid ${PALETTE.sandBorder}` }}
+            >
+              <p
+                className="text-[11px] font-semibold uppercase tracking-wide"
+                style={{ color: PALETTE.charcoalMuted }}
+              >
+                Quick sign-in
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {demoUsers.map((entry) => (
+                  <button
+                    key={entry.email}
+                    type="button"
+                    onClick={() => handleQuickSignIn(entry)}
+                    disabled={loading}
+                    className="rounded-lg px-3.5 py-2 text-xs font-medium transition-colors duration-150"
+                    style={{
+                      backgroundColor: PALETTE.bottleGreenSoft,
+                      border:           `1px solid ${PALETTE.bottleGreenSoft}`,
+                      color:            PALETTE.bottleGreen,
+                      cursor:           loading ? 'not-allowed' : 'pointer',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!loading) e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoftStrong;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!loading) e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
+                    }}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+              {!ENV_DEMO_PASSWORD && (
+                <p className="mt-3 text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
+                  Enter the password to continue.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Demo hint */}

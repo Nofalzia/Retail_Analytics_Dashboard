@@ -11,16 +11,42 @@
  */
 
 /**
+ * @typedef {Object} DemoUser
+ * @property {string} label Role label for the quick sign-in chip. Comes from
+ *   tenant config so no industry term ever appears in code ('Cashier', 'Manager',
+ *   'Owner' are generic staff roles, matching the API's role column).
+ * @property {string} email Account that exists for that tenant.
+ */
+
+/**
  * @typedef {Object} DemoTenant
  * @property {string} label Human-readable store name shown in the UI.
  * @property {string} slug  Value posted to /api/auth/login as `tenantSlug`.
  * @property {string} email Owner email that exists for that tenant.
+ * @property {DemoUser[]} users Demo accounts the quick sign-in chips offer.
  */
 
 /** @type {DemoTenant[]} */
 export const DEMO_TENANTS = [
-  { label: 'Demo Kiryana Store', slug: 'demo-kiryana',      email: 'owner@demo.com' },
-  { label: 'London Bakers I-10', slug: 'london-bakers-i10', email: 'owner@londonbakers.demo' },
+  {
+    label: 'Demo Kiryana Store',
+    slug: 'demo-kiryana',
+    email: 'owner@demo.com',
+    users: [
+      { label: 'Owner',   email: 'owner@demo.com' },
+      { label: 'Manager', email: 'manager@demo.com' },
+    ],
+  },
+  {
+    label: 'London Bakers I-10',
+    slug: 'london-bakers-i10',
+    email: 'owner@londonbakers.demo',
+    users: [
+      { label: 'Cashier', email: 'cashier@londonbakers.demo' },
+      { label: 'Manager', email: 'manager@londonbakers.demo' },
+      { label: 'Owner',   email: 'owner@londonbakers.demo' },
+    ],
+  },
 ];
 
 /**
@@ -36,5 +62,14 @@ export const PRIMARY_DEMO_SLUG = DEMO_TENANTS[0].slug;
  * @returns {DemoTenant|undefined} The matching entry, if any.
  */
 export const findDemoTenantBySlug = (slug) => DEMO_TENANTS.find((tenant) => tenant.slug === slug);
+
+/**
+ * Demo accounts of one tenant, for the quick sign-in chips. Unknown slugs simply
+ * offer no chips. No password is stored here — the chips read it from
+ * VITE_DEMO_PASSWORD (see .env.example).
+ * @param {string|null|undefined} slug Tenant slug typed or picked on the form.
+ * @returns {DemoUser[]} The tenant's demo users, or [] when the slug is unknown.
+ */
+export const findDemoUsersBySlug = (slug) => findDemoTenantBySlug(slug)?.users ?? [];
 
 export default DEMO_TENANTS;
