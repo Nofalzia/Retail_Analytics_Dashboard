@@ -7,7 +7,9 @@ import {
   REQUIRED_COLUMN_LABELS,
   REQUIRED_COLUMNS,
   TEMPLATE_FILENAME,
+  describeIngestionNotices,
   downloadTemplate,
+  missingColumnsEntryFromLog,
   missingColumnsFromLog,
   validateSalesFile,
 } from '../../utils/salesUpload.js';
@@ -761,7 +763,10 @@ const ResultsPanel = ({ upload }) => {
   const isFailed = upload.status === 'failed';
   const surface = isFailed ? ALERT_SURFACE.warning : null;
   const errors = describeErrors(upload.errorLog);
-  const missing = missingColumnsFromLog(upload.errorLog);
+  const missingEntry = missingColumnsEntryFromLog(upload.errorLog);
+  const missing = missingEntry?.columns ?? [];
+  const detectedHeaders = missingEntry?.detectedHeaders ?? [];
+  const notices = describeIngestionNotices(upload);
   const totalRows = upload.totalRows ?? (upload.rowsProcessed + upload.rowsFailed);
 
   return (
@@ -811,6 +816,37 @@ const ResultsPanel = ({ upload }) => {
               The server didn't return a detailed reason — check your file structure and try again.
             </p>
           )}
+          {detectedHeaders.length > 0 && (
+            <p className="mt-2 text-[11px] leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+              Headers we found:{' '}
+              <span className="font-medium" style={{ color: PALETTE.charcoal }}>
+                {detectedHeaders.join(', ')}
+              </span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {notices.length > 0 && (
+        <div
+          className="mt-4 rounded-lg px-3 py-2.5 text-xs"
+          style={{
+            backgroundColor: ALERT_SURFACE.warning.backgroundColor,
+            border: `1px solid ${ALERT_SURFACE.warning.borderColor}`,
+          }}
+        >
+          <p className="flex items-center gap-2 font-medium" style={{ color: PALETTE.charcoal }}>
+            <AlertTriangleIcon
+              className="h-3.5 w-3.5 shrink-0"
+              style={{ color: ALERT_SURFACE.warning.borderColor }}
+            />
+            How this import filled the gaps
+          </p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-4" style={{ color: PALETTE.charcoalMuted }}>
+            {notices.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -985,6 +1021,10 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
                 rowsProcessed: job.rows_processed || 0,
                 rowsFailed: job.rows_failed || 0,
                 errorLog: Array.isArray(job.error_log) ? job.error_log : [],
+                // T12a: what the import estimated, and how many rows its status
+                // filter ignored. Both come from the job itself — nothing inferred.
+                assumptions: Array.isArray(job.assumptions) ? job.assumptions : [],
+                skippedByStatus: job.skippedByStatus || 0,
               }
             : u));
 
@@ -1058,6 +1098,8 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
             rowsProcessed: 0,
             rowsFailed: 0,
             errorLog: [],
+            assumptions: [],
+            skippedByStatus: 0,
           }]);
           setActiveJobIds((ids) => [...ids, jobId]);
         })

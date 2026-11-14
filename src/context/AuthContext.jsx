@@ -9,6 +9,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { api, getToken, setToken, clearToken } from '../api/client.js';
 import { findDemoTenantBySlug } from '../config/demoTenants.js';
+import { readTokenClaims } from '../utils/tokenClaims.js';
 
 const AuthContext = createContext(null);
 
@@ -46,6 +47,131 @@ function removePendingTenant() {
 }
 
 /**
+ * localStorage key for the non-secret session summary written at login. It lets
+ * a refresh restore the signed-in role and the tenant branding, which otherwise
+ * only live in React state. It never holds a password and never duplicates the
+ * token: the JWT stays the single credential, under its own key (rad_token).
+ */
+const SESSION_KEY = 'rad_session';
+
+/**
+ * Reads and shape-checks the stored session summary.
+ * @returns {{email: string|null, role: string|null, tenantId: string|null,
+ *   storeId: string|null,
+ *   tenant: {name: string|null, slug: string|null, brandAccent: string|null}|null}|null}
+ *   Normalised summary, or null when nothing usable is stored.
+ */
+function readStoredSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const tenant = parsed.tenant && typeof parsed.tenant === 'object' ? parsed.tenant : null;
+    return {
+      email:    typeof parsed.email === 'string' ? parsed.email : null,
+      role:     typeof parsed.role === 'string' ? parsed.role : null,
+      tenantId: typeof parsed.tenantId === 'string' ? parsed.tenantId : null,
+      storeId:  typeof parsed.storeId === 'string' ? parsed.storeId : null,
+      tenant: tenant
+        ? {
+            name:        typeof tenant.name === 'string' ? tenant.name : null,
+            slug:        typeof tenant.slug === 'string' ? tenant.slug : null,
+            brandAccent: typeof tenant.brandAccent === 'string' ? tenant.brandAccent : null,
+          }
+        : null,
+    };
+  } catch {
+    return null;  // storage blocked or malformed summary — treat as no session
+  }
+}
+
+/**
+ * Writes the session summary. Best-effort: a blocked localStorage only costs the
+ * user the refresh shortcut, never the login itself.
+ * @param {{email: string, role: string, tenantId: string, storeId: string|null,
+ *   tenant: {name: string, slug: string, brandAccent: string|null}}} session
+ */
+function persistSession(session) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    /* Storage blocked — the in-memory state still carries this session. */
+  }
+}
+
+/** Removes the session summary; always called together with the token. */
+function removeStoredSession() {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* Storage blocked — nothing to clean up. */
+  }
+}
+
+/**
+ * Reads the token's `exp` claim (seconds since the epoch) as a millisecond
+ * timestamp. A convenience read for the boot check only: the server re-verifies
+ * the signature on every request.
+ * @param {string|null|undefined} token Raw JWT as stored by api/client.js.
+ * @returns {number|null} Expiry in ms, or null when unreadable or absent.
+ */
+function readTokenExpiryMs(token) {
+  try {
+    const base64 = String(token ?? '').split('.')[1];
+    if (!base64) return null;
+    const normalised = base64.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalised + '='.repeat((4 - (normalised.length % 4)) % 4);
+    const claims = JSON.parse(atob(padded));
+    return Number.isFinite(claims?.exp) ? claims.exp * 1000 : null;
+  } catch {
+    return null;  // malformed or truncated token — the API remains the judge
+  }
+}
+
+/**
+ * Boot-time auth state. Read synchronously during the provider's first render so
+ * the correct shell and tenant branding paint immediately — no flash of the
+ * owner shell while the role is worked out.
+ * The stored summary is trusted only while it agrees with the token: token
+ * unexpired, same tenantId, same role. Anything else drops both keys, leaving
+ * the user on the sign-in screen.
+ * @returns {{token: string|null, user: object|null, tenant: object|null}} Hydrated auth state.
+ */
+function readInitialAuth() {
+  const token   = getToken();
+  const claims  = readTokenClaims(token);
+  const session = readStoredSession();
+  const expiry  = readTokenExpiryMs(token);
+
+  const usable = !!token && !!session && !!claims &&
+    typeof claims.role === 'string' && claims.role !== '' &&
+    typeof claims.tenantId === 'string' && claims.tenantId !== '' &&
+    expiry !== null && expiry > Date.now() &&
+    session.role === claims.role &&
+    session.tenantId === claims.tenantId;
+
+  if (!usable) {
+    // Missing, mismatched or expired pair: start clean, never half-signed-in.
+    clearToken();
+    removeStoredSession();
+    return { token: null, user: null, tenant: null };
+  }
+
+  return {
+    token,
+    user: {
+      email:    session.email,
+      role:     session.role,
+      tenantId: session.tenantId,
+      storeId:  session.storeId ?? claims.storeId,
+    },
+    tenant: session.tenant,
+  };
+}
+
+/**
  * Reads the `storeId` claim out of the token we just stored, so the dashboards
  * can scope their queries to the account's own store (the id is generated per
  * tenant at seed time, so it cannot live in frontend config).
@@ -69,11 +195,14 @@ function readStoreIdFromToken(token) {
 
 export function AuthProvider({ children }) {
   // Initialise from localStorage so refreshing the page keeps you logged in.
-  const [token, setTokenState] = useState(() => getToken());
-  const [user,  setUser]       = useState(null);
+  // One synchronous read restores the token, the user and the tenant branding,
+  // so the first paint is already the shell the account belongs in.
+  const [initial] = useState(readInitialAuth);
+  const [token, setTokenState] = useState(initial.token);
+  const [user,  setUser]       = useState(initial.user);
   // Tenant branding for the signed-in store (name / slug / brandAccent), taken
-  // from the login response. React state only — nothing extra in localStorage.
-  const [tenant, setTenant]    = useState(null);
+  // from the login response and restored from the session summary (rad_session).
+  const [tenant, setTenant]    = useState(initial.tenant);
   // Store-switcher hand-off: read once at mount, refreshed by switchTenant.
   const [pendingTenant, setPendingTenant] = useState(readPendingTenant);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -88,15 +217,17 @@ export function AuthProvider({ children }) {
   }, [token]);
 
   // A single global listener: any authenticated API call that returns 401
-  // dispatches 'rad:unauthorized' (see api/client.js). We clear auth state and
-  // flag the login screen to show the session-expiry notice. The busyRef guard
-  // ensures many simultaneous 401s trigger exactly one logout, and only while
-  // a token was actually present (a failed login's 401 must NOT fire this).
+  // dispatches 'rad:unauthorized' (see api/client.js). We clear auth state (and
+  // the persisted session summary) and flag the login screen to show the
+  // session-expiry notice. The busyRef guard ensures many simultaneous 401s
+  // trigger exactly one logout, and only while a token was actually present
+  // (a failed login's 401 must NOT fire this).
   useEffect(() => {
     const onUnauthorized = () => {
       if (busyRef.current || !tokenRef.current) return;
       busyRef.current = true;
       clearToken();
+      removeStoredSession();
       setTokenState(null);
       setUser(null);
       setTenant(null);
@@ -111,21 +242,36 @@ export function AuthProvider({ children }) {
     const data = await api.login(email, password, tenantSlug);
     setToken(data.token);
     setTokenState(data.token);
-    setUser({
-      role:     data.role,
-      tenantId: data.tenantId,
-      email,
-      storeId:  data.storeId ?? readStoreIdFromToken(data.token),
-    });
+
     // The API returns the tenant it resolved (name / slug / brandAccent). Builds
     // that only return ids fall back to the local demo directory.
     const resolvedSlug = data?.tenant?.slug ?? tenantSlug;
     const knownTenant  = findDemoTenantBySlug(resolvedSlug);
-    setTenant({
+    const storeId      = data.storeId ?? readStoreIdFromToken(data.token);
+    const resolvedTenant = {
       name:        data?.tenant?.name ?? knownTenant?.label ?? resolvedSlug,
       slug:        resolvedSlug,
       brandAccent: data?.tenant?.brandAccent ?? null,
+    };
+
+    setUser({
+      role:     data.role,
+      tenantId: data.tenantId,
+      email,
+      storeId,
     });
+    setTenant(resolvedTenant);
+
+    // Non-secret summary for the next page load: identity, role and branding
+    // only. No password, and no second copy of the token.
+    persistSession({
+      email,
+      role:     data.role,
+      tenantId: data.tenantId,
+      storeId,
+      tenant:   resolvedTenant,
+    });
+
     setSessionExpired(false);
     busyRef.current = false;
     return data;
@@ -134,6 +280,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     setTenant(null);
     clearToken();
+    removeStoredSession();
     setTokenState(null);
     setUser(null);
     setSessionExpired(false);
@@ -154,7 +301,7 @@ export function AuthProvider({ children }) {
       /* Storage blocked — the login screen still receives it from this state. */
     }
     setPendingTenant(pending);
-    logout();
+    logout();   // also drops the token and the rad_session summary
   }, [logout]);
 
   /** Consumed by the sign-in screen once it has prefilled the fields. */

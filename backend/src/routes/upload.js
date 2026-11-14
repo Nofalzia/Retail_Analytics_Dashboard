@@ -208,13 +208,21 @@ router.post(
 // GET /api/upload/:jobId/status
 // Returns the current status of an ingestion job.
 // The frontend polls this every 1–2 seconds to drive the progress bar.
+//
+//   row counters — total_rows, rows_processed, rows_failed (rows skipped by the
+//                  status filter are NOT failures and are not counted here)
+//   assumptions  — what the import had to estimate, e.g. a cost derived from the
+//                  price because the file had no cost column
+//   skippedByStatus — rows ignored because their status was not a completed sale
+//   column_map   — canonical column name → header found in the file
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
   const { tenantId } = req;
   const { jobId }    = req.params;
 
   const { rows } = await query(
-    `SELECT id, status, total_rows, rows_processed, rows_failed, error_log, started_at, completed_at
+    `SELECT id, status, total_rows, rows_processed, rows_failed, error_log, column_map,
+            started_at, completed_at
      FROM ingestion_jobs
      WHERE id = $1 AND tenant_id = $2`,
     [jobId, tenantId],
@@ -229,7 +237,19 @@ router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
     ? Math.round((job.rows_processed / job.total_rows) * 100)
     : null;
 
-  return res.json({ ...job, progress_pct: progressPct });
+  // The assumptions the import had to make and the rows its status filter
+  // ignored are stored beside the column mapping under reserved keys (T12a).
+  const storedMap   = job.column_map && typeof job.column_map === 'object' ? job.column_map : {};
+  const assumptions = Array.isArray(storedMap._assumptions) ? storedMap._assumptions : [];
+  const skippedByStatus = Number(storedMap._skippedByStatus) || 0;
+
+  return res.json({
+    ...job,
+    column_map: storedMap,
+    assumptions,
+    skippedByStatus,
+    progress_pct: progressPct,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -326,16 +346,24 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
   try {
     // ── Step 1: Read headers (first row only) to validate column structure ────
     const headers = await extractHeaders(file.path, fileType);
-    const { map: columnMap, missing, warnings } = buildColumnMap(headers);
+    const {
+      map: columnMap,
+      missing,
+      warnings,
+      assumptions,
+      detectedHeaders,
+    } = buildColumnMap(headers);
 
     if (missing.length > 0) {
+      // detectedHeaders lets the UI show "we found these headers" instead of
+      // only naming what is absent (T12a).
       await query(
         `UPDATE ingestion_jobs
          SET status = 'failed',
              error_log = $1::jsonb,
              completed_at = NOW()
          WHERE id = $2`,
-        [JSON.stringify([{ type: 'MISSING_COLUMNS', columns: missing, warnings }]), jobId],
+        [JSON.stringify([{ type: 'MISSING_COLUMNS', columns: missing, warnings, detectedHeaders }]), jobId],
       );
       cleanup();
       return;
@@ -352,6 +380,12 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     let rowIndex          = 0;
     let rowsProcessed     = 0;
     let chunk             = [];
+
+    // T12a: rows filtered out by their status are counted on their own — they
+    // are not failures — and every assumption the import had to make is kept in
+    // one set so the job can report it once.
+    let rowsSkippedByStatus = 0;
+    const assumptionLog     = new Set(assumptions);
 
     // Product ids resolved during THIS job, keyed by SKU. A SKU is written once
     // and then served from memory, so steady-state chunks pay no product
@@ -441,11 +475,22 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     await streamRows(file.path, fileType, async (rawRow) => {
       rowIndex++;
 
-      const { data, error } = validateRow(rawRow, columnMap, rowIndex);
+      const { data, error, skipped, assumptions: rowAssumptions } =
+        validateRow(rawRow, columnMap, rowIndex);
+
+      // A cancelled / refunded row is ignored, not failed: it must not inflate
+      // rows_failed or the error log.
+      if (skipped) {
+        rowsSkippedByStatus += 1;
+        return;
+      }
+
       if (error) {
         errors.push({ row: rowIndex, error });
         return;
       }
+
+      for (const assumption of rowAssumptions) assumptionLog.add(assumption);
 
       chunk.push(data);
 
@@ -459,6 +504,15 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     if (chunk.length > 0) await flushChunk(chunk);
 
     // ── Step 3: Mark job complete ─────────────────────────────────────────────
+    // column_map doubles as the job's provenance note: the assumptions this
+    // import had to make and how many rows its status filter ignored live beside
+    // the mapping under the reserved _-prefixed keys (no schema migration).
+    const columnMapRecord = {
+      ...columnMap,
+      _assumptions:     [...assumptionLog],
+      _skippedByStatus: rowsSkippedByStatus,
+    };
+
     await query(
       `UPDATE ingestion_jobs
        SET status       = $1,
@@ -466,14 +520,16 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
            rows_processed = $3,
            rows_failed  = $4,
            error_log    = $5::jsonb,
+           column_map   = $6::jsonb,
            completed_at = NOW()
-       WHERE id = $6`,
+       WHERE id = $7`,
       [
         errors.length > 0 && rowsProcessed === 0 ? 'failed' : 'completed',
         rowIndex,
         rowsProcessed,
         errors.length,
         JSON.stringify(errors.slice(0, 100)), // cap stored errors at 100
+        JSON.stringify(columnMapRecord),
         jobId,
       ],
     );

@@ -13,19 +13,24 @@
  */
 
 /**
- * Canonical required headers, in template order. Mirrors REQUIRED_COLUMNS in
+ * Canonical requirements, in checklist order. Mirrors REQUIRED_COLUMNS in
  * backend/src/utils/validators.js — the backend also accepts aliases such as
- * "sale date".
+ * "sale date", a line total instead of a unit price, and a product name instead
+ * of a SKU, so a requirement is only unmet when nothing matches it.
  */
-export const REQUIRED_COLUMNS = ['date', 'sku', 'product_name', 'quantity_sold', 'unit_price', 'unit_cost'];
+export const REQUIRED_COLUMNS = ['date', 'quantity_sold', 'unit_price or total_revenue', 'sku or product_name'];
 
-/** Friendly names for the required columns, used in human-readable messages. */
+/** Friendly names for the requirements, used in human-readable messages. */
 export const REQUIRED_COLUMN_LABELS = {
   date: 'Sale date',
+  quantity_sold: 'Quantity sold',
+  'unit_price or total_revenue': 'Unit price or line total',
+  'sku or product_name': 'SKU or product name',
+  // Canonical column names can still arrive in server messages and job logs.
   sku: 'SKU / product code',
   product_name: 'Product name',
-  quantity_sold: 'Quantity sold',
   unit_price: 'Unit price',
+  total_revenue: 'Line total',
   unit_cost: 'Unit cost',
 };
 
@@ -134,17 +139,31 @@ export const describeDateRange = (dateFrom, dateTo) => {
 const DATE_IN_MESSAGE = /(\d{4}-\d{2}-\d{2})/;
 
 /**
+ * The MISSING_COLUMNS entry of an ingest job's error_log, so a screen can show
+ * both what was absent and the headers the file actually had.
+ * @param {Array<Object>|null|undefined} errorLog Job error_log array.
+ * @returns {{ columns: string[], detectedHeaders: string[] }|null} Null when the
+ *   log holds no MISSING_COLUMNS entry.
+ */
+export const missingColumnsEntryFromLog = (errorLog) => {
+  if (!Array.isArray(errorLog)) return null;
+  for (const entry of errorLog) {
+    if (entry && entry.type === 'MISSING_COLUMNS') {
+      return {
+        columns: Array.isArray(entry.columns) ? entry.columns : [],
+        detectedHeaders: Array.isArray(entry.detectedHeaders) ? entry.detectedHeaders : [],
+      };
+    }
+  }
+  return null;
+};
+
+/**
  * Column names carried by a MISSING_COLUMNS entry of an ingest job's error_log.
  * @param {Array<Object>|null|undefined} errorLog Job error_log array.
  * @returns {string[]} Canonical column names, or [] when none were reported.
  */
-export const missingColumnsFromLog = (errorLog) => {
-  if (!Array.isArray(errorLog)) return [];
-  for (const entry of errorLog) {
-    if (entry && entry.type === 'MISSING_COLUMNS' && Array.isArray(entry.columns)) return entry.columns;
-  }
-  return [];
-};
+export const missingColumnsFromLog = (errorLog) => missingColumnsEntryFromLog(errorLog)?.columns ?? [];
 
 /**
  * Plain-language wording for a missing required column.
@@ -154,6 +173,28 @@ export const missingColumnsFromLog = (errorLog) => {
 export const missingColumnMessage = (column) =>
   `Your file is missing the '${REQUIRED_COLUMN_LABELS[column] ?? column}' column. ` +
   'Download the example file and compare.';
+
+/**
+ * What an import estimated or ignored, in plain sentences for the warning
+ * surface. Estimates are stated as estimates — never as measured facts.
+ * @param {{ assumptions?: string[], skippedByStatus?: number }|null|undefined} job
+ *   A job from GET /api/upload/:jobId/status.
+ * @returns {string[]} Warning lines, empty when the import made no compromises.
+ */
+export const describeIngestionNotices = (job) => {
+  const lines = Array.isArray(job?.assumptions)
+    ? job.assumptions.map((line) => String(line ?? '').trim()).filter(Boolean)
+    : [];
+  const skipped = Number(job?.skippedByStatus) || 0;
+  if (skipped > 0) {
+    lines.push(
+      skipped === 1
+        ? '1 cancelled or refunded row was ignored.'
+        : `${skipped} cancelled or refunded rows were ignored.`,
+    );
+  }
+  return lines;
+};
 
 /**
  * Plain-language wording for a failed upload or a failed ingest job. No status
