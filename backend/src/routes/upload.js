@@ -9,8 +9,7 @@
  *
  * Scalability decision (documented for FYP grading criterion #5):
  * ─────────────────────────────────────────────────────────────────
- * We use STREAMING + CHUNKED DATABASE WRITES rather than loading the
- * entire file into memory, for two reasons:
+ * CSV files are STREAMED + WRITTEN IN CHUNKS rather than loaded whole:
  *
  * 1. Memory safety: a 10MB CSV with 50k rows would create a 50k-element
  *    JavaScript array in the sync approach. With streams, the parser emits
@@ -28,9 +27,13 @@
  *    chunks hold 1000 rows, and rows_processed is refreshed every 5 chunks
  *    rather than every chunk: ~1.2 statements per 1000 rows in steady state.
  *
- * For XLSX files, we use XLSX.stream.to_csv() (SheetJS streaming API) to
- * convert the sheet to a CSV stream in-process, then pipe it through the same
- * csv-parser pipeline. This avoids reading the entire sheet into memory.
+ * XLSX/XLS is the honest exception: SheetJS has no row-by-row reader, so
+ * XLSX.readFile() loads the whole workbook into memory (with cellDates: true,
+ * so date cells arrive as Date objects and Excel serials are never misread).
+ * MAX_FILE_SIZE_MB (default 60) is therefore the real guard rail for workbook
+ * size. T12b: every sheet's header row is checked with buildColumnMap and the
+ * FIRST sheet whose requirements all map is imported, so a workbook that opens
+ * on a notes tab is still read correctly.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -65,7 +68,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: (parseInt(process.env.MAX_FILE_SIZE_MB) || 25) * 1024 * 1024 },
+  // Default cap 60 MB (T12b; was 25 MB) — XLSX workbooks are read into memory.
+  limits: { fileSize: (parseInt(process.env.MAX_FILE_SIZE_MB) || 60) * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['.csv', '.xlsx', '.xls'];
     const ext = path.extname(file.originalname).toLowerCase();
@@ -344,26 +348,51 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
   };
 
   try {
-    // ── Step 1: Read headers (first row only) to validate column structure ────
-    const headers = await extractHeaders(file.path, fileType);
-    const {
-      map: columnMap,
-      missing,
-      warnings,
-      assumptions,
-      detectedHeaders,
-    } = buildColumnMap(headers);
+    // ── Step 1: Locate the columns ────────────────────────────────────────────
+    // CSV: read the first row. XLSX: inspect every sheet's header row and keep
+    // the first sheet whose requirements all map (T12b) — the old code only
+    // looked at SheetNames[0], which may be a notes or instructions tab.
+    let columnMap;
+    let missing;
+    let warnings;
+    let detectedHeaders;
+    let assumptions;
+    let sheetName       = null;
+    let sheetsInspected = [];
+    let workbook        = null;
+
+    if (fileType === 'csv') {
+      const headers = await extractHeaders(file.path);
+      ({ map: columnMap, missing, warnings, assumptions, detectedHeaders } = buildColumnMap(headers));
+    } else {
+      const selection = inspectWorkbook(file.path);
+      workbook        = selection.workbook;
+      sheetName       = selection.sheetName;
+      sheetsInspected = selection.inspectedSheets;
+      ({ map: columnMap, missing, warnings, assumptions, detectedHeaders } = selection.columns);
+
+      // The sheet actually read is part of what the import did, so it is stated
+      // in the assumptions the UI shows rather than left implicit.
+      if (sheetName) {
+        assumptions = [...assumptions, `Excel sheet "${sheetName}" was used for the import.`];
+      }
+    }
 
     if (missing.length > 0) {
       // detectedHeaders lets the UI show "we found these headers" instead of
-      // only naming what is absent (T12a).
+      // only naming what is absent (T12a). For a workbook the inspected sheet
+      // names are included too: "no sheet qualified" is a different problem
+      // from "the header row is wrong".
+      const errorEntry = { type: 'MISSING_COLUMNS', columns: missing, warnings, detectedHeaders };
+      if (fileType !== 'csv') errorEntry.sheetsInspected = sheetsInspected;
+
       await query(
         `UPDATE ingestion_jobs
          SET status = 'failed',
              error_log = $1::jsonb,
              completed_at = NOW()
          WHERE id = $2`,
-        [JSON.stringify([{ type: 'MISSING_COLUMNS', columns: missing, warnings, detectedHeaders }]), jobId],
+        [JSON.stringify([errorEntry]), jobId],
       );
       cleanup();
       return;
@@ -498,7 +527,7 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
         await flushChunk(chunk);
         chunk = [];
       }
-    });
+    }, { sheetName, workbook });
 
     // Flush any remaining rows
     if (chunk.length > 0) await flushChunk(chunk);
@@ -549,36 +578,78 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// extractHeaders(filePath, fileType)
-// Returns the column headers from the first row of the file without
-// reading the entire file into memory.
+// extractHeaders(filePath)
+// Returns the column headers from the first row of a CSV without reading the
+// whole file: csv-parser emits 'headers' and the stream is destroyed at once.
+// XLSX header rows are found by inspectWorkbook() instead.
 // ─────────────────────────────────────────────────────────────────────────────
-function extractHeaders(filePath, fileType) {
+function extractHeaders(filePath) {
   return new Promise((resolve, reject) => {
-    if (fileType === 'csv') {
-      const stream = createReadStream(filePath).pipe(csvParser());
-      stream.on('headers', (headers) => {
-        stream.destroy(); // stop after reading headers — no need to read the whole file
-        resolve(headers);
-      });
-      stream.on('error', reject);
-    } else {
-      // XLSX: open workbook and read only the first row
-      const wb      = XLSX.readFile(filePath, { sheetRows: 1 });
-      const wsName  = wb.SheetNames[0];
-      const ws      = wb.Sheets[wsName];
-      const headers = XLSX.utils.sheet_to_json(ws, { header: 1 })[0] || [];
-      resolve(headers.map(String));
-    }
+    const stream = createReadStream(filePath).pipe(csvParser());
+    stream.on('headers', (headers) => {
+      stream.destroy(); // stop after reading headers — no need to read the whole file
+      resolve(headers);
+    });
+    stream.on('error', reject);
   });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// streamRows(filePath, fileType, onRow)
-// Streams rows from the file and calls onRow(rawRow) for each.
-// For XLSX files, converts to CSV stream via SheetJS to stay consistent.
+// inspectWorkbook(filePath)
+// Loads a workbook once (SheetJS is memory-bound — see the file header comment)
+// and picks the sheet to import: the FIRST sheet whose header row satisfies
+// every column requirement. Empty sheets and notes/instructions sheets cannot
+// satisfy the requirements, so they are skipped; their names are still reported.
+//
+// Returns { workbook, sheetName, inspectedSheets, columns }, where columns is
+// buildColumnMap()'s result for the chosen sheet — or, when no sheet qualifies,
+// for the sheet that came closest, so the error names what was actually wrong.
 // ─────────────────────────────────────────────────────────────────────────────
-function streamRows(filePath, fileType, onRow) {
+function inspectWorkbook(filePath) {
+  const workbook = XLSX.readFile(filePath, { cellDates: true });
+  const inspectedSheets = [];
+  let closest = null;
+
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    // Use the sheet's FIRST row, which is also the row SheetJS uses as object
+    // keys when importing — so inspection and import can never disagree.
+    const firstRow = sheet ? XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] ?? [] : [];
+    const headers = firstRow.map((cell) => String(cell ?? '').trim());
+
+    inspectedSheets.push(name);
+
+    // An empty sheet (or a blank first row) has no header row at all.
+    if (headers.every((header) => header === '')) continue;
+
+    const columns = buildColumnMap(headers);
+    if (columns.missing.length === 0) {
+      return { workbook, sheetName: name, inspectedSheets, columns };
+    }
+    if (!closest || columns.missing.length < closest.missing.length) closest = columns;
+  }
+
+  return {
+    workbook,
+    sheetName: null,
+    inspectedSheets,
+    columns: closest ?? buildColumnMap([]),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// streamRows(filePath, fileType, onRow, options)
+// Calls onRow(rawRow) once per data row.
+//   CSV  — streamed through csv-parser, one row at a time.
+//   XLSX — rows come from the workbook inspectWorkbook() already loaded (or a
+//          fresh read with cellDates: true if none was passed), restricted to
+//          the selected sheet. SheetJS has no row-by-row reader, so the sheet is
+//          materialised in memory — the upload cap is what bounds this.
+//
+// The header keys are trimmed to exactly match the headers buildColumnMap()
+// inspected, so a padded header (" Sale Date ") cannot silently lose its column.
+// ─────────────────────────────────────────────────────────────────────────────
+function streamRows(filePath, fileType, onRow, { sheetName = null, workbook = null } = {}) {
   return new Promise((resolve, reject) => {
     if (fileType === 'csv') {
       const pending = [];
@@ -596,16 +667,27 @@ function streamRows(filePath, fileType, onRow) {
       stream.on('end',   () => Promise.all(pending).then(resolve).catch(reject));
       stream.on('error', reject);
     } else {
-      // XLSX: convert to array of objects using SheetJS, then iterate.
-      // SheetJS doesn't have a true row-by-row async stream, but we still
-      // process in chunks at the flushChunk level to keep inserts batched.
-      const wb   = XLSX.readFile(filePath);
-      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const book = workbook ?? XLSX.readFile(filePath, { cellDates: true });
+      const ws   = sheetName ? book.Sheets[sheetName] : null;
+      if (!ws) {
+        // Never fall back to sheet 1 here: importing rows from a sheet the user
+        // did not choose is exactly the kind of silent mistake T12b removes.
+        reject(new Error(`The selected sheet "${sheetName ?? '(none)'}" could not be read.`));
+        return;
+      }
+
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const firstKeys = rows[0] ? Object.keys(rows[0]) : [];
+      const paddedKeys = firstKeys.some((key) => key !== key.trim());
+      const importRows = paddedKeys
+        ? rows.map((row) => Object.fromEntries(
+          Object.entries(row).map(([key, value]) => [String(key).trim(), value]),
+        ))
+        : rows;
 
       const processNext = async (i) => {
-        if (i >= rows.length) return resolve();
-        await onRow(rows[i]);
+        if (i >= importRows.length) return resolve();
+        await onRow(importRows[i]);
         return processNext(i + 1);
       };
 

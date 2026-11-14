@@ -11,15 +11,18 @@
  *   2. a line total becomes the net unit price (total / quantity),
  *   3. cost and SKU are optional — and any estimate is reported, not hidden,
  *   4. a cancelled row is skipped rather than failed,
- *   5. a missing requirement is named once, with the headers we did find.
+ *   5. a missing requirement is named once, with the headers we did find,
+ *   6. flexible dates (T12b): ISO, Excel serials, day-first dates, month names.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
 import {
   COST_RATIO_DEFAULT,
+  DAY_FIRST_ASSUMPTION,
   NO_SKU_ASSUMPTION,
   buildColumnMap,
   describeCostAssumption,
+  parseFlexibleDate,
   validateRow,
 } from '../../src/utils/validators.js';
 
@@ -124,6 +127,50 @@ console.log('validators self-test');
     missing.length === 1 && missing[0] === 'unit_price or total_revenue');
   check('detected headers are echoed for the UI',
     detectedHeaders.join('|') === 'Date|SKU|Qty');
+}
+
+// ── 6. Flexible dates: ISO, Excel serials, day-first, month names ────────────
+{
+  check('ISO date parses', parseFlexibleDate('2025-10-12') === '2025-10-12');
+  check('ISO datetime keeps its calendar day',
+    parseFlexibleDate('2025-10-12T08:30:00') === '2025-10-12');
+  check('Excel serial 45658 is 2025-01-01, not 1970',
+    parseFlexibleDate(45658) === '2025-01-01');
+  check('DD/MM/YYYY parses when the day is over 12',
+    parseFlexibleDate('31/12/2025') === '2025-12-31');
+
+  const ambiguousAssumptions = [];
+  const ambiguousDate = parseFlexibleDate('03/04/2025', ambiguousAssumptions);
+  check('an ambiguous slash date is read day-first', ambiguousDate === '2025-04-03');
+  check('an ambiguous slash date records the day-first assumption',
+    ambiguousAssumptions.includes(DAY_FIRST_ASSUMPTION));
+
+  check('an impossible date is rejected', parseFlexibleDate('13/25/2025') === null);
+  check('a JS Date keeps its calendar day',
+    parseFlexibleDate(new Date(2025, 9, 12)) === '2025-10-12');
+  check('month names parse in both orders',
+    parseFlexibleDate('12 Oct 2025') === '2025-10-12'
+    && parseFlexibleDate('Oct 12, 2025') === '2025-10-12');
+  check('a year before 2000 is rejected', parseFlexibleDate('12/10/1999') === null);
+
+  // The row validator must use the same parser — and quote what it could not read.
+  const { map } = buildColumnMap(['date', 'sku', 'qty', 'price']);
+  const badDate = validateRow({ date: 'not a date', sku: 'SKU-3', qty: '1', price: '5' }, map, 7);
+  check('an unparseable date is a row error quoting the raw value',
+    badDate.error !== null && badDate.error.includes('"not a date"'));
+
+  const serialRow = validateRow({ date: 45658, sku: 'SKU-4', qty: '1', price: '5' }, map, 8);
+  check('a workbook serial becomes a real sale_date',
+    serialRow.error === null && serialRow.data?.sale_date === '2025-01-01');
+
+  const ambiguousRow = validateRow(
+    { date: '03/04/2025', sku: 'SKU-5', qty: '1', price: '5' },
+    map,
+    9,
+  );
+  check('the day-first assumption reaches the row result too',
+    ambiguousRow.data?.sale_date === '2025-04-03'
+    && ambiguousRow.assumptions.includes(DAY_FIRST_ASSUMPTION));
 }
 
 if (failures === 0) {

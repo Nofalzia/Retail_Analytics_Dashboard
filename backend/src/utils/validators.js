@@ -230,9 +230,197 @@ function roundCurrency(value) {
   return Math.round(value * 100) / 100;
 }
 
+// ── Flexible date parsing (T12b) ──────────────────────────────────────────────
+// `new Date(rawValue)` is not safe for uploaded data: it reads an Excel serial
+// number such as 45658 as 1970, and it reads "03/04/2025" as March 4th in some
+// environments. A wrong date is worse than a rejected row, so the accepted
+// formats are listed explicitly and anything else is rejected with its raw text.
+
+/** Recorded when a slash-separated date could be day-first or month-first. */
+export const DAY_FIRST_ASSUMPTION = 'Dates read as day/month/year';
+
+/** Excel's 1900 date system counts days from 1899-12-30 (serial 1 = 1900-01-01). */
+const EXCEL_EPOCH_UTC_MS = Date.UTC(1899, 11, 30);
+
+/** Accepted range for Excel serial cells: about 1954-10-03 to 2119-01-03. */
+const EXCEL_SERIAL_MIN = 20000;
+const EXCEL_SERIAL_MAX = 80000;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** Earliest year an imported sale may carry. */
+const MIN_SALE_YEAR = 2000;
+
+/** Month-name stems: the first three letters of every English month. */
+const MONTH_NUMBER_BY_STEM = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+/**
+ * Pads a positive integer to two digits without any locale involvement.
+ * @param {number} value Integer to pad.
+ * @returns {string} e.g. 3 → "03".
+ */
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+/**
+ * Builds "YYYY-MM-DD" from calendar parts using pure UTC arithmetic, so no
+ * local timezone offset can move the day. Rejects impossible dates (31 February
+ * and friends) and any year outside 2000..(current year + 1).
+ * @param {number} year Full year, e.g. 2025.
+ * @param {number} month 1–12.
+ * @param {number} day 1–31.
+ * @returns {string|null} The ISO date, or null when the parts are not a real day.
+ */
+function formatUtcDate(year, month, day) {
+  const lastAcceptedYear = new Date().getUTCFullYear() + 1;
+  if (!Number.isInteger(year) || year < MIN_SALE_YEAR || year > lastAcceptedYear) return null;
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+  if (!Number.isInteger(day) || day < 1 || day > 31) return null;
+
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  // A roll-over (31/02 → 03/03) means that day does not exist in that month.
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) {
+    return null;
+  }
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+/**
+ * Converts an Excel serial number to "YYYY-MM-DD".
+ * @param {number} serial Days since 1899-12-30; a time fraction is ignored.
+ * @returns {string|null} The ISO date, or null outside the accepted range.
+ */
+function formatExcelSerial(serial) {
+  if (!Number.isFinite(serial)) return null;
+  if (serial < EXCEL_SERIAL_MIN || serial > EXCEL_SERIAL_MAX) return null;
+  const utc = new Date(EXCEL_EPOCH_UTC_MS + Math.floor(serial) * MS_PER_DAY);
+  return formatUtcDate(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
+}
+
+/**
+ * Resolves a month name to its number, accepting abbreviations and full names
+ * in any case ("Oct", "October").
+ * @param {string} name Month name from the cell.
+ * @returns {number|null} 1–12, or null when the text is not a month.
+ */
+function monthNumberFromName(name) {
+  return MONTH_NUMBER_BY_STEM[String(name).slice(0, 3).toLowerCase()] ?? null;
+}
+
+/**
+ * parseFlexibleDate(rawValue[, assumptions])
+ * Turns one uploaded date cell into "YYYY-MM-DD". Accepted inputs:
+ *   • ISO dates with or without a time — "2025-10-12", "2025-10-12T08:30:00"
+ *     (the time is ignored: a sale is reported on the day it was recorded);
+ *   • JS Date objects — what SheetJS produces with { cellDates: true };
+ *   • Excel serial numbers 20000–80000 — 45658 is 2025-01-01, not 1970;
+ *   • DD/MM/YYYY and DD-MM-YYYY;
+ *   • MM/DD/YYYY only when the second part is over 12 and must be the day;
+ *   • "12 Oct 2025" and "Oct 12, 2025" (full month names work too).
+ *
+ * When a slash date is ambiguous (both parts 12 or under) it is read
+ * day/month/year and DAY_FIRST_ASSUMPTION is pushed onto `assumptions`, so the
+ * import can state what it assumed instead of hiding it.
+ *
+ * @param {string|number|Date|null|undefined} rawValue The cell as uploaded.
+ * @param {string[]} [assumptions] Optional list that receives any assumption.
+ * @returns {string|null} "YYYY-MM-DD", or null when unparseable or out of range.
+ */
+export function parseFlexibleDate(rawValue, assumptions) {
+  const recordDayFirst = () => {
+    if (Array.isArray(assumptions) && !assumptions.includes(DAY_FIRST_ASSUMPTION)) {
+      assumptions.push(DAY_FIRST_ASSUMPTION);
+    }
+  };
+
+  // ── JS Date (an XLSX date cell read with cellDates: true) ─────────────────
+  if (rawValue instanceof Date) {
+    if (Number.isNaN(rawValue.getTime())) return null;
+    // A Date sitting exactly on UTC midnight is a pure calendar date (ISO
+    // strings and Date.UTC() land there), so read its UTC parts. A Date that
+    // carries a wall-clock time is read with local parts — that is the day the
+    // spreadsheet shows.
+    const utcMidnight = Date.UTC(
+      rawValue.getUTCFullYear(), rawValue.getUTCMonth(), rawValue.getUTCDate(),
+    );
+    const pureCalendarDate = rawValue.getTime() === utcMidnight;
+    const year  = pureCalendarDate ? rawValue.getUTCFullYear() : rawValue.getFullYear();
+    const month = (pureCalendarDate ? rawValue.getUTCMonth() : rawValue.getMonth()) + 1;
+    const day   = pureCalendarDate ? rawValue.getUTCDate() : rawValue.getDate();
+    return formatUtcDate(year, month, day);
+  }
+
+  // ── Excel serial numbers (a numeric cell in a workbook) ───────────────────
+  if (typeof rawValue === 'number') return formatExcelSerial(rawValue);
+
+  if (typeof rawValue !== 'string') return null;
+  const text = rawValue.trim();
+  if (text === '') return null;
+
+  // ── ISO 8601: 2025-10-12 or 2025-10-12T08:30:00 (time part ignored) ──────
+  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/.exec(text);
+  if (isoMatch) {
+    return formatUtcDate(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+  }
+
+  // ── An Excel serial that arrived as text, e.g. from a CSV cell ───────────
+  if (/^\d+(?:\.\d+)?$/.test(text)) return formatExcelSerial(Number(text));
+
+  // ── Slash/dash dates: 31/12/2025, 31-12-2025, 12/31/2025 ─────────────────
+  const numericMatch = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(text);
+  if (numericMatch) {
+    const first  = Number(numericMatch[1]);
+    const second = Number(numericMatch[2]);
+    const year   = Number(numericMatch[3]);
+
+    // Two parts over 12 cannot be a month/day pair in either order.
+    if (first > 12 && second > 12) return null;
+
+    let day   = first;
+    let month = second;
+    if (second > 12) {
+      // Only the second part can be the day, so this is unambiguously MM/DD.
+      day   = second;
+      month = first;
+    } else if (first <= 12) {
+      // Both parts could be the month: read day-first and say so.
+      recordDayFirst();
+    }
+    // Otherwise first > 12 and second <= 12: unambiguously DD/MM.
+    return formatUtcDate(year, month, day);
+  }
+
+  // ── Month names: "12 Oct 2025" and "Oct 12, 2025" ─────────────────────────
+  const dayMonthName = /^(\d{1,2})(?:st|nd|rd|th)?[\s-]+([A-Za-z]{3,9})\.?,?[\s-]+(\d{4})$/.exec(text);
+  if (dayMonthName) {
+    const month = monthNumberFromName(dayMonthName[2]);
+    return month === null
+      ? null
+      : formatUtcDate(Number(dayMonthName[3]), month, Number(dayMonthName[1]));
+  }
+
+  const monthNameDay = /^([A-Za-z]{3,9})\.?[\s-]+(\d{1,2})(?:st|nd|rd|th)?,?[\s-]+(\d{4})$/.exec(text);
+  if (monthNameDay) {
+    const month = monthNumberFromName(monthNameDay[1]);
+    return month === null
+      ? null
+      : formatUtcDate(Number(monthNameDay[3]), month, Number(monthNameDay[2]));
+  }
+
+  return null;
+}
+
 /**
  * validateRow(rawRow, columnMap, rowIndex)
  * Validates a single data row after the column map has been applied.
+ *
+ * Date: parsed by parseFlexibleDate() — ISO, Excel serials, day-first slash
+ * dates and month names are all accepted. An unreadable date is a row error
+ * that quotes the raw cell, because a guessed date is worse than a rejection.
  *
  * Price: when a line total is mapped it becomes the net unit price
  * (total_revenue / quantity_sold, rounded to 2 dp) — the figure after
@@ -268,12 +456,15 @@ export function validateRow(rawRow, columnMap, rowIndex) {
   }
 
   const errors = [];
+  const assumptions = [];
 
-  // date — must be parseable
-  const rawDate = get('date');
-  const parsedDate = new Date(rawDate);
-  if (!rawDate || isNaN(parsedDate.getTime())) {
-    errors.push(`row ${rowIndex}: invalid date "${rawDate}"`);
+  // date — parsed explicitly (T12b), so Excel serials and day-first dates are
+  // read correctly. The raw cell is passed untouched: a Date object from an
+  // XLSX cell must not be stringified before parsing.
+  const rawDate = columnMap.date ? rawRow[columnMap.date] : '';
+  const parsedDate = parseFlexibleDate(rawDate, assumptions);
+  if (!parsedDate) {
+    errors.push(`row ${rowIndex}: invalid date "${String(rawDate ?? '').trim()}"`);
   }
 
   // quantity_sold — must be a positive integer (also the divisor of a line total)
@@ -308,7 +499,6 @@ export function validateRow(rawRow, columnMap, rowIndex) {
   }
 
   // ── Cost: mapped column, or an estimate at COST_RATIO_DEFAULT ─────────────
-  const assumptions = [];
   let unitCost = null;
   if (columnMap.unit_cost) {
     const rawCost = get('unit_cost');
@@ -337,7 +527,7 @@ export function validateRow(rawRow, columnMap, rowIndex) {
 
   return {
     data: {
-      sale_date:     parsedDate.toISOString().slice(0, 10),  // 'YYYY-MM-DD'
+      sale_date:     parsedDate,  // 'YYYY-MM-DD', already UTC-built
       sku:           resolvedSku,
       product_name:  productName,
       category:      get('category') || null,

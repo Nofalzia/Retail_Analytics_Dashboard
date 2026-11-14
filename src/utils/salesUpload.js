@@ -40,15 +40,16 @@ export const TEMPLATE_FILENAME = 'retail-import-template.csv';
 /** Extensions the upload endpoint accepts. */
 export const ALLOWED_EXTENSIONS = ['.csv', '.xlsx'];
 
-/** Size cap — mirrors MAX_FILE_SIZE_MB in backend/src/routes/upload.js (default 25). */
-export const MAX_FILE_SIZE_MB = parseInt(import.meta.env?.VITE_MAX_FILE_SIZE_MB, 10) || 25;
+/** Size cap — mirrors MAX_FILE_SIZE_MB in backend/src/routes/upload.js (default 60). */
+export const MAX_FILE_SIZE_MB = parseInt(import.meta.env?.VITE_MAX_FILE_SIZE_MB, 10) || 60;
 export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 // ── Plain-language upload wording ─────────────────────────────────────────────
 // The cashier screen shows these strings verbatim: no codes, no server text.
 
 export const FILE_TYPE_MESSAGE = 'Please choose a CSV or Excel file.';
-export const FILE_SIZE_MESSAGE = 'This file is too large. Please send a smaller one or ask your manager.';
+export const FILE_SIZE_MESSAGE =
+  'This file is too large. Please export it as CSV and try again, or ask your manager.';
 export const GENERIC_UPLOAD_MESSAGE = 'Something went wrong. Please try again, or ask your manager.';
 
 /** Generates a CSV with the exact required headers, client-side. */
@@ -95,7 +96,8 @@ export const validateSalesFile = (file) => {
     return {
       ok: false,
       reason: 'size',
-      message: `"${file?.name}" is larger than the ${MAX_FILE_SIZE_MB}MB upload limit.`,
+      message: `"${file?.name}" is larger than the ${MAX_FILE_SIZE_MB}MB upload limit. ` +
+        'Please export it as CSV and try again.',
     };
   }
   return { ok: true };
