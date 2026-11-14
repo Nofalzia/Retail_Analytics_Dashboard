@@ -22,9 +22,59 @@ import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
-// Window the /api/overview KPI snapshot covers: the request asks for the last
-// 30 days, so the units-sold footer can name that window for live data.
+// Window the /api/overview KPI snapshot covers: the server measures 30 days back
+// from the store's as-of date (its latest sale date), so the units-sold footer
+// can name that window even when the data ends before today.
 const KPI_WINDOW_DAYS = 30;
+
+// Beyond a week of staleness the owner should be told the analysis is measured
+// from an older date than "now" — once, in the header, not on every card.
+const STALE_AFTER_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** @returns {string|null} e.g. '12 Oct 2025' (en-PK), or null when unusable. */
+function formatAsOfDate(isoDate) {
+  if (!isoDate) return null;
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** @returns {number|null} Whole days between the as-of date and today (local). */
+function daysSinceAsOf(isoDate) {
+  if (!isoDate) return null;
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const now   = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((today - parsed) / DAY_MS);
+}
+
+/**
+ * Muted "Data as of …" line, plus one ochre sentence when the store's latest
+ * sales are more than a week old. Renders nothing when the API gave no date
+ * (preview data modes), so those states are untouched.
+ */
+const AsOfDateNotice = ({ asOfDate }) => {
+  const { PALETTE, EARTH } = useDesignTokens();
+  const label = formatAsOfDate(asOfDate);
+  if (!label) return null;
+
+  const staleDays = daysSinceAsOf(asOfDate);
+
+  return (
+    <div>
+      <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+        Data as of {label}
+      </p>
+      {staleDays !== null && staleDays > STALE_AFTER_DAYS && (
+        <p className="mt-1 text-xs" style={{ color: EARTH.ochre }}>
+          Your latest sales are from {staleDays} days ago, so this analysis is measured from that date.
+        </p>
+      )}
+    </div>
+  );
+};
 
 /**
  * BusinessOwnerDashboard — Owner-facing overview scaffold.
@@ -266,10 +316,12 @@ function mapOverviewToMetrics(data) {
   const lateSum    = dailyTrend.slice(half).reduce((s, d) => s + (parseFloat(d.revenue) || 0), 0);
   const growthPct  = earlySum > 0 ? +((lateSum - earlySum) / earlySum * 100).toFixed(1) : 0;
 
-  // Today's order count
-  const todayStr   = new Date().toISOString().slice(0, 10);
-  const todayData  = safeTrend.find((d) => d.date === todayStr);
-  const ordersToday = todayData ? parseInt(todayData.transaction_count || 0) : 0;
+  // Order count on the latest day of the window. The server anchors that window
+  // to the store's latest sale date, so the final trend point is "today" for
+  // this analysis — asking the browser's clock would return 0 for old exports.
+  const lastTrendDay = safeTrend.length > 0 ? safeTrend[safeTrend.length - 1].date : null;
+  const lastDayData  = lastTrendDay ? safeTrend.find((d) => d.date === lastTrendDay) : null;
+  const ordersToday  = lastDayData ? parseInt(lastDayData.transaction_count || 0) : 0;
 
   const avgPerDay  = dailyTrend.length > 0
     ? Math.round(parseInt(kpi.total_transactions) / safeTrend.length)
@@ -422,6 +474,8 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
   // the curated mock datasets untouched.
   const [metrics, setMetrics] = useState(isLive ? null : (DATASETS[dataMode] ?? DATASETS.live));
   const [inventoryDays, setInventoryDays] = useState(null);
+  // The store's as-of date from the API — the analysis is measured from here.
+  const [asOfDate, setAsOfDate] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [hasLiveData, setHasLiveData] = useState(true);
   const [isLoaded, setIsLoaded] = useState(!isLive);
@@ -434,6 +488,8 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
     if (dataMode !== 'live') {
       setMetrics(DATASETS[dataMode] ?? DATASETS.live);
       setInventoryDays(null);
+      // Preview modes are curated fixtures with no real sale dates — no notice.
+      setAsOfDate(null);
       setLoadError(false);
       setHasLiveData(true);
       setIsLoaded(true);
@@ -445,18 +501,20 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
     setIsLoaded(false);
     setMetrics(null);
     setInventoryDays(null);
+    setAsOfDate(null);
 
     // No store on the account: the render path shows the not-linked-to-a-store
     // notice, so there is nothing to fetch.
     if (!storeId) return undefined;
 
     Promise.all([
-      // KPI snapshot + daily trend chart.
-      api.getOverview({ storeId, startDate: (() => {
-        const d = new Date(); d.setDate(d.getDate() - KPI_WINDOW_DAYS); return d.toISOString().slice(0, 10);
-      })() })
+      // KPI snapshot + daily trend chart. No date range is sent: the server
+      // anchors its 30-day window to the store's latest sale date, so an export
+      // that ends weeks ago still fills the chart and the KPIs.
+      api.getOverview({ storeId })
         .then((data) => {
           const hasTransactions = (parseInt(data?.kpi?.total_transactions) || 0) > 0;
+          setAsOfDate(data?.asOfDate ?? null);
           setHasLiveData(hasTransactions);
           setMetrics(hasTransactions ? mapOverviewToMetrics(data) : null);
         }),
@@ -465,6 +523,9 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
       // projection from the same stockout API that powers Stockout Watch.
       api.getStockout({ storeId, velocityDays: 14 })
         .then((response) => {
+          // Same as-of date as the overview (both anchored server-side); used as
+          // a fallback in case the overview response predates the field.
+          setAsOfDate((prev) => prev ?? response?.asOfDate ?? null);
           const rows = Array.isArray(response?.products) ? response.products : [];
           // Only products that have actually been counted can project a
           // depletion date. When the store has no inventory at all — the API
@@ -534,6 +595,8 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
 
   return (
     <div className="space-y-6">
+      {/* Where the analysis is measured to (store's latest sale date). */}
+      <AsOfDateNotice asOfDate={asOfDate} />
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <TotalRevenueCard amount={metrics.totalRevenue} growthPercent={metrics.revenueGrowthPercent} />
         <UnitsSoldCard

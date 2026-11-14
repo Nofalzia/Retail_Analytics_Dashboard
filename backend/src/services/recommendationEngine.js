@@ -16,6 +16,8 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
+import { getStoreAsOfDate } from '../utils/asOfDate.js';
+
 // ── Tunable constants (all rule-based) ───────────────────────────────────────
 // Days between placing a supplier order and the stock arriving. Mirrors the
 // Phase 3 stockout assumption in detectionEngine.js (STOCKOUT_RISK_DAYS).
@@ -180,9 +182,18 @@ function buildRecommendation(alert) {
  * @param {import('pg').PoolClient} client  Checked-out client; the caller owns BEGIN/COMMIT.
  * @param {string} tenantId                  Tenant UUID (always taken from the JWT).
  * @param {string} storeId                   Store UUID to scope the run to.
+ * @param {string|null} [asOfDate]           'YYYY-MM-DD' anchor for the velocity
+ *                                           window and the due date. Derived from
+ *                                           the store's latest sale_date when omitted
+ *                                           — an export that ends months ago must
+ *                                           still yield a velocity and a sane due date.
  * @returns {Promise<number>}                Number of recommendation rows actually inserted.
  */
-export async function generateRecommendations(client, tenantId, storeId) {
+export async function generateRecommendations(client, tenantId, storeId, asOfDate = null) {
+  // Anchor to where the data ends, never to today's clock.
+  const runDate = asOfDate
+    ?? await getStoreAsOfDate((text, params) => client.query(text, params), tenantId, storeId);
+
   const { rows: alerts } = await client.query(
     `SELECT
        aa.id,
@@ -212,7 +223,7 @@ export async function generateRecommendations(client, tenantId, storeId) {
        WHERE v.tenant_id  = aa.tenant_id
          AND v.store_id   = aa.store_id
          AND v.product_id = aa.product_id
-         AND v.sale_date >= CURRENT_DATE - MAKE_INTERVAL(days => $3::int)
+         AND v.sale_date >= $4::date - MAKE_INTERVAL(days => $3::int)
      ) vel ON TRUE
      LEFT JOIN recommendations r ON r.alert_id = aa.id
      WHERE aa.tenant_id = $1
@@ -221,7 +232,7 @@ export async function generateRecommendations(client, tenantId, storeId) {
        AND aa.dismissed_at    IS NULL
        AND r.id IS NULL
      ORDER BY aa.alert_date DESC, aa.created_at DESC`,
-    [tenantId, storeId, VELOCITY_WINDOW_DAYS],
+    [tenantId, storeId, VELOCITY_WINDOW_DAYS, runDate],
   );
 
   let inserted = 0;
@@ -230,11 +241,13 @@ export async function generateRecommendations(client, tenantId, storeId) {
     const rec = buildRecommendation(alert);
     if (!rec) continue;
 
+    // due_date = as-of date + the rule's "do this within N days" offset, so a
+    // recommendation produced from an older export is not dated in the future.
     const { rowCount } = await client.query(
       `INSERT INTO recommendations
          (tenant_id, store_id, alert_id, product_id, rec_type, priority,
           title, body, suggested_quantity, revenue_at_risk, due_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CURRENT_DATE + $11::int)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, $12::date + $11::int)
        ON CONFLICT ON CONSTRAINT uq_recommendation_per_alert DO NOTHING`,
       [
         tenantId,
@@ -248,6 +261,7 @@ export async function generateRecommendations(client, tenantId, storeId) {
         rec.suggestedQuantity,
         rec.revenueAtRisk,
         rec.dueInDays,
+        runDate,
       ],
     );
 

@@ -17,6 +17,13 @@
  * Each run evaluates the most recent EVAL_DAYS (14) calendar days present in the
  * data, for every active product that sold inside the lookback window.
  *
+ * ── AS-OF DATE ────────────────────────────────────────────────────────────────
+ * Every window (and every alert_date written) is anchored to the store's latest
+ * sale date, not to CURRENT_DATE. A retailer who uploads an export that ends
+ * weeks ago must still get a real analysis, measured from where the data ends.
+ * getStoreAsOfDate() (utils/asOfDate.js) supplies that date; it falls back to
+ * today only when the store has no sales at all.
+ *
  * Alert severity (from |z|, relative to the configured zAlert = 2.5):
  *   info      |z| <  zAlert + 0.5
  *   warning   |z| >= zAlert + 0.5
@@ -28,8 +35,9 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
-import { getClient } from '../db/pool.js';
+import { getClient, query } from '../db/pool.js';
 import { DEFAULT_PARAMS, scoreSeries, severityFor } from './rollingZScore.js';
+import { getStoreAsOfDate } from '../utils/asOfDate.js';
 
 const EVAL_DAYS            = 14; // most-recent calendar days evaluated each run
 const ROLLING_WINDOW_DAYS  = 14; // velocity window used by stockout risk
@@ -42,11 +50,31 @@ function addDays(iso, deltaDays) {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Resolve the store's as-of date on an already checked-out client.
+ * Every window below ends here rather than at today, so an export that stops
+ * months ago still produces alerts (see utils/asOfDate.js).
+ *
+ * @param {import('pg').PoolClient} client
+ * @param {string} tenantId
+ * @param {string} storeId
+ * @returns {Promise<string>} 'YYYY-MM-DD'
+ */
+function resolveAsOfDate(client, tenantId, storeId) {
+  return getStoreAsOfDate((text, params) => client.query(text, params), tenantId, storeId);
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. runZScoreDetection — sales_spike and sales_drop alerts
 // ─────────────────────────────────────────────────────────────────────────────
-export async function runZScoreDetection(tenantId, storeId) {
+/**
+ * @param {string} tenantId
+ * @param {string} storeId
+ * @param {string|null} [asOfDate] Pre-resolved 'YYYY-MM-DD' anchor for the
+ *   lookback window; derived from the store's latest sale_date when omitted.
+ */
+export async function runZScoreDetection(tenantId, storeId, asOfDate = null) {
   const client = await getClient();
   const summary = { created: 0, skipped_insufficient_data: 0, products_scanned: 0 };
   const params = DEFAULT_PARAMS;
@@ -55,6 +83,9 @@ export async function runZScoreDetection(tenantId, storeId) {
 
   try {
     await client.query('BEGIN');
+
+    // Anchor the lookback to where the data ends, not to today.
+    const runDate = asOfDate ?? await resolveAsOfDate(client, tenantId, storeId);
 
     const { rows: velocityRows } = await client.query(
       `SELECT
@@ -66,9 +97,9 @@ export async function runZScoreDetection(tenantId, storeId) {
        FROM product_daily_velocity
        WHERE tenant_id = $1
          AND store_id  = $2
-         AND sale_date >= CURRENT_DATE - MAKE_INTERVAL(days => $3::int)
+         AND sale_date >= $4::date - MAKE_INTERVAL(days => $3::int)
        ORDER BY product_id, sale_date ASC`,
-      [tenantId, storeId, lookbackDays],
+      [tenantId, storeId, lookbackDays, runDate],
     );
 
     const productIds = [...new Set(velocityRows.map((row) => row.product_id))];
@@ -172,12 +203,22 @@ export async function runZScoreDetection(tenantId, storeId) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. runStockoutRiskDetection — stockout_risk alerts (days_remaining < 7)
 // ─────────────────────────────────────────────────────────────────────────────
-export async function runStockoutRiskDetection(tenantId, storeId) {
+/**
+ * @param {string} tenantId
+ * @param {string} storeId
+ * @param {string|null} [asOfDate] Pre-resolved 'YYYY-MM-DD' anchor for the
+ *   velocity window and the alert_date; derived when omitted.
+ */
+export async function runStockoutRiskDetection(tenantId, storeId, asOfDate = null) {
   const client = await getClient();
   const summary = { created: 0, skipped_no_velocity: 0, skipped_no_snapshot: 0, products_scanned: 0 };
 
   try {
     await client.query('BEGIN');
+
+    // Velocity is measured backwards from the store's latest sale date: a store
+    // whose data ends months ago still has a meaningful sell-through rate.
+    const runDate = asOfDate ?? await resolveAsOfDate(client, tenantId, storeId);
 
     const { rows } = await client.query(
       `WITH velocity AS (
@@ -187,7 +228,7 @@ export async function runStockoutRiskDetection(tenantId, storeId) {
          FROM sale_transactions st
          WHERE st.tenant_id = $1
            AND st.store_id  = $2
-           AND st.sale_date >= CURRENT_DATE - MAKE_INTERVAL(days => $3::int)
+           AND st.sale_date >= $4::date - MAKE_INTERVAL(days => $3::int)
          GROUP BY st.product_id
        )
        SELECT
@@ -209,7 +250,7 @@ export async function runStockoutRiskDetection(tenantId, storeId) {
          ON li.product_id = p.id AND li.store_id = $2 AND li.tenant_id = $1
        LEFT JOIN velocity v ON v.product_id = p.id
        WHERE p.tenant_id = $1 AND p.is_active = TRUE`,
-      [tenantId, storeId, ROLLING_WINDOW_DAYS],
+      [tenantId, storeId, ROLLING_WINDOW_DAYS, runDate],
     );
 
     summary.products_scanned = rows.length;
@@ -247,10 +288,10 @@ export async function runStockoutRiskDetection(tenantId, storeId) {
         `INSERT INTO anomaly_alerts
            (tenant_id, store_id, product_id, alert_type, severity,
             title, description, metric_value, threshold_value, z_score, alert_date)
-         VALUES ($1,$2,$3,'stockout_risk',$4,$5,$6,$7,$8,NULL,CURRENT_DATE)
+         VALUES ($1,$2,$3,'stockout_risk',$4,$5,$6,$7,$8,NULL,$9::date)
          ON CONFLICT ON CONSTRAINT uq_anomaly_per_product_per_day DO NOTHING`,
         [tenantId, storeId, row.product_id, severity, title, description,
-         daysRemaining, STOCKOUT_RISK_DAYS],
+         daysRemaining, STOCKOUT_RISK_DAYS, runDate],
       );
       summary.created += rowCount;
     }
@@ -269,12 +310,23 @@ export async function runStockoutRiskDetection(tenantId, storeId) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. runLowStockDetection — low_stock alerts (qty < reorder_threshold)
 // ─────────────────────────────────────────────────────────────────────────────
-export async function runLowStockDetection(tenantId, storeId) {
+/**
+ * @param {string} tenantId
+ * @param {string} storeId
+ * @param {string|null} [asOfDate] Pre-resolved 'YYYY-MM-DD' written as the
+ *   alert_date; derived from the store's latest sale_date when omitted.
+ */
+export async function runLowStockDetection(tenantId, storeId, asOfDate = null) {
   const client = await getClient();
   const summary = { created: 0, skipped_no_threshold: 0, skipped_no_snapshot: 0, products_scanned: 0 };
 
   try {
     await client.query('BEGIN');
+
+    // Low stock is a snapshot of the latest count, so there is no window to
+    // anchor — but the alert is dated where the data ends, so it groups with the
+    // alerts of that same analysis run instead of drifting with today's clock.
+    const runDate = asOfDate ?? await resolveAsOfDate(client, tenantId, storeId);
 
     const { rows } = await client.query(
       `SELECT
@@ -323,10 +375,10 @@ export async function runLowStockDetection(tenantId, storeId) {
         `INSERT INTO anomaly_alerts
            (tenant_id, store_id, product_id, alert_type, severity,
             title, description, metric_value, threshold_value, z_score, alert_date)
-         VALUES ($1,$2,$3,'low_stock',$4,$5,$6,$7,$8,NULL,CURRENT_DATE)
+         VALUES ($1,$2,$3,'low_stock',$4,$5,$6,$7,$8,NULL,$9::date)
          ON CONFLICT ON CONSTRAINT uq_anomaly_per_product_per_day DO NOTHING`,
         [tenantId, storeId, row.product_id, severity, title, description,
-         quantityOnHand, threshold],
+         quantityOnHand, threshold, runDate],
       );
       summary.created += rowCount;
     }
@@ -348,13 +400,19 @@ export async function runLowStockDetection(tenantId, storeId) {
 export async function runAllDetection(tenantId, storeId) {
   const startedAt = Date.now();
 
+  // Resolve the anchor once and hand it to all three engines, so every window
+  // and every alert_date in this run agree on where "now" is. Returned in the
+  // response so the client can label the analysis ("Data as of …").
+  const asOfDate = await getStoreAsOfDate(query, tenantId, storeId);
+
   const [zScoreSummary, stockoutSummary, lowStockSummary] = await Promise.all([
-    runZScoreDetection(tenantId, storeId),
-    runStockoutRiskDetection(tenantId, storeId),
-    runLowStockDetection(tenantId, storeId),
+    runZScoreDetection(tenantId, storeId, asOfDate),
+    runStockoutRiskDetection(tenantId, storeId, asOfDate),
+    runLowStockDetection(tenantId, storeId, asOfDate),
   ]);
 
   return {
+    asOfDate,
     durationMs: Date.now() - startedAt,
     alertsCreated: {
       zScore:       zScoreSummary.created,

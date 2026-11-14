@@ -141,11 +141,15 @@ router.post(
       console.log(`[alerts/run-detection] Done in ${result.durationMs}ms — ${result.alertsCreated.total} new alerts`);
 
       // Phase 4: turn the fresh alerts into recommendations inside one transaction.
+      // The same as-of date drives the recommendation velocity window and due
+      // dates, so every number in this run is measured from where the data ends.
       const client = await getClient();
       let recommendationsCreated = 0;
       try {
         await client.query('BEGIN');
-        recommendationsCreated = await generateRecommendations(client, tenantId, storeId);
+        recommendationsCreated = await generateRecommendations(
+          client, tenantId, storeId, result.asOfDate,
+        );
         await client.query('COMMIT');
       } catch (recErr) {
         await client.query('ROLLBACK');
@@ -155,7 +159,14 @@ router.post(
       }
       console.log(`[alerts/run-detection] ${recommendationsCreated} recommendation(s) created`);
 
-      return res.json({ success: true, runSummary: result, recommendationsCreated });
+      // asOfDate is the store's latest sale date (today when it has no sales) —
+      // the client labels the analysis with it.
+      return res.json({
+        success: true,
+        asOfDate: result.asOfDate,
+        runSummary: result,
+        recommendationsCreated,
+      });
 
     } catch (err) {
       console.error('[alerts/run-detection] Engine error:', err.message);

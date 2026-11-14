@@ -22,6 +22,10 @@
  *   storeId       — UUID (required)
  *   velocityDays  — number of past days to calculate avg velocity (default: 14)
  *   urgencyOnly   — 'true' to return only products at risk (days_remaining < 14)
+ *
+ * The velocity window ends at the store's as-of date (its latest sale_date), not
+ * at today: an export that ends months ago must still produce a velocity, so
+ * "now" is wherever this store's data ends. See utils/asOfDate.js.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -29,6 +33,7 @@ import { Router }        from 'express';
 import { requireAuth, requireDashboardRead } from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { query }         from '../db/pool.js';
+import { getStoreAsOfDate } from '../utils/asOfDate.js';
 
 const router = Router();
 
@@ -44,6 +49,11 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
   }
 
   try {
+    // Anchor "now" to the store's latest sale date. Without this a store whose
+    // data ends weeks ago would have an empty velocity window and every product
+    // would report no_data.
+    const asOfDate = await getStoreAsOfDate(query, tenantId, storeId);
+
     // The single query that does all three steps:
     // Step 1 (latest_inventory): uses the latest_inventory_per_product view
     // Step 2 (velocity): aggregates sale_transactions over the window
@@ -57,7 +67,7 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
          FROM sale_transactions st
          WHERE st.tenant_id = $1
            AND st.store_id  = $2
-           AND st.sale_date >= CURRENT_DATE - MAKE_INTERVAL(days => $3::int)
+           AND st.sale_date >= $4::date - MAKE_INTERVAL(days => $3::int)
          GROUP BY st.product_id
        )
        SELECT
@@ -96,7 +106,7 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
            WHEN COALESCE(v.avg_daily_units, 0) = 0 THEN 99
            ELSE COALESCE(li.quantity_on_hand, 0)::float / v.avg_daily_units
          END ASC NULLS LAST`,
-      [tenantId, storeId, velocityDays],
+      [tenantId, storeId, velocityDays, asOfDate],
     );
 
     // Does this store have any inventory data at all? An empty products list
@@ -122,6 +132,9 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
     );
 
     return res.json({
+      // The date the velocity window ends on (= the store's latest sale date, or
+      // today when the store has no sales). The UI labels the analysis with it.
+      asOfDate,
       velocityWindowDays: velocityDays,
       // Additive: false when this store has never had an inventory count.
       hasInventoryData,

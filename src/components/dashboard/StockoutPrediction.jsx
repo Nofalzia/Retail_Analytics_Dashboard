@@ -75,6 +75,31 @@ export const getUrgencyTier = (daysRemaining) => {
   return 'healthy';
 };
 
+// ── "Data as of …" note ──────────────────────────────────────────────────────
+// Days-of-inventory-left is measured from the store's latest sale date, not from
+// today, so a stale import still yields a projection — and we say which date the
+// numbers describe. Past a week, one ochre sentence flags it.
+const STALE_AFTER_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** @returns {string|null} e.g. '12 Oct 2025' (en-PK), or null when unusable. */
+const formatAsOfDate = (isoDate) => {
+  if (!isoDate) return null;
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+/** @returns {number|null} Whole days between the as-of date and today (local). */
+const daysSinceAsOf = (isoDate) => {
+  if (!isoDate) return null;
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const now   = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((today - parsed) / DAY_MS);
+};
+
 // ── Card ─────────────────────────────────────────────────────────────────────
 
 const StockoutCard = ({ product }) => {
@@ -163,7 +188,7 @@ const StockoutCard = ({ product }) => {
 // ── Main component ────────────────────────────────────────────────────────────
 
 const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
-  const { PALETTE } = useDesignTokens();
+  const { PALETTE, EARTH } = useDesignTokens();
   // Scope the query to the store inside the signed-in account's token. The demo
   // tenant keeps its historic id as a fallback (see resolveStoreId); any other
   // tenant with no store claim resolves to null and is told so below.
@@ -180,12 +205,16 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
   const [productsLoaded, setProductsLoaded] = useState(!isLive);
   const [retryTick, setRetryTick] = useState(0);
   const [inventoryMissing, setInventoryMissing] = useState(false);
+  // The store's as-of date from the API — velocity is measured from here.
+  const [asOfDate, setAsOfDate] = useState(null);
 
   useEffect(() => {
     if (dataMode !== 'live') {
       setSourceProducts(dataMode === 'struggling' ? STRUGGLING_PRODUCTS : PRODUCTS);
       setLoadError(false);
       setProductsLoaded(true);
+      // Preview modes are curated fixtures with no real sale dates — no note.
+      setAsOfDate(null);
       return;
     }
 
@@ -196,10 +225,13 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
     // notice; an empty-but-successful response shows the proper empty state.
     setLoadError(false);
     setProductsLoaded(false);
+    setAsOfDate(null);
     api.getStockout({ storeId, velocityDays: 14 })
       .then((response) => {
         const rows = Array.isArray(response?.products) ? response.products : [];
-
+        // Velocity is averaged over the 14 days before the store's latest sale
+        // date, so surface that date — never today's.
+        setAsOfDate(response?.asOfDate ?? null);
         // A row with no last_counted_date has never been counted, so it carries
         // no stock level to project from. The API drops such products and reports
         // hasInventoryData === false when none are left; the same rule is applied
@@ -278,6 +310,9 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
     }
   }
 
+  const asOfLabel = formatAsOfDate(asOfDate);
+  const staleDays = daysSinceAsOf(asOfDate);
+
   return (
     <div>
       <div className="mb-6">
@@ -287,6 +322,17 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
         <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
           Estimated days of inventory left, based on current stock and average daily sales velocity.
         </p>
+        {/* Where the velocity is measured to: the store's latest sale date. */}
+        {asOfLabel && (
+          <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
+            Data as of {asOfLabel}
+          </p>
+        )}
+        {asOfLabel && staleDays !== null && staleDays > STALE_AFTER_DAYS && (
+          <p className="mt-1 text-xs" style={{ color: EARTH.ochre }}>
+            Your latest sales are from {staleDays} days ago, so this analysis is measured from that date.
+          </p>
+        )}
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sortedProducts.map((product) => (
