@@ -7,6 +7,7 @@ import {
   REQUIRED_COLUMN_LABELS,
   REQUIRED_COLUMNS,
   TEMPLATE_FILENAME,
+  describeAnalysisOutcome,
   describeIngestionNotices,
   downloadTemplate,
   missingColumnsEntryFromLog,
@@ -134,7 +135,7 @@ const createJob = (file) => ({
 // SuccessFeedbackBanner — dismissible inline notice after graduation
 // ----------------------------------------------------------------------------
 
-const SuccessFeedbackBanner = ({ message, onDismiss }) => {
+const SuccessFeedbackBanner = ({ message, analysisLine = null, actions = [], onDismiss }) => {
   const { theme } = useTheme();
   const { PALETTE } = useDesignTokens();
 
@@ -150,9 +151,38 @@ const SuccessFeedbackBanner = ({ message, onDismiss }) => {
     >
       <div className="flex items-start gap-3">
         <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0" style={{ color: theme.success }} />
-        <p className="text-sm leading-relaxed" style={{ color: PALETTE.charcoal }}>
-          {message}
-        </p>
+        <div className="min-w-0">
+          <p className="text-sm leading-relaxed" style={{ color: PALETTE.charcoal }}>
+            {message}
+          </p>
+          {/* T12d: the analysis the import ran, stated as counts from the job. */}
+          {analysisLine && (
+            <p className="mt-1 text-sm leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+              {analysisLine}
+            </p>
+          )}
+          {actions.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {actions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={action.onClick}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = PALETTE.bottleGreenHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = PALETTE.bottleGreen;
+                  }}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <button
         type="button"
@@ -929,6 +959,17 @@ const RecentUploadsTable = ({ uploads }) => {
 
 const MALFORMED_ERROR_MESSAGE = '[Row 142]: Missing mandatory primary timestamp alignment value.';
 
+/**
+ * T12d: an import now runs detection and recommendations server-side before it
+ * is allowed to finish, so whatever a dashboard fetched before it is stale.
+ * Announce the settled import once; mounted views listen and refetch.
+ * Guarded for non-browser environments.
+ */
+const announceDataRefreshed = () => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('rad:data-refreshed'));
+};
+
 // ----------------------------------------------------------------------------
 // LiveDataIngestionHub — real upload pipeline (dataMode === 'live')
 // Uploads via POST /api/upload, then polls GET /api/upload/:jobId/status once
@@ -936,13 +977,17 @@ const MALFORMED_ERROR_MESSAGE = '[Row 142]: Missing mandatory primary timestamp 
 // real job fields; nothing is simulated.
 // ----------------------------------------------------------------------------
 
-const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
+const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = () => {} }) => {
   const [uploads, setUploads] = useState([]);
   const [activeJobIds, setActiveJobIds] = useState([]);
   const [notice, setNotice] = useState(null);
   const [successBanner, setSuccessBanner] = useState(null);
   const [lastResultJobId, setLastResultJobId] = useState(null);
   const busyRef = useRef(false);
+  // T12d: the success banner offers the views that show the analysis. Holding the
+  // navigate callback in a ref keeps the polling effect's dependency list stable.
+  const onOpenViewRef = useRef(onOpenView);
+  onOpenViewRef.current = onOpenView;
   const { PALETTE } = useDesignTokens();
   // Scope uploads to the store inside the signed-in account's token. The demo
   // tenant keeps its historic id as a fallback (see resolveStoreId); any other
@@ -1044,10 +1089,38 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
                     : 'Nothing imported — the file parsed but contained 0 data rows. Check that it has a header row plus at least one data row.',
                 });
               } else {
+                // T12d: the server ran detection and recommendations before it
+                // let the job complete, so the roll-up already knows what the
+                // analysis produced. Show the import counts immediately, then
+                // enrich the banner once the summary arrives — and tell any
+                // mounted dashboard to refetch, since its numbers just moved.
+                const bannerId = `${jobId}:${Date.now()}`;
                 setSuccessBanner({
-                  id: Date.now(),
+                  id: bannerId,
                   message: `Import complete — ${job.rows_processed} rows imported${job.rows_failed ? `, ${job.rows_failed} failed validation` : ''}.`,
+                  analysisLine: null,
+                  actions: [],
                 });
+                announceDataRefreshed();
+                api.getUploadSummary(jobId)
+                  .then((summary) => {
+                    const analysisLine = describeAnalysisOutcome(summary?.analysis);
+                    setSuccessBanner((prev) => (prev && prev.id === bannerId
+                      ? {
+                          ...prev,
+                          analysisLine,
+                          actions: analysisLine
+                            ? [
+                                { label: 'Open Overview', onClick: () => onOpenViewRef.current('overview') },
+                                { label: 'Open Recommendations', onClick: () => onOpenViewRef.current('recommendations') },
+                              ]
+                            : [],
+                        }
+                      : prev));
+                  })
+                  .catch(() => {
+                    // The counts are a courtesy; the rows themselves are in.
+                  });
               }
             }
             return;
@@ -1140,6 +1213,8 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
       {successBanner && (
         <SuccessFeedbackBanner
           message={successBanner.message}
+          analysisLine={successBanner.analysisLine}
+          actions={successBanner.actions}
           onDismiss={() => setSuccessBanner(null)}
         />
       )}
@@ -1371,11 +1446,13 @@ const MockDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
 // DataIngestionHub — dispatcher
 // Live mode (the default) uses the real upload pipeline. Non-live preview
 // modes keep the original mocked simulation reachable.
+// T12d: onOpenView lets the live hub send the user to the view that shows the
+// analysis its import just ran; the mock never needs it.
 // ----------------------------------------------------------------------------
 
-const DataIngestionHub = ({ onProceedToAnalytics = () => {}, dataMode = 'live' }) => {
+const DataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = () => {}, dataMode = 'live' }) => {
   return dataMode === 'live'
-    ? <LiveDataIngestionHub onProceedToAnalytics={onProceedToAnalytics} />
+    ? <LiveDataIngestionHub onProceedToAnalytics={onProceedToAnalytics} onOpenView={onOpenView} />
     : <MockDataIngestionHub onProceedToAnalytics={onProceedToAnalytics} />;
 };
 

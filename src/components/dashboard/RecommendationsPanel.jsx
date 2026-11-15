@@ -335,6 +335,16 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
     return undefined;
   }, [isLive, dataMode, retryTick, storeId]);
 
+  // T12d: an import now runs detection and recommendations itself, then announces
+  // it on 'rad:data-refreshed'. Bump the retry counter so the list refetches
+  // instead of showing the recommendations that existed before the import.
+  useEffect(() => {
+    if (!isLive) return undefined;
+    const onDataRefreshed = () => setRetryTick((tick) => tick + 1);
+    window.addEventListener('rad:data-refreshed', onDataRefreshed);
+    return () => window.removeEventListener('rad:data-refreshed', onDataRefreshed);
+  }, [isLive]);
+
   // Re-read the active mode's saved marks when the demo mode changes (for
   // example on the way back from live), so each mode keeps its own done list.
   useEffect(() => {

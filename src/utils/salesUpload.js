@@ -199,6 +199,32 @@ export const describeIngestionNotices = (job) => {
 };
 
 /**
+ * Plain-language wording for the analysis an import ran automatically (T12d):
+ * the alerts and recommendations the engines wrote from the rows just imported.
+ * @param {{ alertsCreated?: number, recommendationsCreated?: number, error?: string }|null|undefined} analysis
+ *   The `analysis` field of GET /api/upload/:jobId/summary; null/undefined when
+ *   the job imported no rows and therefore ran no analysis.
+ * @returns {string|null} e.g. "Analysis complete: 2 alerts, 2 recommendations",
+ *   or null when there is nothing honest to say.
+ */
+export const describeAnalysisOutcome = (analysis) => {
+  if (!analysis || typeof analysis !== 'object') return null;
+  if (analysis.error) {
+    return 'Your data is saved, but the analysis could not finish. It can be re-run from the dashboard.';
+  }
+  const alerts = Number(analysis.alertsCreated) || 0;
+  const recommendations = Number(analysis.recommendationsCreated) || 0;
+  // Nothing new is a normal outcome: a clean dataset, or a re-import of days the
+  // engines have already looked at (both tables dedupe on conflict). Say so
+  // plainly instead of printing "0 alerts, 0 recommendations".
+  if (alerts === 0 && recommendations === 0) {
+    return 'Analysis complete: no new alerts or recommendations to report.';
+  }
+  return `Analysis complete: ${alerts} alert${alerts === 1 ? '' : 's'}, `
+    + `${recommendations} recommendation${recommendations === 1 ? '' : 's'}`;
+};
+
+/**
  * Plain-language wording for a failed upload or a failed ingest job. No status
  * codes and no server text ever reach the screen.
  * @param {Error & {status?: number, code?: string, reason?: string}} err Failure to describe.

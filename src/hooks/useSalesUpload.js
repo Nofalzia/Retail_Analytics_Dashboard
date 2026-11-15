@@ -34,6 +34,17 @@ const POLL_INTERVAL_MS = 1000;
 const NO_STORE_MESSAGE = 'Your account is not linked to a store. Please contact support.';
 
 /**
+ * T12d: the import runs detection + recommendations server-side before it is
+ * marked completed, so the roll-up carries an `analysis` outcome. Announce it
+ * once so any mounted dashboard refetches instead of showing pre-import data.
+ * Guarded for non-browser environments.
+ */
+const announceDataRefreshed = () => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('rad:data-refreshed'));
+};
+
+/**
  * Tracks a single sales-file upload from pick to summary.
  *
  * @returns {{
@@ -45,6 +56,7 @@ const NO_STORE_MESSAGE = 'Your account is not linked to a store. Please contact 
  *   totalRows: number|null,
  *   rowsFailed: number,
  *   summary: Object|null,
+ *   analysis: Object|null,
  *   error: string|null,
  *   start: (file: File) => void,
  *   reset: () => void,
@@ -92,7 +104,11 @@ export function useSalesUpload() {
       if (cancelledRef.current) return;
       setSummary(null);
     }
-    if (!cancelledRef.current) setPhase('done');
+    if (!cancelledRef.current) {
+      // The analysis ran as part of the import (T12d) — tell the dashboards.
+      announceDataRefreshed();
+      setPhase('done');
+    }
   }, []);
 
   const poll = useCallback((id) => {
@@ -179,6 +195,7 @@ export function useSalesUpload() {
     totalRows: rowProgress.totalRows,
     rowsFailed: rowProgress.rowsFailed,
     summary,
+    analysis: summary?.analysis ?? null,
     error,
     start,
     reset,

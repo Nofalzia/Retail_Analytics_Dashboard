@@ -15,9 +15,8 @@ import { Router }       from 'express';
 import { requireAuth }  from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { requireRole, requireDashboardRead } from '../middleware/auth.js';
-import { query, getClient } from '../db/pool.js';
-import { runAllDetection } from '../services/detectionEngine.js';
-import { generateRecommendations } from '../services/recommendationEngine.js';
+import { query } from '../db/pool.js';
+import { runAnalysis } from '../services/analysisRunner.js';
 
 const router = Router();
 
@@ -117,8 +116,10 @@ router.patch(
 );
 
 // ── POST /api/alerts/run-detection ───────────────────────────────────────────
-// Triggers all three Phase 3 detection engines on demand.
-// Restricted to manager and owner roles only.
+// Runs all three Phase 3 detection engines and the Phase 4 recommendation
+// engine on demand. Restricted to manager and owner roles only.
+// The sequence itself lives in services/analysisRunner.js, which the upload
+// pipeline also calls (T12d) — this route is only the HTTP skin over it.
 router.post(
   '/run-detection',
   requireAuth,
@@ -137,35 +138,20 @@ router.post(
 
     try {
       console.log(`[alerts/run-detection] Starting — tenant=${tenantId} store=${storeId}`);
-      const result = await runAllDetection(tenantId, storeId);
-      console.log(`[alerts/run-detection] Done in ${result.durationMs}ms — ${result.alertsCreated.total} new alerts`);
-
-      // Phase 4: turn the fresh alerts into recommendations inside one transaction.
-      // The same as-of date drives the recommendation velocity window and due
-      // dates, so every number in this run is measured from where the data ends.
-      const client = await getClient();
-      let recommendationsCreated = 0;
-      try {
-        await client.query('BEGIN');
-        recommendationsCreated = await generateRecommendations(
-          client, tenantId, storeId, result.asOfDate,
-        );
-        await client.query('COMMIT');
-      } catch (recErr) {
-        await client.query('ROLLBACK');
-        throw recErr;
-      } finally {
-        client.release();
-      }
-      console.log(`[alerts/run-detection] ${recommendationsCreated} recommendation(s) created`);
+      const result = await runAnalysis(tenantId, storeId);
+      console.log(
+        `[alerts/run-detection] Done in ${result.runSummary.durationMs}ms — ` +
+        `${result.alertsCreated} new alert(s), ${result.recommendationsCreated} recommendation(s)`,
+      );
 
       // asOfDate is the store's latest sale date (today when it has no sales) —
       // the client labels the analysis with it.
       return res.json({
         success: true,
         asOfDate: result.asOfDate,
-        runSummary: result,
-        recommendationsCreated,
+        runSummary: result.runSummary,
+        alertsCreated: result.alertsCreated,
+        recommendationsCreated: result.recommendationsCreated,
       });
 
     } catch (err) {

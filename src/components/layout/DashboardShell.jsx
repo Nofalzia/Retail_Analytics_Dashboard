@@ -819,9 +819,14 @@ const DashboardShell = ({
     onDataModeChange(mode);
   };
 
+  // The render prop receives handleNavigate as its fourth argument (T12d) so a
+  // view can send the user to another one — e.g. the ingestion hub offering
+  // "Open Recommendations" once an import's analysis has landed. It is the same
+  // setter the sidebar and dock use, so the URL-less view state stays single-
+  // sourced here.
   const content =
     typeof children === 'function'
-      ? children(activeView, activeRole, effectiveDataMode)
+      ? children(activeView, activeRole, effectiveDataMode, handleNavigate)
       : children;
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.background }}>

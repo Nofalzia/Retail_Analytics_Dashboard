@@ -34,6 +34,16 @@
  * size. T12b: every sheet's header row is checked with buildColumnMap and the
  * FIRST sheet whose requirements all map is imported, so a workbook that opens
  * on a notes tab is still read correctly.
+ *
+ * T12d — the analysis runs with the import
+ * ───────────────────────────────────────
+ * Once every row is written and before the job is marked completed, the same
+ * detection + recommendation run the manual "Run Detection" button performs
+ * (services/analysisRunner.js) is executed for the store. An import therefore
+ * ends with alerts and advice already waiting instead of nothing until someone
+ * clicks. The outcome is recorded in column_map._analysis and surfaced by
+ * GET /:jobId/summary. A failure there is recorded, never fatal: the rows are
+ * already in, and the job still completes (no new status values).
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -49,6 +59,7 @@ import { requireAuth }    from '../middleware/auth.js';
 import { resolveTenant }  from '../middleware/tenant.js';
 import { query, getClient } from '../db/pool.js';
 import { buildColumnMap, validateRow } from '../utils/validators.js';
+import { runAnalysis }    from '../services/analysisRunner.js';
 
 const router = Router();
 
@@ -271,6 +282,9 @@ router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
 //   unitsSold     — Σ quantity_sold
 //   revenue       — Σ total_revenue (the generated column)
 //   topItems      — the three products with the highest units, descending
+//   analysis      — the automatic analysis the import ran (T12d):
+//                   { alertsCreated, recommendationsCreated, error? }, or null
+//                   when the job imported no rows and therefore ran none.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
   const { tenantId } = req;
@@ -283,7 +297,8 @@ router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
               j.status,
               to_jsonb(j) ->> 'original_filename' AS file_name,
               j.rows_processed,
-              j.rows_failed
+              j.rows_failed,
+              j.column_map
          FROM ingestion_jobs j
         WHERE j.id = $1 AND j.tenant_id = $2`,
       [jobId, tenantId],
@@ -293,6 +308,21 @@ router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
       return res.status(404).json({ error: 'JOB_NOT_FOUND', message: 'Import job not found.' });
     }
     const job = jobRows[0];
+
+    // T12d: the automatic analysis the import ran is recorded beside the column
+    // mapping. A job that imported no rows never ran one — that is `null`, not
+    // a fabricated zero, so the UI can stay quiet instead of claiming "0 alerts".
+    const storedMap = job.column_map && typeof job.column_map === 'object' ? job.column_map : {};
+    const storedAnalysis = storedMap._analysis && typeof storedMap._analysis === 'object'
+      ? storedMap._analysis
+      : null;
+    const analysis = storedAnalysis
+      ? {
+          alertsCreated:          Number(storedAnalysis.alertsCreated) || 0,
+          recommendationsCreated: Number(storedAnalysis.recommendationsCreated) || 0,
+          error:                  storedAnalysis.error ?? null,
+        }
+      : null;
 
     const { rows: [totals] } = await query(
       `SELECT count(DISTINCT st.product_id)::int                AS items_count,
@@ -330,6 +360,7 @@ router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
       unitsSold:     totals.units_sold,
       revenue:       Number(totals.revenue),
       topItems:      topRows.map((row) => ({ name: row.name, units: row.units })),
+      analysis,
     });
   } catch (err) {
     console.error('[upload] GET summary error:', err.message);
@@ -532,15 +563,49 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     // Flush any remaining rows
     if (chunk.length > 0) await flushChunk(chunk);
 
+    // ── Step 2b: Analyse the store with the rows just written (T12d) ─────────
+    // The manual "Run Detection" button and this import run the SAME sequence
+    // (services/analysisRunner.js): detect, then recommend. Doing it before the
+    // job is marked completed means a client polling the status keeps seeing
+    // "processing" until the advice actually exists — no new status value.
+    //
+    // A failure here is recorded, never fatal. The rows are already in, and
+    // losing an import because a detector tripped would be the worse outcome,
+    // so the error goes into column_map._analysis and the job still completes.
+    let analysisRecord = null;
+    if (rowsProcessed > 0) {
+      try {
+        const outcome = await runAnalysis(tenantId, storeId);
+        analysisRecord = {
+          alertsCreated:          outcome.alertsCreated,
+          recommendationsCreated: outcome.recommendationsCreated,
+        };
+        console.log(
+          `[upload] Job ${jobId} analysis: ${outcome.alertsCreated} alert(s), ` +
+          `${outcome.recommendationsCreated} recommendation(s)`,
+        );
+      } catch (analysisErr) {
+        console.error(`[upload] Analysis failed for job ${jobId}:`, analysisErr.message);
+        analysisRecord = {
+          alertsCreated:          0,
+          recommendationsCreated: 0,
+          error:                  analysisErr.message,
+        };
+      }
+    }
+
     // ── Step 3: Mark job complete ─────────────────────────────────────────────
     // column_map doubles as the job's provenance note: the assumptions this
-    // import had to make and how many rows its status filter ignored live beside
-    // the mapping under the reserved _-prefixed keys (no schema migration).
+    // import had to make, how many rows its status filter ignored and what the
+    // automatic analysis produced (T12d) live beside the mapping under the
+    // reserved _-prefixed keys (no schema migration).
     const columnMapRecord = {
       ...columnMap,
       _assumptions:     [...assumptionLog],
       _skippedByStatus: rowsSkippedByStatus,
     };
+    // Only an import that wrote rows has an analysis to report.
+    if (analysisRecord) columnMapRecord._analysis = analysisRecord;
 
     await query(
       `UPDATE ingestion_jobs

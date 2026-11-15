@@ -42,7 +42,7 @@ function AppContent() {
 
   return (
     <DashboardShell initialRole={ROLE_LABELS[role] ?? 'Owner'}>
-      {(activeView, activeRole, dataMode) => {
+      {(activeView, activeRole, dataMode, onOpenView) => {
         const hasData = dataMode !== 'empty';
         // T9: the preview switcher only offers Owner and Manager, so there is no
         // System Administrator route left. Stockout Watch and Recommendations
@@ -58,7 +58,15 @@ function AppContent() {
           case 'recommendations':
             return <RecommendationsPanel hasData={hasData} dataMode={dataMode} />;
           case 'data-ingestion':
-            return <DataIngestionHub dataMode={dataMode} />;
+            // T12d: an import now ends with its analysis already run, so the hub
+            // can send the user straight to the view that shows it.
+            return (
+              <DataIngestionHub
+                dataMode={dataMode}
+                onOpenView={onOpenView}
+                onProceedToAnalytics={() => onOpenView('overview')}
+              />
+            );
           default:
             return <BusinessOwnerDashboard activeRole={activeRole} hasData={hasData} dataMode={dataMode} />;
         }

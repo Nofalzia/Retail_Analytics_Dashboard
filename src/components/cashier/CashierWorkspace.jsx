@@ -7,6 +7,10 @@
  * way to reach them: one sidebar item, one job. The wording is deliberately plain
  * English with a Roman Urdu line under it, and every figure on the summary card
  * comes from the real job roll-up (GET /api/upload/:jobId/summary).
+ *
+ * T12d: that roll-up also carries the analysis the import ran automatically, so
+ * the card reports how many alerts and recommendations it produced. A cashier
+ * sees the counts only — the dashboards behind those numbers are not theirs.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -15,7 +19,7 @@ import { useTheme, useDesignTokens } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatLocalCurrency } from '../layout/DashboardShell';
 import { useSalesUpload } from '../../hooks/useSalesUpload.js';
-import { describeDateRange, downloadTemplate } from '../../utils/salesUpload.js';
+import { describeAnalysisOutcome, describeDateRange, downloadTemplate } from '../../utils/salesUpload.js';
 
 /** The three things a cashier has to do, each with its Roman Urdu line. */
 const STEPS = [
@@ -230,12 +234,15 @@ const Stat = ({ label, value }) => {
   );
 };
 
-const SummaryCard = ({ summary, onUploadAnother, onSwitchUser }) => {
+const SummaryCard = ({ summary, analysis, onUploadAnother, onSwitchUser }) => {
   const { CARD_SURFACE, EARTH, PALETTE } = useDesignTokens();
   const { prefix, value } = formatLocalCurrency(summary?.revenue ?? 0);
   const listed = Array.isArray(summary?.topItems) ? summary.topItems : [];
   const topItems = listed.slice(0, 3);
   const dateRange = summary ? describeDateRange(summary.dateFrom, summary.dateTo) : null;
+  // T12d: the import ran detection + recommendations on its way out. A cashier
+  // sees the counts only — the dashboards behind those numbers are not theirs.
+  const analysisLine = describeAnalysisOutcome(analysis);
 
   return (
     <div className="rounded-2xl p-8" style={CARD_SURFACE}>
@@ -286,6 +293,15 @@ const SummaryCard = ({ summary, onUploadAnother, onSwitchUser }) => {
       ) : (
         <p className="mt-6 text-sm" style={{ color: PALETTE.charcoalMuted }}>
           Your file was saved. We could not load the full details this time.
+        </p>
+      )}
+
+      {analysisLine && (
+        <p
+          className="mt-6 rounded-xl px-4 py-3 text-sm font-medium"
+          style={{ backgroundColor: EARTH.sageSoft, color: PALETTE.charcoal }}
+        >
+          {analysisLine}
         </p>
       )}
 
@@ -421,6 +437,7 @@ export default function CashierWorkspace() {
             {upload.phase === 'done' ? (
               <SummaryCard
                 summary={upload.summary}
+                analysis={upload.analysis}
                 onUploadAnother={upload.reset}
                 onSwitchUser={logout}
               />

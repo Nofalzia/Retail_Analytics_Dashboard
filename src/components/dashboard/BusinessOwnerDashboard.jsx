@@ -558,6 +558,17 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
       .finally(() => setIsLoaded(true));
   }, [dataMode, retryTick, storeId]);
 
+  // T12d: an import now runs detection and recommendations itself, then announces
+  // it on 'rad:data-refreshed'. Bump the retry counter so this view refetches
+  // instead of showing numbers from before the import. Live mode only — the
+  // preview fixtures cannot change.
+  useEffect(() => {
+    if (!isLive) return undefined;
+    const onDataRefreshed = () => setRetryTick((tick) => tick + 1);
+    window.addEventListener('rad:data-refreshed', onDataRefreshed);
+    return () => window.removeEventListener('rad:data-refreshed', onDataRefreshed);
+  }, [isLive]);
+
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
   }

@@ -838,6 +838,17 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
     fetchAlerts();
   }, [dataMode, retryTick, storeId]);
 
+  // T12d: an import now runs detection itself and announces it on
+  // 'rad:data-refreshed'. Bump the retry counter so the alerts list refetches
+  // instead of showing the alerts that existed before the import. The manual
+  // "Run Detection" button in the panel stays as it was.
+  useEffect(() => {
+    if (!isLive) return undefined;
+    const onDataRefreshed = () => setRetryTick((tick) => tick + 1);
+    window.addEventListener('rad:data-refreshed', onDataRefreshed);
+    return () => window.removeEventListener('rad:data-refreshed', onDataRefreshed);
+  }, [isLive]);
+
   if (activeRole === 'System Administrator') {
     return <AdminRestrictedAccess />;
   }
