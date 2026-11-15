@@ -3,12 +3,14 @@ import { useDesignTokens, useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { resolveStoreId } from '../../utils/resolveStoreId.js';
 import {
+  INVENTORY_TEMPLATE_FILENAME,
   MAX_FILE_SIZE_MB,
   REQUIRED_COLUMN_LABELS,
   REQUIRED_COLUMNS,
   TEMPLATE_FILENAME,
   describeAnalysisOutcome,
   describeIngestionNotices,
+  downloadInventoryTemplate,
   downloadTemplate,
   missingColumnsEntryFromLog,
   missingColumnsFromLog,
@@ -266,7 +268,14 @@ const ProgressRing = ({ percent, size = 44, strokeWidth = 4, color, isError = fa
 // UploadDropzone
 // ----------------------------------------------------------------------------
 
-const UploadDropzone = ({ onFiles, onReject, onDownloadTemplate, showLoadSample = false, onLoadSample }) => {
+const UploadDropzone = ({
+  onFiles,
+  onReject,
+  onDownloadTemplate,
+  onDownloadInventoryTemplate = downloadInventoryTemplate,
+  showLoadSample = false,
+  onLoadSample,
+}) => {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
   const { theme } = useTheme();
@@ -338,8 +347,10 @@ const UploadDropzone = ({ onFiles, onReject, onDownloadTemplate, showLoadSample 
         <p className="mt-3 text-base font-semibold" style={{ color: PALETTE.charcoal }}>
           Drag and drop a file to begin ingestion
         </p>
-        <p className="mt-1.5 max-w-xs text-xs" style={{ color: PALETTE.charcoalMuted }}>
-          Supports .csv and .xlsx, max {MAX_FILE_SIZE_MB}MB per file.
+        <p className="mt-1.5 max-w-xs text-center text-xs" style={{ color: PALETTE.charcoalMuted }}>
+          Supports .csv and .xlsx, max {MAX_FILE_SIZE_MB}MB per file. Sales rows and
+          stock counts are both accepted — the kind of file is detected from its
+          headers.
         </p>
         <button
           type="button"
@@ -392,6 +403,34 @@ const UploadDropzone = ({ onFiles, onReject, onDownloadTemplate, showLoadSample 
           </span>
           <span className="text-xs font-medium" style={{ color: PALETTE.bottleGreen }}>
             Download template
+          </span>
+        </button>
+
+        {/* T12e: the stock-count template. Same client-side Blob download, a
+            different column set — one row per product, quantity on the shelf. */}
+        <button
+          type="button"
+          onClick={onDownloadInventoryTemplate}
+          className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-xs transition-colors"
+          style={{ ...CARD_SURFACE, color: PALETTE.charcoal, backgroundColor: theme.surface }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = PALETTE.sand;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = theme.surface;
+          }}
+        >
+          <span className="flex items-center gap-2.5">
+            <DocumentIcon className="h-4 w-4" style={{ color: PALETTE.bottleGreen }} />
+            <span>
+              <span className="font-medium">{INVENTORY_TEMPLATE_FILENAME}</span>
+              <span className="ml-2 text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
+                — downloads the stock-count template
+              </span>
+            </span>
+          </span>
+          <span className="text-xs font-medium" style={{ color: PALETTE.bottleGreen }}>
+            Download
           </span>
         </button>
 
@@ -880,13 +919,25 @@ const ResultsPanel = ({ upload }) => {
         </div>
       )}
 
-      <p className="mt-4 text-xs font-semibold" style={{ color: PALETTE.charcoalMuted }}>
-        Required column checks
-      </p>
-      <ColumnChecklist
-        state={isFailed && missing.length > 0 ? 'fail' : 'pass'}
-        missingColumns={missing}
-      />
+      {/* T12e: the sales checklist means nothing for a stock count, where the only
+          real question is whether every SKU matched a product the store sells. */}
+      {upload.kind === 'inventory' ? (
+        <p className="mt-4 text-xs leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+          <span className="font-semibold" style={{ color: PALETTE.charcoal }}>Stock count: </span>
+          SKUs are matched to products you already sell — a count never creates
+          products, so a row with an unknown SKU is reported as failed.
+        </p>
+      ) : (
+        <>
+          <p className="mt-4 text-xs font-semibold" style={{ color: PALETTE.charcoalMuted }}>
+            Required column checks
+          </p>
+          <ColumnChecklist
+            state={isFailed && missing.length > 0 ? 'fail' : 'pass'}
+            missingColumns={missing}
+          />
+        </>
+      )}
     </div>
   );
 };
@@ -1070,6 +1121,9 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
                 // filter ignored. Both come from the job itself — nothing inferred.
                 assumptions: Array.isArray(job.assumptions) ? job.assumptions : [],
                 skippedByStatus: job.skippedByStatus || 0,
+                // T12e: the job records which kind of file it imported, so the
+                // results panel can show the right section for it.
+                kind: job.column_map?._kind === 'inventory' ? 'inventory' : 'sales',
               }
             : u));
 
@@ -1104,15 +1158,27 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
                 announceDataRefreshed();
                 api.getUploadSummary(jobId)
                   .then((summary) => {
+                    // T12e: a stock count is described as what it is — shelf levels
+                    // for the products the store already sells — and the banner points
+                    // at the view that consumes them, Stockout Watch.
+                    const isInventory = summary?.kind === 'inventory';
                     const analysisLine = describeAnalysisOutcome(summary?.analysis);
+                    const inventoryMessage = isInventory
+                      ? `Stock count imported — ${Number(summary.rowsProcessed) || 0} rows saved`
+                        + `${summary.rowsFailed ? `, ${summary.rowsFailed} failed validation` : ''}. `
+                        + 'Days of inventory left now uses these shelf levels.'
+                      : null;
                     setSuccessBanner((prev) => (prev && prev.id === bannerId
                       ? {
                           ...prev,
+                          message: inventoryMessage ?? prev.message,
                           analysisLine,
                           actions: analysisLine
                             ? [
                                 { label: 'Open Overview', onClick: () => onOpenViewRef.current('overview') },
-                                { label: 'Open Recommendations', onClick: () => onOpenViewRef.current('recommendations') },
+                                isInventory
+                                  ? { label: 'Open Stockout Watch', onClick: () => onOpenViewRef.current('stockout-prediction') }
+                                  : { label: 'Open Recommendations', onClick: () => onOpenViewRef.current('recommendations') },
                               ]
                             : [],
                         }
@@ -1173,6 +1239,8 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
             errorLog: [],
             assumptions: [],
             skippedByStatus: 0,
+            // T12e: filled in from the job's column_map once polling responds.
+            kind: null,
           }]);
           setActiveJobIds((ids) => [...ids, jobId]);
         })
@@ -1228,8 +1296,8 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
           Data Ingestion Hub
         </h1>
         <p className="mt-1 text-sm" style={{ color: PALETTE.charcoalMuted }}>
-          Upload store data files to import real rows. Live mode writes directly
-          to your store database — no financial figures are shown here.
+          Upload sales files or stock counts. Live mode writes directly to your store
+          database — no financial figures are shown here.
         </p>
       </div>
 

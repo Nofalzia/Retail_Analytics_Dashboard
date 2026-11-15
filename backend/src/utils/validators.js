@@ -19,6 +19,15 @@
  *
  * A header can only ever be claimed by ONE canonical column, so "Total Price"
  * always lands on total_revenue and never on unit_price.
+ *
+ * T12e — stock-count files:
+ *   • INVENTORY_COLUMNS is a second, smaller contract (sku + quantity_on_hand,
+ *     with count_date and product_name optional);
+ *   • detectFileKind() decides which contract a file satisfies, so the upload
+ *     route can branch without guessing from the file name;
+ *   • validateInventoryRow() validates one stock-count row. It never invents a
+ *     product: an unknown SKU is a row error, because a typo in a count must not
+ *     create a phantom product.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -81,6 +90,51 @@ export const COLUMN_ALIASES = {
   status:         ['status', 'order status', 'transaction status', 'payment status'],
   store_id:       ['store', 'store id', 'branch', 'location'],
 };
+
+/**
+ * INVENTORY_COLUMNS
+ * The stock-count file contract (T12e). A stock count answers a different
+ * question than a sales file — "how much is on the shelf?" rather than "what
+ * moved?" — so it has its own, smaller column set:
+ *
+ *   sku              (required) — the same aliases the sales contract accepts,
+ *                    because a SKU is a SKU whichever file it arrives in;
+ *   quantity_on_hand (required) — a non-negative whole number of units;
+ *   count_date       (optional) — when the count was taken; today when absent;
+ *   product_name     (optional) — parsed and ignored: a stock count NEVER
+ *                    creates a product, so the name is only read because real
+ *                    exports carry it.
+ *
+ * The demo generator (backend/scripts/demo/generateInventoryFromSales.js) and
+ * the browser template (src/utils/salesUpload.js) both use these canonical
+ * names, so a generated file and a hand-filled template import identically.
+ */
+export const INVENTORY_COLUMNS = {
+  sku:              { aliases: COLUMN_ALIASES.sku, required: true },
+  quantity_on_hand: {
+    aliases: [
+      'quantity on hand', 'qty on hand', 'on hand', 'stock on hand', 'stock',
+      'stock level', 'current stock', 'closing stock', 'inventory', 'balance',
+    ],
+    required: true,
+  },
+  count_date: {
+    // 'count date' is what the canonical column name normalises to, so a file
+    // written with the exact names the template uses maps without an alias.
+    aliases: [
+      'count date', 'counted date', 'date', 'stock date', 'stock count date',
+      'inventory date', 'as of date', 'as of', 'snapshot date',
+    ],
+    required: false,
+  },
+  product_name:     { aliases: COLUMN_ALIASES.product_name, required: false },
+};
+
+/** Canonical stock-count columns without which the file cannot be imported. */
+export const INVENTORY_REQUIRED_COLUMNS = ['sku', 'quantity_on_hand'];
+
+/** Stock-count columns that are parsed when present and never required. */
+export const INVENTORY_OPTIONAL_COLUMNS = ['count_date', 'product_name'];
 
 /**
  * REQUIRED_COLUMNS
@@ -155,6 +209,16 @@ export function normaliseHeader(str) {
 /** Every accepted alias, normalised, for the "unrecognised column" warning. */
 const KNOWN_ALIASES = new Set(Object.values(COLUMN_ALIASES).flat().map(normaliseHeader));
 
+/**
+ * Every alias either contract accepts, normalised. Used only for the
+ * "unrecognised column" warning on stock-count files, so a sales column sitting
+ * in a count file is reported as ignored rather than as an unknown header.
+ */
+const INVENTORY_KNOWN_ALIASES = new Set([
+  ...KNOWN_ALIASES,
+  ...Object.values(INVENTORY_COLUMNS).flatMap((spec) => spec.aliases).map(normaliseHeader),
+]);
+
 
 /**
  * buildColumnMap(fileHeaders)
@@ -219,6 +283,84 @@ export function buildColumnMap(fileHeaders) {
   }
 
   return { map, missing, warnings, assumptions, detectedHeaders };
+}
+
+/**
+ * buildInventoryColumnMap(fileHeaders)
+ * The stock-count twin of buildColumnMap(): resolves the headers of a count file
+ * to INVENTORY_COLUMNS, claiming each header at most once and in the contract's
+ * order (sku, quantity_on_hand, count_date, product_name), so "date" can never be
+ * stolen from count_date by another column.
+ *
+ * Nothing is estimated here: a count file makes no assumptions, because a missing
+ * count_date simply means "today" and a missing product name is irrelevant (an
+ * unknown SKU is rejected by validateInventoryRow instead of being created).
+ *
+ * @param {string[]} fileHeaders Raw headers from the CSV/XLSX.
+ * @returns {{
+ *   map: Object,
+ *   missing: string[],
+ *   warnings: string[],
+ *   detectedHeaders: string[],
+ * }} `missing` lists only the required stock-count columns nothing matched.
+ */
+export function buildInventoryColumnMap(fileHeaders) {
+  const detectedHeaders = (Array.isArray(fileHeaders) ? fileHeaders : [])
+    .map((header) => String(header ?? '').trim())
+    .filter(Boolean);
+  const normalisedHeaders = detectedHeaders.map(normaliseHeader);
+
+  const map = {};
+  const claimedIndexes = new Set();
+
+  for (const [canonicalName, spec] of Object.entries(INVENTORY_COLUMNS)) {
+    for (const alias of spec.aliases) {
+      const normalisedAlias = normaliseHeader(alias);
+      const index = normalisedHeaders.findIndex(
+        (header, headerIndex) => !claimedIndexes.has(headerIndex) && header === normalisedAlias,
+      );
+      if (index !== -1) {
+        claimedIndexes.add(index);
+        map[canonicalName] = detectedHeaders[index];
+        break;
+      }
+    }
+  }
+
+  const missing = INVENTORY_REQUIRED_COLUMNS.filter((column) => !map[column]);
+
+  // Unrecognised columns are ignored, not an error.
+  const unknownHeaders = normalisedHeaders.filter(
+    (header, index) => header && !claimedIndexes.has(index) && !INVENTORY_KNOWN_ALIASES.has(header),
+  );
+  const warnings = unknownHeaders.length > 0
+    ? [`Unrecognised columns (will be ignored): ${unknownHeaders.join(', ')}`]
+    : [];
+
+  return { map, missing, warnings, detectedHeaders };
+}
+
+/**
+ * detectFileKind(fileHeaders)
+ * Decides which contract an uploaded file satisfies.
+ *
+ * Sales wins whenever its requirements all map, even if the file also carries a
+ * stock column: a sales file with a leftover "stock" column is still a sales file,
+ * and choosing inventory there would silently import the wrong facts. A file that
+ * satisfies neither contract returns null, and the caller reports the sales
+ * requirements as missing (the sales contract is the richer, more common one).
+ *
+ * @param {string[]} fileHeaders Raw headers from the CSV/XLSX.
+ * @returns {'sales'|'inventory'|null} The kind of file, or null when unclear.
+ */
+export function detectFileKind(fileHeaders) {
+  const { missing: salesMissing } = buildColumnMap(fileHeaders);
+  if (salesMissing.length === 0) return 'sales';
+
+  const { missing: inventoryMissing } = buildInventoryColumnMap(fileHeaders);
+  if (inventoryMissing.length === 0) return 'inventory';
+
+  return null;
 }
 
 /**
@@ -537,6 +679,93 @@ export function validateRow(rawRow, columnMap, rowIndex) {
     },
     error: null,
     skipped: null,
+    assumptions,
+  };
+}
+
+/**
+ * The date a stock count falls back to when the file carries none: today, read
+ * in UTC exactly as the import job's own dates are. Exported so the route, the
+ * UI wording and this validator can quote the same rule.
+ */
+export function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * validateInventoryRow(rawRow, columnMap, rowIndex)
+ * Validates one stock-count row after buildInventoryColumnMap() has been applied.
+ *
+ * Shape of a valid row (T12e):
+ *   • quantity_on_hand — a whole number ≥ 0. "12.5", "-3", "1,200" and "abc" are
+ *     all rejected, because a fractional or negative count is not a count;
+ *   • count_date — parsed with the same parseFlexibleDate() the sales path uses
+ *     (ISO, Excel serials, day-first slashes, month names). An EMPTY cell means
+ *     the count was taken today, so it defaults to today instead of failing; a
+ *     cell that holds something unreadable is still an error;
+ *   • sku — required, and it must already exist for the tenant. This validator
+ *     cannot see the database, so it only checks presence; the upload route turns
+ *     an unknown SKU into a row error and never creates a product.
+ *
+ * @param {Object} rawRow    Key/value pairs from the CSV parser.
+ * @param {Object} columnMap Canonical stock-count name → header in the file.
+ * @param {number} rowIndex  1-based row number for error messages.
+ * @returns {{ data: Object|null, error: string|null, assumptions: string[] }}
+ */
+export function validateInventoryRow(rawRow, columnMap, rowIndex) {
+  const get = (canonicalName) => {
+    const header = columnMap[canonicalName];
+    return header ? String(rawRow[header] ?? '').trim() : '';
+  };
+
+  const errors = [];
+  const assumptions = [];
+
+  // SKU — presence only; existence is resolved against the tenant's products.
+  const sku = get('sku');
+  if (!sku) errors.push(`row ${rowIndex}: missing SKU`);
+
+  // quantity_on_hand — a non-negative integer, nothing else.
+  const rawQuantity = get('quantity_on_hand');
+  const quantityOnHand = Number.parseInt(rawQuantity, 10);
+  const isWholeNumber = /^\d+$/.test(rawQuantity);
+  if (!isWholeNumber || !Number.isSafeInteger(quantityOnHand)) {
+    errors.push(
+      `row ${rowIndex}: invalid quantity_on_hand "${rawQuantity}" — must be a non-negative whole number`,
+    );
+  }
+
+  // count_date — optional; an absent column or an empty cell means today.
+  const countDateHeader = columnMap.count_date;
+  const rawCountDate = countDateHeader ? rawRow[countDateHeader] : '';
+  const hasCountDate = rawCountDate !== null
+    && rawCountDate !== undefined
+    && String(rawCountDate).trim() !== '';
+
+  let countDate = null;
+  if (hasCountDate) {
+    // The raw cell is passed untouched: an XLSX date cell arrives as a Date and
+    // an Excel serial as a number, and both must stay out of String().
+    countDate = parseFlexibleDate(rawCountDate, assumptions);
+    if (!countDate) {
+      errors.push(`row ${rowIndex}: invalid count_date "${String(rawCountDate).trim()}"`);
+    }
+  } else {
+    countDate = todayIsoDate();
+  }
+
+  if (errors.length > 0) {
+    return { data: null, error: errors.join('; '), assumptions: [] };
+  }
+
+  return {
+    data: {
+      sku,
+      product_name:    get('product_name') || null,
+      quantity_on_hand: quantityOnHand,
+      count_date:      countDate,
+    },
+    error: null,
     assumptions,
   };
 }

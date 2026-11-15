@@ -32,10 +32,22 @@ export const REQUIRED_COLUMN_LABELS = {
   unit_price: 'Unit price',
   total_revenue: 'Line total',
   unit_cost: 'Unit cost',
+  quantity_on_hand: 'Quantity on hand',
+  count_date: 'Count date',
 };
 
 export const TEMPLATE_HEADER = 'date,sku,product_name,quantity_sold,unit_price,unit_cost';
 export const TEMPLATE_FILENAME = 'retail-import-template.csv';
+
+// ── Stock-count template (T12e) ──────────────────────────────────────────────
+// A stock count is a different file from a sales file: it says how much is on the
+// shelf, not what moved. The upload endpoint decides which kind a file is from its
+// headers (backend/src/utils/validators.js → detectFileKind), so the two templates
+// are the only place a user has to get that choice right. Column names mirror
+// INVENTORY_COLUMNS: sku and quantity_on_hand are required; count_date and
+// product_name are optional.
+export const INVENTORY_TEMPLATE_HEADER = 'sku,quantity_on_hand,count_date,product_name';
+export const INVENTORY_TEMPLATE_FILENAME = 'retail-stock-count-template.csv';
 
 /** Extensions the upload endpoint accepts. */
 export const ALLOWED_EXTENSIONS = ['.csv', '.xlsx'];
@@ -52,19 +64,38 @@ export const FILE_SIZE_MESSAGE =
   'This file is too large. Please export it as CSV and try again, or ask your manager.';
 export const GENERIC_UPLOAD_MESSAGE = 'Something went wrong. Please try again, or ask your manager.';
 
-/** Generates a CSV with the exact required headers, client-side. */
-export const downloadTemplate = () => {
-  const blob = new Blob(
-    [`${TEMPLATE_HEADER}\n2026-10-01,SKU-TPLT-001,Sample Product,10,120.00,80.00\n`],
-    { type: 'text/csv' },
-  );
+/**
+ * Writes a CSV to the user's downloads folder. Built in the browser with a Blob —
+ * templates have no backend endpoint, so these two downloads can never disagree
+ * with the column names this module exports.
+ * @param {string} fileName Name of the downloaded file.
+ * @param {string[]} lines CSV lines, header first.
+ */
+const saveCsv = (fileName, lines) => {
+  const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = TEMPLATE_FILENAME;
+  anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
 };
+
+/** Generates the sales template — the exact required headers plus one sample row. */
+export const downloadTemplate = () => saveCsv(TEMPLATE_FILENAME, [
+  TEMPLATE_HEADER,
+  '2026-10-01,SKU-TPLT-001,Sample Product,10,120.00,80.00',
+]);
+
+/**
+ * Generates the stock-count template (T12e): one row per product, how many units
+ * are on the shelf and the date they were counted. A stock count never creates
+ * products, so the sample SKU has to be replaced with one the store already sells.
+ */
+export const downloadInventoryTemplate = () => saveCsv(INVENTORY_TEMPLATE_FILENAME, [
+  INVENTORY_TEMPLATE_HEADER,
+  'SKU-TPLT-001,24,2026-10-01,Sample Product',
+]);
 
 /**
  * Lower-cased extension of a file name, dot included.

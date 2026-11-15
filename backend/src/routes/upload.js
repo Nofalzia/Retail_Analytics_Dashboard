@@ -44,6 +44,25 @@
  * clicks. The outcome is recorded in column_map._analysis and surfaced by
  * GET /:jobId/summary. A failure there is recorded, never fatal: the rows are
  * already in, and the job still completes (no new status values).
+ *
+ * T12e — stock-count files import through the same pipeline
+ * ─────────────────────────────────────────────────────────
+ * The route now accepts TWO file kinds. detectFileKind() (utils/validators.js)
+ * reads the header row and answers 'sales' or 'inventory'; sales wins when a file
+ * satisfies both contracts. A stock-count file streams through exactly the same
+ * machinery — 1,000-row chunks, the same file-hash dedup, the same job record,
+ * the same automatic analysis afterwards — and differs only in what it writes:
+ *
+ *   • inventory_logs instead of sale_transactions, so latest_inventory_per_product
+ *     has rows and Stockout Watch can compute days of inventory left;
+ *   • SKUs are RESOLVED, never created. A count file that mentions an unknown SKU
+ *     gets a row error ("unknown SKU") — a typo in a stock count must not conjure a
+ *     product that has never been sold.
+ *
+ * The kind is recorded in column_map._kind so the UI (and anyone debugging a job
+ * later) can tell the two imports apart without guessing from the file name.
+ * A leading '#' line is treated as a comment by csv-parser (skipComments), which
+ * is what lets the synthetic demo snapshot carry its provenance note.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -58,7 +77,13 @@ import XLSX               from 'xlsx';
 import { requireAuth }    from '../middleware/auth.js';
 import { resolveTenant }  from '../middleware/tenant.js';
 import { query, getClient } from '../db/pool.js';
-import { buildColumnMap, validateRow } from '../utils/validators.js';
+import {
+  buildColumnMap,
+  buildInventoryColumnMap,
+  detectFileKind,
+  validateInventoryRow,
+  validateRow,
+} from '../utils/validators.js';
 import { runAnalysis }    from '../services/analysisRunner.js';
 
 const router = Router();
@@ -277,11 +302,14 @@ router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
 //   status        — ingestion_jobs.status
 //   fileName      — ingestion_jobs.original_filename, read through to_jsonb so a
 //                   schema without that column yields null instead of an error
-//   dateFrom/dateTo — min/max sale_date among THIS job's rows (null if none)
+//   kind          — 'sales' | 'inventory', read from column_map._kind (T12e)
+//   dateFrom/dateTo — min/max date among THIS job's rows (null if none)
 //   itemsCount    — distinct products in this job's rows
-//   unitsSold     — Σ quantity_sold
-//   revenue       — Σ total_revenue (the generated column)
-//   topItems      — the three products with the highest units, descending
+//   unitsSold     — Σ quantity_sold (sales only; 0 for a stock count)
+//   revenue       — Σ total_revenue (sales only; 0 for a stock count)
+//   unitsOnHand   — Σ quantity_on_hand (stock count only; 0 for sales)
+//   topItems      — the three products with the highest units (sales) or the
+//                   highest stock on hand (inventory), descending
 //   analysis      — the automatic analysis the import ran (T12d):
 //                   { alertsCreated, recommendationsCreated, error? }, or null
 //                   when the job imported no rows and therefore ran none.
@@ -324,41 +352,62 @@ router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
         }
       : null;
 
-    const { rows: [totals] } = await query(
-      `SELECT count(DISTINCT st.product_id)::int                AS items_count,
-              coalesce(sum(st.quantity_sold), 0)::int             AS units_sold,
-              coalesce(sum(st.total_revenue), 0)::numeric(15, 2)  AS revenue,
-              min(st.sale_date)::text                             AS date_from,
-              max(st.sale_date)::text                             AS date_to
-         FROM sale_transactions st
-        WHERE st.ingestion_job_id = $1 AND st.tenant_id = $2`,
-      [jobId, tenantId],
-    );
+    // T12e: a stock-count job has no sale rows at all, so the sales roll-up would
+    // report a truthful but meaningless zero. Read the kind the pipeline recorded
+    // (absent on jobs written before T12e → 'sales') and roll up the right table.
+    const kind = storedMap._kind === 'inventory' ? 'inventory' : 'sales';
 
-    const { rows: topRows } = await query(
-      `SELECT p.name                        AS name,
-              sum(st.quantity_sold)::int    AS units
-         FROM sale_transactions st
-         JOIN products p
-           ON p.id = st.product_id AND p.tenant_id = st.tenant_id
-        WHERE st.ingestion_job_id = $1 AND st.tenant_id = $2
-        GROUP BY p.name
-        ORDER BY units DESC, p.name ASC
-        LIMIT 3`,
-      [jobId, tenantId],
-    );
+    const totalsSql = kind === 'inventory'
+      ? `SELECT count(DISTINCT il.product_id)::int        AS items_count,
+                coalesce(sum(il.quantity_on_hand), 0)::int AS units_on_hand,
+                min(il.log_date)::text                     AS date_from,
+                max(il.log_date)::text                     AS date_to
+           FROM inventory_logs il
+          WHERE il.ingestion_job_id = $1 AND il.tenant_id = $2`
+      : `SELECT count(DISTINCT st.product_id)::int                AS items_count,
+                coalesce(sum(st.quantity_sold), 0)::int             AS units_sold,
+                coalesce(sum(st.total_revenue), 0)::numeric(15, 2)  AS revenue,
+                min(st.sale_date)::text                             AS date_from,
+                max(st.sale_date)::text                             AS date_to
+           FROM sale_transactions st
+          WHERE st.ingestion_job_id = $1 AND st.tenant_id = $2`;
+
+    const { rows: [totals] } = await query(totalsSql, [jobId, tenantId]);
+
+    const topRowsSql = kind === 'inventory'
+      ? `SELECT p.name                              AS name,
+                il.quantity_on_hand::int             AS units
+           FROM inventory_logs il
+           JOIN products p
+             ON p.id = il.product_id AND p.tenant_id = il.tenant_id
+          WHERE il.ingestion_job_id = $1 AND il.tenant_id = $2
+          ORDER BY il.quantity_on_hand DESC, p.name ASC
+          LIMIT 3`
+      : `SELECT p.name                        AS name,
+                sum(st.quantity_sold)::int    AS units
+           FROM sale_transactions st
+           JOIN products p
+             ON p.id = st.product_id AND p.tenant_id = st.tenant_id
+          WHERE st.ingestion_job_id = $1 AND st.tenant_id = $2
+          GROUP BY p.name
+          ORDER BY units DESC, p.name ASC
+          LIMIT 3`;
+
+    const { rows: topRows } = await query(topRowsSql, [jobId, tenantId]);
 
     return res.json({
       jobId:         job.id,
       status:        job.status,
       fileName:      job.file_name ?? null,
+      kind,
       rowsProcessed: job.rows_processed,
       rowsFailed:    job.rows_failed,
       dateFrom:      totals.date_from,
       dateTo:        totals.date_to,
       itemsCount:    totals.items_count,
-      unitsSold:     totals.units_sold,
-      revenue:       Number(totals.revenue),
+      unitsSold:     Number(totals.units_sold) || 0,
+      revenue:       Number(totals.revenue) || 0,
+      unitsOnHand:   Number(totals.units_on_hand) || 0,
       topItems:      topRows.map((row) => ({ name: row.name, units: row.units })),
       analysis,
     });
@@ -392,15 +441,30 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     let sheetsInspected = [];
     let workbook        = null;
 
+    // T12e: this job's file kind, decided from the headers — never from the file
+    // name or extension. 'sales' is the default, so a file that satisfies neither
+    // contract is reported against the sales requirements (the richer contract).
+    let fileKind = 'sales';
+
     if (fileType === 'csv') {
-      const headers = await extractHeaders(file.path);
-      ({ map: columnMap, missing, warnings, assumptions, detectedHeaders } = buildColumnMap(headers));
+      const headers      = await extractHeaders(file.path);
+      const detectedKind = detectFileKind(headers);
+      fileKind           = detectedKind ?? 'sales';
+
+      if (fileKind === 'inventory') {
+        ({ map: columnMap, missing, warnings, detectedHeaders } = buildInventoryColumnMap(headers));
+        assumptions = []; // a stock count makes no assumptions; see buildInventoryColumnMap
+      } else {
+        ({ map: columnMap, missing, warnings, assumptions, detectedHeaders } = buildColumnMap(headers));
+      }
     } else {
       const selection = inspectWorkbook(file.path);
       workbook        = selection.workbook;
       sheetName       = selection.sheetName;
       sheetsInspected = selection.inspectedSheets;
-      ({ map: columnMap, missing, warnings, assumptions, detectedHeaders } = selection.columns);
+      fileKind        = selection.kind;
+      ({ map: columnMap, missing, warnings, detectedHeaders } = selection.columns);
+      assumptions = Array.isArray(selection.columns.assumptions) ? selection.columns.assumptions : [];
 
       // The sheet actually read is part of what the import did, so it is stated
       // in the assumptions the UI shows rather than left implicit.
@@ -429,10 +493,12 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
       return;
     }
 
-    // Persist the column map so we can debug mapping issues later
+    // Persist the column map so we can debug mapping issues later. The file kind
+    // rides along under a reserved _-prefixed key (T12e), so a job's shape is
+    // self-describing without a schema migration.
     await query(
       `UPDATE ingestion_jobs SET status = 'processing', column_map = $1::jsonb WHERE id = $2`,
-      [JSON.stringify(columnMap), jobId],
+      [JSON.stringify({ ...columnMap, _kind: fileKind }), jobId],
     );
 
     // ── Step 2: Stream + parse rows ───────────────────────────────────────────
@@ -451,6 +517,9 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     // and then served from memory, so steady-state chunks pay no product
     // round-trips at all (previously: two per chunk, every chunk, forever).
     const productIdBySku    = new Map();
+    // T12e: SKUs a stock-count file asked about that this tenant does not have.
+    // Remembering the miss stops every later chunk from re-asking about a typo.
+    const unknownSkus       = new Set();
     let chunkIndex          = 0;
     let queryCount          = 0; // database queries charged to the chunk being flushed
     let chunksSinceProgress = 0;
@@ -532,8 +601,110 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
       }
     };
 
+    // T12e: the stock-count twin of flushChunk(). Same chunking and the same
+    // one-statement-per-chunk shape, but it writes inventory_logs and RESOLVES
+    // SKUs instead of creating them: a count file may only describe products the
+    // tenant already sells, so an unmatched SKU becomes a row error.
+    const flushInventoryChunk = async (rows) => {
+      if (rows.length === 0) return;
+      chunkIndex += 1;
+      queryCount = 0;
+
+      const unresolvedSkus = [...new Set(rows.map((row) => row.sku))]
+        .filter((sku) => !productIdBySku.has(sku) && !unknownSkus.has(sku));
+
+      if (unresolvedSkus.length > 0) {
+        // One SELECT for the whole chunk. A SKU that comes back missing does not
+        // exist for this tenant and is never inserted — unlike the sales path,
+        // which upserts unknown SKUs because a sale proves the product exists.
+        const { rows: productRows } = await query(
+          'SELECT id, sku FROM products WHERE tenant_id = $1 AND sku = ANY($2)',
+          [tenantId, unresolvedSkus],
+        );
+        queryCount += 1; // products SELECT
+
+        for (const product of productRows) productIdBySku.set(product.sku, product.id);
+        for (const sku of unresolvedSkus) {
+          if (!productIdBySku.has(sku)) unknownSkus.add(sku);
+        }
+      }
+
+      const values = [];
+      const params = [];
+      let   pIdx   = 1;
+
+      for (const row of rows) {
+        const productId = productIdBySku.get(row.sku);
+        if (!productId) {
+          errors.push({
+            row:   row.rowIndex,
+            error: `row ${row.rowIndex}: unknown SKU "${row.sku}" — a stock count never creates products; `
+              + 'import the sales history that contains it first.',
+          });
+          continue;
+        }
+
+        values.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`);
+        params.push(tenantId, storeId, productId, jobId, row.quantity_on_hand, row.count_date);
+      }
+
+      if (values.length > 0) {
+        await query(
+          `INSERT INTO inventory_logs
+             (tenant_id, store_id, product_id, ingestion_job_id, quantity_on_hand, log_date)
+           VALUES ${values.join(', ')}`,
+          params,
+        );
+        // Count what was actually written: rows dropped for an unknown SKU are
+        // failures, not processed rows.
+        rowsProcessed += values.length;
+        queryCount += 1; // inventory_logs multi-row INSERT
+
+        chunksSinceProgress += 1;
+        if (chunksSinceProgress >= PROGRESS_EVERY_N_CHUNKS) {
+          await query(
+            'UPDATE ingestion_jobs SET rows_processed = $1 WHERE id = $2',
+            [rowsProcessed, jobId],
+          );
+          queryCount += 1; // ingestion_jobs progress UPDATE
+          chunksSinceProgress = 0;
+        }
+      }
+
+      if (INGEST_DEBUG) {
+        console.log(
+          `[ingest] inventory chunk ${chunkIndex}: ${rows.length} rows, ` +
+          `${unresolvedSkus.length} skus looked up, ${queryCount} queries, rowsProcessed=${rowsProcessed}`,
+        );
+      }
+    };
+
     await streamRows(file.path, fileType, async (rawRow) => {
       rowIndex++;
+
+      // T12e: a stock-count row is validated against its own, smaller contract.
+      // There is no status column to skip — a count is a fact, not a movement.
+      if (fileKind === 'inventory') {
+        const { data, error, assumptions: rowAssumptions } =
+          validateInventoryRow(rawRow, columnMap, rowIndex);
+
+        if (error) {
+          errors.push({ row: rowIndex, error });
+          return;
+        }
+
+        for (const assumption of rowAssumptions) assumptionLog.add(assumption);
+
+        // The row number travels with the row so an unknown SKU can still be
+        // reported against the line it came from at flush time.
+        chunk.push({ ...data, rowIndex });
+
+        if (chunk.length >= CHUNK_ROWS) {
+          await flushInventoryChunk(chunk);
+          chunk = [];
+        }
+        return;
+      }
 
       const { data, error, skipped, assumptions: rowAssumptions } =
         validateRow(rawRow, columnMap, rowIndex);
@@ -561,13 +732,20 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     }, { sheetName, workbook });
 
     // Flush any remaining rows
-    if (chunk.length > 0) await flushChunk(chunk);
+    if (chunk.length > 0) {
+      if (fileKind === 'inventory') await flushInventoryChunk(chunk);
+      else await flushChunk(chunk);
+    }
 
     // ── Step 2b: Analyse the store with the rows just written (T12d) ─────────
     // The manual "Run Detection" button and this import run the SAME sequence
     // (services/analysisRunner.js): detect, then recommend. Doing it before the
     // job is marked completed means a client polling the status keeps seeing
     // "processing" until the advice actually exists — no new status value.
+    //
+    // T12e runs it for stock-count imports too: they write no sales rows, but the
+    // detectors read latest_inventory_per_product, so a fresh count is exactly
+    // what turns "days of inventory left" from unknown into an alert or advice.
     //
     // A failure here is recorded, never fatal. The rows are already in, and
     // losing an import because a detector tripped would be the worse outcome,
@@ -601,6 +779,7 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     // reserved _-prefixed keys (no schema migration).
     const columnMapRecord = {
       ...columnMap,
+      _kind:            fileKind,
       _assumptions:     [...assumptionLog],
       _skippedByStatus: rowsSkippedByStatus,
     };
@@ -650,7 +829,9 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
 // ─────────────────────────────────────────────────────────────────────────────
 function extractHeaders(filePath) {
   return new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath).pipe(csvParser());
+    // skipComments: '#' — a leading comment line (the demo snapshot's provenance
+    // note) is not the header row and must never be mistaken for one (T12e).
+    const stream = createReadStream(filePath).pipe(csvParser({ skipComments: '#' }));
     stream.on('headers', (headers) => {
       stream.destroy(); // stop after reading headers — no need to read the whole file
       resolve(headers);
@@ -663,12 +844,14 @@ function extractHeaders(filePath) {
 // inspectWorkbook(filePath)
 // Loads a workbook once (SheetJS is memory-bound — see the file header comment)
 // and picks the sheet to import: the FIRST sheet whose header row satisfies
-// every column requirement. Empty sheets and notes/instructions sheets cannot
+// every column requirement of EITHER contract (sales first, then stock count —
+// detectFileKind() decides). Empty sheets and notes/instructions sheets cannot
 // satisfy the requirements, so they are skipped; their names are still reported.
 //
-// Returns { workbook, sheetName, inspectedSheets, columns }, where columns is
-// buildColumnMap()'s result for the chosen sheet — or, when no sheet qualifies,
-// for the sheet that came closest, so the error names what was actually wrong.
+// Returns { workbook, sheetName, inspectedSheets, kind, columns }, where kind is
+// 'sales' | 'inventory' and columns is that contract's build*ColumnMap() result
+// for the chosen sheet — or, when no sheet qualifies, for the sheet that came
+// closest, so the error names what was actually wrong.
 // ─────────────────────────────────────────────────────────────────────────────
 function inspectWorkbook(filePath) {
   const workbook = XLSX.readFile(filePath, { cellDates: true });
@@ -687,18 +870,35 @@ function inspectWorkbook(filePath) {
     // An empty sheet (or a blank first row) has no header row at all.
     if (headers.every((header) => header === '')) continue;
 
+    // T12e: a workbook may hold either kind of sheet. detectFileKind() applies
+    // the same "sales wins" precedence as the CSV path, so one rule governs both.
+    const detectedKind = detectFileKind(headers);
+    if (detectedKind === 'inventory') {
+      const columns = buildInventoryColumnMap(headers);
+      if (columns.missing.length === 0) {
+        return { workbook, sheetName: name, inspectedSheets, kind: 'inventory', columns };
+      }
+      if (!closest || columns.missing.length < closest.columns.missing.length) {
+        closest = { kind: 'inventory', columns };
+      }
+      continue;
+    }
+
     const columns = buildColumnMap(headers);
     if (columns.missing.length === 0) {
-      return { workbook, sheetName: name, inspectedSheets, columns };
+      return { workbook, sheetName: name, inspectedSheets, kind: 'sales', columns };
     }
-    if (!closest || columns.missing.length < closest.missing.length) closest = columns;
+    if (!closest || columns.missing.length < closest.columns.missing.length) {
+      closest = { kind: 'sales', columns };
+    }
   }
 
   return {
     workbook,
     sheetName: null,
     inspectedSheets,
-    columns: closest ?? buildColumnMap([]),
+    kind: closest ? closest.kind : 'sales',
+    columns: closest ? closest.columns : buildColumnMap([]),
   };
 }
 
@@ -718,7 +918,9 @@ function streamRows(filePath, fileType, onRow, { sheetName = null, workbook = nu
   return new Promise((resolve, reject) => {
     if (fileType === 'csv') {
       const pending = [];
-      const stream  = createReadStream(filePath).pipe(csvParser());
+      // Same skipComments option as extractHeaders(), so the row count and the
+      // header row always come from the same reading of the file (T12e).
+      const stream  = createReadStream(filePath).pipe(csvParser({ skipComments: '#' }));
 
       stream.on('data', (row) => {
         stream.pause();
