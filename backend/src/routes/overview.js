@@ -17,6 +17,11 @@
  *               ago still produces a populated 30-day window and 14-day trend)
  *
  * The response includes asOfDate so the dashboard can say "Data as of …".
+ *
+ * GET /api/overview/baseline
+ * The same 30-day window, reduced to the two numbers the scenario simulator
+ * needs to start from (T12f): revenue in and cost of goods as a percentage of
+ * it. Same role rules and same as-of anchoring as the overview read above.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -158,6 +163,100 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
   } catch (err) {
     console.error('[overview] Query error:', err.message);
     return res.status(500).json({ error: 'QUERY_ERROR', message: 'Failed to fetch overview data.' });
+  }
+});
+
+// ── GET /api/overview/baseline?storeId= ───────────────────────────────────────
+// T12f: the scenario simulator's starting numbers, measured from the tenant's
+// own sales instead of fixed sample figures.
+//
+// The simulator opens on this baseline, so it answers "what happens if supply
+// costs rise 10%" against the shop the user actually uploaded — the same last
+// 30 days the overview dashboard shows, anchored to the store's as-of date.
+const BASELINE_WINDOW_DAYS = 30;
+// Fewer days with sales than this and a "monthly" average is one or two good
+// days wearing a disguise. The route reports null and the panel says so calmly
+// rather than projecting from noise.
+const BASELINE_MIN_DAYS = 7;
+
+router.get('/baseline', requireAuth, resolveTenant, requireDashboardRead, async (req, res) => {
+  const { tenantId } = req;
+  const storeId      = req.query.storeId || null;
+
+  try {
+    const asOfDate = await getStoreAsOfDate(query, tenantId, storeId);
+
+    // 30 calendar days *including* the as-of date: the window opens 29 days back,
+    // so "your last 30 days" is literally 30 dates.
+    const windowStart = shiftIsoDate(asOfDate, -(BASELINE_WINDOW_DAYS - 1));
+
+    const storeFilter = storeId ? 'AND st.store_id = $4' : '';
+    const params      = storeId
+      ? [tenantId, windowStart, asOfDate, storeId]
+      : [tenantId, windowStart, asOfDate];
+
+    // COGS is measured from the cost recorded on each sold line
+    // (quantity_sold * cost_price_at_sale) — the expression the generated
+    // total_cost column holds — never from today's standard_unit_cost, so a
+    // supplier price change after the sale cannot rewrite history.
+    const { rows: [totals] } = await query(
+      `SELECT
+         COALESCE(SUM(st.total_revenue), 0)                         AS total_revenue,
+         COALESCE(SUM(st.quantity_sold * st.cost_price_at_sale), 0) AS total_cogs,
+         COUNT(DISTINCT st.sale_date)                               AS days_with_sales
+       FROM sale_transactions st
+       WHERE st.tenant_id = $1
+         AND st.sale_date BETWEEN $2 AND $3
+         ${storeFilter}`,
+      params,
+    );
+
+    const daysWithSales = Number(totals?.days_with_sales) || 0;
+    if (daysWithSales < BASELINE_MIN_DAYS) {
+      // Not an error — a new tenant simply has no month to model yet.
+      return res.json({ baseline: null });
+    }
+
+    const monthlyRevenue = Number(totals.total_revenue) || 0;
+    const totalCogs      = Number(totals.total_cogs) || 0;
+    const cogsPercent    = monthlyRevenue > 0
+      ? Math.round((totalCogs / monthlyRevenue) * 1000) / 10
+      : 0;
+
+    // Was any of that cost guessed? When an import has no cost column the parser
+    // estimates unit cost from price and records the assumption on the job under
+    // the reserved column_map._assumptions key (see routes/upload.js). A margin
+    // modelled from those costs is an estimate, and the panel labels it.
+    const { rows: [assumptionRow] } = await query(
+      `SELECT EXISTS (
+         SELECT 1
+           FROM ingestion_jobs ij
+           CROSS JOIN LATERAL jsonb_array_elements(
+             CASE WHEN jsonb_typeof(ij.column_map -> '_assumptions') = 'array'
+                  THEN ij.column_map -> '_assumptions'
+                  ELSE '[]'::jsonb
+             END
+           ) AS a(entry)
+          WHERE ij.tenant_id = $1
+            AND ij.status = 'completed'
+            ${storeId ? 'AND ij.store_id = $2' : ''}
+            AND a.entry::text ILIKE '%cost%'
+       ) AS cost_is_estimated`,
+      storeId ? [tenantId, storeId] : [tenantId],
+    );
+
+    return res.json({
+      baseline: {
+        monthlyRevenue,
+        cogsPercent,
+        windowDays: BASELINE_WINDOW_DAYS,
+        asOfDate,
+        costIsEstimated: Boolean(assumptionRow?.cost_is_estimated),
+      },
+    });
+  } catch (err) {
+    console.error('[overview] Baseline query error:', err.message);
+    return res.status(500).json({ error: 'QUERY_ERROR', message: 'Failed to fetch the scenario baseline.' });
   }
 });
 

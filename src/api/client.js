@@ -67,6 +67,17 @@ export const api = {
     return apiFetch(`/api/overview${qs ? `?${qs}` : ''}`);
   },
 
+  /**
+   * GET /api/overview/baseline?storeId= — the tenant's own last-30-days
+   * starting point for the scenario simulator (T12f).
+   * Resolves to { baseline: { monthlyRevenue, cogsPercent, windowDays,
+   * asOfDate, costIsEstimated } | null }.
+   */
+  getBaseline: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/overview/baseline${qs ? `?${qs}` : ''}`);
+  },
+
   /** GET /api/alerts — powers StoreManagerDashboard anomaly feed */
   getAlerts: (params = {}) => {
     const qs = new URLSearchParams(params).toString();

@@ -593,22 +593,75 @@ const EarthSlider = ({ id, label, value, min, max, step, unit, onChange, accent 
   );
 };
 
-/** Healthy store baseline — used by the scenario simulation sliders. */
+/**
+ * Healthy store baseline — preview modes only (T12f). A real tenant's
+ * simulator starts from its own last 30 days (GET /api/overview/baseline);
+ * these fixed figures exist so the Healthy/Struggling preview states still
+ * demonstrate the sliders without live data.
+ */
 const BASELINE = {
   monthlyRevenue: 4218000,
   cogsPercent: 58,
 };
 
-/** Struggling store baseline — thin margin, already under pressure. */
+/** Struggling store baseline — thin margin, already under pressure (preview only). */
 const STRUGGLING_BASELINE = {
   monthlyRevenue: 1840000,
   cogsPercent: 76,
 };
 
-const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
-  const { CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE, PANEL_SURFACE } = useDesignTokens();
+// Mirrors BASELINE_MIN_DAYS on the API: below this many days of sales the
+// endpoint answers null and the panel shows the calm empty state instead.
+const BASELINE_MIN_DAYS = 7;
+
+const ScenarioSimulationPanel = ({ storeId = null, previewBaseline = BASELINE }) => {
+  const { ALERT_SURFACE, CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE, PANEL_SURFACE } =
+    useDesignTokens();
   const [supplyCostIncrease, setSupplyCostIncrease] = useState(BASELINE_SLIDER_VALUES.supplyCostIncrease);
   const [priceAdjustment, setPriceAdjustment] = useState(BASELINE_SLIDER_VALUES.priceAdjustment);
+
+  // T12f: a real tenant models its own numbers. Preview modes send no storeId,
+  // carry their own baseline and never call the API.
+  // The payload remembers which store it belongs to, so switching stores can
+  // never show the previous store's numbers under the new heading.
+  const [baselinePayload, setBaselinePayload] = useState(null);
+  const [baselineState, setBaselineState] = useState(storeId ? 'loading' : 'ready');
+  const [retryTick, setRetryTick] = useState(0);
+
+  useEffect(() => {
+    if (!storeId) return undefined;
+
+    // `cancelled` keeps a late response for a previous store (or an unmounted
+    // panel) from overwriting the baseline that is on screen now.
+    let cancelled = false;
+    setBaselineState('loading');
+
+    api.getBaseline({ storeId })
+      .then((data) => {
+        if (cancelled) return;
+        setBaselinePayload({ storeId, baseline: data?.baseline ?? null });
+        setBaselineState(data?.baseline ? 'ready' : 'empty');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBaselinePayload({ storeId, baseline: null });
+        setBaselineState('error');
+      });
+
+    return () => { cancelled = true; };
+  }, [storeId, retryTick]);
+
+  // T12d/T12f: an import announces itself once its analysis has landed, so the
+  // simulator refetches and models the rows that were just uploaded.
+  useEffect(() => {
+    if (!storeId) return undefined;
+    const onDataRefreshed = () => setRetryTick((tick) => tick + 1);
+    window.addEventListener('rad:data-refreshed', onDataRefreshed);
+    return () => window.removeEventListener('rad:data-refreshed', onDataRefreshed);
+  }, [storeId]);
+
+  const tenantBaseline = baselinePayload?.storeId === storeId ? baselinePayload.baseline : null;
+  const baseline = storeId ? tenantBaseline : previewBaseline;
 
   const handleResetToBaseline = () => {
     setSupplyCostIncrease(BASELINE_SLIDER_VALUES.supplyCostIncrease);
@@ -616,6 +669,9 @@ const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
   };
 
   const projection = useMemo(() => {
+    // No baseline yet (loading, empty or failed) — nothing to project from.
+    if (!baseline) return null;
+
     const adjustedCogsPercent = baseline.cogsPercent * (1 + supplyCostIncrease / 100);
     const adjustedRevenue = baseline.monthlyRevenue * (1 + priceAdjustment / 100);
     const effectiveCogsPercent =
@@ -631,11 +687,16 @@ const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
       baselineMarginPercent,
       profitDelta: monthlyProfit - baselineProfit,
     };
-  }, [supplyCostIncrease, priceAdjustment]);
+  }, [baseline, supplyCostIncrease, priceAdjustment]);
 
-  const isMarginDown = projection.marginPercent < projection.baselineMarginPercent;
-  const isMarginWipedOut = projection.marginPercent <= 0;
-  const profitDeltaPositive = projection.profitDelta >= 0;
+  // The baseline line under the title belongs to real data only; the preview
+  // modes keep their original header.
+  const revenueLabel = baseline ? formatLocalCurrency(baseline.monthlyRevenue) : null;
+  const showBaselineLine = Boolean(storeId && baseline);
+
+  const isMarginDown = projection ? projection.marginPercent < projection.baselineMarginPercent : false;
+  const isMarginWipedOut = projection ? projection.marginPercent <= 0 : false;
+  const profitDeltaPositive = projection ? projection.profitDelta >= 0 : true;
 
   return (
     <div className="rounded-xl p-6 sm:p-8 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
@@ -654,95 +715,163 @@ const ScenarioSimulationPanel = ({ baseline = BASELINE }) => {
             <p className="mt-0.5 text-xs" style={{ color: PALETTE.charcoalMuted }}>
               Drag the levers below to see how costs and pricing affect margin.
             </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleResetToBaseline}
-          className="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all duration-150 ease-out"
-          style={{ backgroundColor: PANEL_SURFACE.backgroundColor, color: PALETTE.charcoalMuted }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
-          }}
-        >
-          Reset to Base Tenant Baseline
-        </button>
-      </div>
-
-      <div className="mt-6 space-y-6">
-        <EarthSlider
-          id="supplyCostIncrease"
-          label="Supply chain cost increase"
-          value={supplyCostIncrease}
-          min={0}
-          max={50}
-          step={1}
-          unit="%"
-          onChange={setSupplyCostIncrease}
-          accent={EARTH.terracotta}
-        />
-        <EarthSlider
-          id="priceAdjustment"
-          label="Retail price adjustment"
-          value={priceAdjustment}
-          min={-20}
-          max={20}
-          step={1}
-          unit="%"
-          onChange={setPriceAdjustment}
-          accent={EARTH.sage}
-        />
-      </div>
-
-      <div className="my-6 h-px" style={{ backgroundColor: PALETTE.sandBorder }} />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-xl p-4" style={INSET_SURFACE}>
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: PALETTE.charcoalMuted }}>
-            Projected Net Margin
-          </p>
-          <p className="mt-1.5 text-3xl font-bold tracking-tight" style={{ color: PALETTE.charcoal }}>
-            {projection.marginPercent.toFixed(1)}%
-          </p>
-
-          {isMarginWipedOut && (
-            <p className="mt-2 text-xs font-medium" style={{ color: EARTH.terracotta }}>
-              This combination would eliminate your margin entirely — consider a smaller price cut or cost increase.
-            </p>
-          )}
-
-          <p className="mt-1 flex items-center gap-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-            {isMarginDown && (
-              <TrendDownIcon className="h-3.5 w-3.5" style={{ color: EARTH.terracotta }} />
+            {showBaselineLine && (
+              <p
+                className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+                style={{ color: PALETTE.charcoalMuted }}
+              >
+                <span>
+                  Baseline: your last {baseline.windowDays} days ({revenueLabel.prefix}{' '}
+                  {revenueLabel.value} revenue, {Number(baseline.cogsPercent).toFixed(1)}% cost of goods)
+                </span>
+                {baseline.costIsEstimated && (
+                  <span
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                    style={{
+                      borderColor: PALETTE.sandBorder,
+                      backgroundColor: PALETTE.sand,
+                      color: EARTH.ochre,
+                    }}
+                    title="Your imports had no cost column, so unit cost was estimated from price. The margin below is an estimate."
+                  >
+                    Cost estimated
+                  </span>
+                )}
+              </p>
             )}
-            baseline {projection.baselineMarginPercent.toFixed(1)}%
-          </p>
-        </div>
-        <div className="rounded-xl p-4" style={INSET_SURFACE}>
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: PALETTE.charcoalMuted }}>
-            Projected Monthly Profit
-          </p>
-          <div className="mt-1.5">
-            <CurrencyFigure amount={projection.monthlyProfit} />
           </div>
-          <p className="mt-1 text-xs font-medium" style={{ color: PALETTE.charcoalMuted }}>
-            <span style={{ color: profitDeltaPositive ? EARTH.sage : EARTH.terracotta }}>
-              {profitDeltaPositive ? '+' : ''}
-              {formatLocalCurrency(projection.profitDelta).prefix}{' '}
-              {formatLocalCurrency(Math.abs(projection.profitDelta)).value}
-            </span>{' '}
-            vs baseline
-          </p>
         </div>
+        {projection && (
+          <button
+            type="button"
+            onClick={handleResetToBaseline}
+            className="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all duration-150 ease-out"
+            style={{ backgroundColor: PANEL_SURFACE.backgroundColor, color: PALETTE.charcoalMuted }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = PALETTE.bottleGreenSoft;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
+            }}
+          >
+            Reset to Base Tenant Baseline
+          </button>
+        )}
       </div>
 
-      <p className="mt-4 text-[11px] leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
-        Simulation uses a simple cost-and-price model against your current baseline cost of goods sold —
-        a directional estimate, not a forecast.
-      </p>
+      {storeId && baselineState === 'loading' && !tenantBaseline && (
+        <p className="mt-6 flex items-center gap-2 text-sm" style={{ color: PALETTE.charcoalMuted }}>
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          Loading your last 30 days…
+        </p>
+      )}
+
+      {storeId && baselineState === 'error' && (
+        <div
+          className="mt-6 rounded-xl p-5"
+          style={{ ...INSET_SURFACE, borderLeft: `4px solid ${ALERT_SURFACE.warning.borderColor}` }}
+        >
+          <p className="text-sm" style={{ color: PALETTE.charcoal }}>
+            We could not load your last 30 days of sales, so the simulator has nothing to model yet.
+          </p>
+          <button
+            type="button"
+            onClick={() => setRetryTick((tick) => tick + 1)}
+            className="mt-3 rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ease-out"
+            style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {storeId && baselineState === 'empty' && (
+        <div className="mt-6 rounded-xl p-6 text-center" style={INSET_SURFACE}>
+          <p className="text-sm font-medium" style={{ color: PALETTE.charcoal }}>
+            Not enough sales history yet
+          </p>
+          <p className="mt-2 text-xs leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+            The simulator models your own numbers, and it needs at least {BASELINE_MIN_DAYS} days of sales
+            in the last 30 before that is meaningful. Keep importing — it fills in on its own.
+          </p>
+        </div>
+      )}
+
+      {projection && (
+        <>
+          <div className="mt-6 space-y-6">
+            <EarthSlider
+              id="supplyCostIncrease"
+              label="Supply chain cost increase"
+              value={supplyCostIncrease}
+              min={0}
+              max={50}
+              step={1}
+              unit="%"
+              onChange={setSupplyCostIncrease}
+              accent={EARTH.terracotta}
+            />
+            <EarthSlider
+              id="priceAdjustment"
+              label="Retail price adjustment"
+              value={priceAdjustment}
+              min={-20}
+              max={20}
+              step={1}
+              unit="%"
+              onChange={setPriceAdjustment}
+              accent={EARTH.sage}
+            />
+          </div>
+
+          <div className="my-6 h-px" style={{ backgroundColor: PALETTE.sandBorder }} />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-xl p-4" style={INSET_SURFACE}>
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: PALETTE.charcoalMuted }}>
+                Projected Net Margin
+              </p>
+              <p className="mt-1.5 text-3xl font-bold tracking-tight" style={{ color: PALETTE.charcoal }}>
+                {projection.marginPercent.toFixed(1)}%
+              </p>
+
+              {isMarginWipedOut && (
+                <p className="mt-2 text-xs font-medium" style={{ color: EARTH.terracotta }}>
+                  This combination would eliminate your margin entirely — consider a smaller price cut or cost increase.
+                </p>
+              )}
+
+              <p className="mt-1 flex items-center gap-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
+                {isMarginDown && (
+                  <TrendDownIcon className="h-3.5 w-3.5" style={{ color: EARTH.terracotta }} />
+                )}
+                baseline {projection.baselineMarginPercent.toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-xl p-4" style={INSET_SURFACE}>
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: PALETTE.charcoalMuted }}>
+                Projected Monthly Profit
+              </p>
+              <div className="mt-1.5">
+                <CurrencyFigure amount={projection.monthlyProfit} />
+              </div>
+              <p className="mt-1 text-xs font-medium" style={{ color: PALETTE.charcoalMuted }}>
+                <span style={{ color: profitDeltaPositive ? EARTH.sage : EARTH.terracotta }}>
+                  {profitDeltaPositive ? '+' : ''}
+                  {formatLocalCurrency(projection.profitDelta).prefix}{' '}
+                  {formatLocalCurrency(Math.abs(projection.profitDelta)).value}
+                </span>{' '}
+                vs baseline
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-[11px] leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+            Simulation uses a simple cost-and-price model against your current baseline cost of goods sold —
+            a directional estimate, not a forecast.
+          </p>
+        </>
+      )}
 
       <style>{`
         .earth-slider {
@@ -887,7 +1016,10 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
         storeId={isLive ? storeId : null}
         onRefreshAlerts={fetchAlerts}
       />
-      <ScenarioSimulationPanel baseline={isStruggling ? STRUGGLING_BASELINE : BASELINE} />
+      <ScenarioSimulationPanel
+        storeId={isLive ? storeId : null}
+        previewBaseline={isStruggling ? STRUGGLING_BASELINE : BASELINE}
+      />
     </div>
   );
 };
