@@ -13,10 +13,11 @@ Anomalies come from a per-product rolling z-score (`backend/src/services/rolling
 suggestions from a decision rule set (`backend/src/services/recommendationEngine.js`), so every
 alert can be explained to a shopkeeper in one sentence.
 
-Ingestion is **streamed, not buffered**: the production route parses CSV with pause/resume,
-writes 1,000-row batches and holds a flat ~50–62 MB peak RSS from 100,000 to 1,000,000 rows,
-where a naive in-memory read peaks at ~484 MB
-(see [Validation & published evidence](#validation--published-evidence)).
+CSV ingestion is **streamed, not buffered**: the production route parses CSV with pause/resume and
+writes 1,000-row batches, holding a flat ~50–62 MB peak RSS from 100,000 to 1,000,000 rows, where a
+naive in-memory read peaks at ~484 MB (XLSX/XLS workbooks *are* read into memory — see
+[Known limitations](#known-limitations)). The figures are published in
+[Validation & published evidence](#validation--published-evidence).
 
 ---
 
@@ -29,8 +30,10 @@ where a naive in-memory read peaks at ~484 MB
 - [API](#api)
 - [Getting started (Windows CMD)](#getting-started-windows-cmd)
 - [Demo accounts](#demo-accounts)
-  - [Second demo tenant — London Bakers I-10](#second-demo-tenant--london-bakers-i-10)
-  - [Third demo tenant — New Store (Demo)](#third-demo-tenant--new-store-demo)
+  - [Demo Kiryana Store](#demo-kiryana-store)
+  - [London Bakers I-10](#london-bakers-i-10)
+  - [New Store (Demo)](#new-store-demo)
+- [Upload templates](./docs/data/upload_templates.md)
 - [npm scripts](#npm-scripts)
 - [Validation & published evidence](#validation--published-evidence)
 - [Project structure](#project-structure)
@@ -51,7 +54,10 @@ where a naive in-memory read peaks at ~484 MB
 - **Five views** — Overview, Deep Analytics, Stockout Watch, Recommendations, Data Ingestion.
 - **Preview switchers** — a role switcher (Owner / Manager) and a data-mode switcher
   (*Healthy Store* / *Struggling Store* / *New Tenant (No Data)*), so empty and edge states can be
-  demonstrated without touching the database.
+  demonstrated without touching the database. The mocked preview states describe `demo-kiryana`
+  only; every other tenant always shows live data.
+- **Three demo stores** offered as sign-in chips — a seeded store, a two-year real export and a
+  deliberately blank one for the onboarding walkthrough (see [Demo accounts](#demo-accounts)).
 - **Light / dark theme** on a warm earth palette, inline SVG icons only (no icon package).
 
 ### Owner
@@ -62,9 +68,12 @@ indicator.
 ### Manager
 
 - **Deep Analytics** — the store's threshold anomaly alerts (with a manual *Run Detection* control)
-  and a baseline **scenario simulator** that projects margin from two levers (supply-chain cost
-  increase / price adjustment). The simulator starts from **fixed sample baseline figures**
-  (monthly revenue / COGS %), not the tenant's uploaded data.
+  and a **scenario simulator** that projects margin from two levers (supply-chain cost increase /
+  price adjustment). The simulator starts from the tenant's own **last 30 days** of uploaded sales —
+  revenue and COGS % from `GET /api/overview/baseline`, anchored to the as-of date — and says so
+  plainly when that window holds fewer than 7 days with sales, or when unit cost had to be estimated
+  because an import carried no cost column. The fixed sample baselines are used only by the mocked
+  preview states.
 - **Stockout Watch** — days-of-cover against recent velocity, ranked by urgency.
 - **Recommendations** — generated from active alerts, with suggested quantity and revenue at risk;
   an acknowledge / complete flow.
@@ -72,12 +81,52 @@ indicator.
 ### Data Ingestion
 
 - **Live pipeline** — real `POST /api/upload` (CSV, XLSX, XLS), per-job progress polling, rows
-  processed / rows failed and the server-side error log.
-- **Per-row validation** (`backend/src/utils/validators.js`) — invalid rows are logged, not fatal.
+  processed / rows failed and the server-side error log. The kind of file is decided from its header
+  row, never from its name: a **sales export** writes `sale_transactions`, a **stock count** writes
+  `inventory_logs`.
+- **Flexible column mapping** (`backend/src/utils/validators.js`) — headers are normalised first
+  (case, spacing, punctuation and bracketed units such as `(PKR)` are ignored) and then matched
+  against an alias list, so `Sale Date`, `sale_date`, `Order Date` and `Day` all resolve to `date`. A
+  requirement is only missing when **nothing** matches it: a sales file needs a date, a quantity, a
+  price (unit price **or** line total) and a product identity (SKU **or** product name). The alias
+  list is published in [`docs/data/upload_templates.md`](docs/data/upload_templates.md).
+- **Net unit price from line totals** — when a file carries a line total instead of a unit price, the
+  net unit price is `total_revenue / quantity_sold` rounded to 2 dp, so a discount on the line
+  survives the import instead of being averaged away.
+- **Optional cost, stated as an estimate** — a missing `unit_cost` column does not fail the import:
+  cost becomes `unit_price × COST_RATIO_DEFAULT` (60 % of price by default, configurable 0–1 in
+  `backend/.env`) and the job reports *"No cost column found: cost estimated at 60% of price, so
+  margins are estimates."* Views that depend on that margin are labelled as estimates.
+- **Status filtering** — when a file has a status column, rows that are not a completed sale
+  (cancelled, refunded, quotes, …) are **skipped and counted**, never failed. Accepted statuses are
+  `completed`, `complete`, `paid`, `sold`, `success`, `successful`, `delivered`, `closed`.
+- **Flexible dates** — ISO dates with or without a time, Excel serials, `DD/MM/YYYY` / `DD-MM-YYYY`,
+  unambiguous `MM/DD/YYYY`, and month names (`12 Oct 2025`, `Oct 12, 2025`) all parse. An ambiguous
+  slash date is read day-first and the job records that assumption; an unreadable date is a row error
+  quoting the raw cell, because a guessed date is worse than a rejected row.
+- **As-of date anchoring** (`backend/src/utils/asOfDate.js`) — every analysis window is anchored to
+  the store's **latest sale date** (today only when the store has no sales at all), so an export that
+  ends months ago still produces a real trend, a real detection run and a real stockout ranking.
+- **Automatic analysis after upload** (`backend/src/services/analysisRunner.js`) — before the job is
+  marked completed, the same detect-then-recommend sequence the manual *Run Detection* button uses
+  runs for that store. The counts are stored on the job (`column_map._analysis`), returned by
+  `GET /api/upload/:jobId/summary` and shown on the success banner. An analysis failure is recorded,
+  never fatal — the rows are already in.
+- **Stock-count upload** — `sku` + `quantity_on_hand`, plus optional `count_date` (defaults to today)
+  and `product_name`. A count never creates products: an unknown SKU is a row error, because a typo
+  in a count must not conjure a product nobody sells. Counts use the same chunked pipeline, file-hash
+  dedup and automatic analysis as sales files.
+- **Per-row validation** — invalid rows are logged with their row number and the raw value, not fatal.
 - **File-level dedup** — a SHA-256 hash of the file stops the same file from being imported twice
   for one store (`uq_ingestion_file_per_store`, a partial index that ignores failed jobs).
 - **Honest empty state** — a job that finishes having imported 0 rows is reported as
   *"Nothing imported"* on the ochre warning surface instead of a green success banner.
+- **Templates** — the browser downloads a sales template and a stock-count template whose headers
+  mirror the canonical columns the parser accepts, so a downloaded template maps without guessing
+  (see [`docs/data/upload_templates.md`](docs/data/upload_templates.md)).
+- **Cashier screen** — a `data_entry_clerk` account gets one upload screen with the same file
+  contract and the analysis counts on its success card, and no dashboard views (the API refuses
+  those reads).
 
 ### Platform (not part of the storefront preview)
 
@@ -100,11 +149,12 @@ Express API — backend/src/index.js
   |  middleware/tenant.js     resolves the tenant -> req.tenantId
   v
 Routes                            Services / utils
-  routes/overview.js              services/rollingZScore.js        per-day baseline, guarded |z|
+  routes/overview.js (+baseline)  services/rollingZScore.js        per-day baseline, guarded |z|
   routes/alerts.js                services/detectionEngine.js      persists alerts
   routes/stockout.js              services/recommendationEngine.js rule set
-  routes/recommendations.js       utils/validators.js              per-row CSV validation
-  routes/upload.js
+  routes/recommendations.js       services/analysisRunner.js       detect, then advise
+  routes/upload.js                utils/validators.js              column mapping + row validation
+                                  utils/asOfDate.js                the window anchor
   v
 PostgreSQL — 10 tables + 4 read views, every query scoped by tenant_id
 ```
@@ -113,11 +163,14 @@ PostgreSQL — 10 tables + 4 read views, every query scoped by tenant_id
 
 ```
 POST /api/upload
-  -> multer writes to UPLOAD_TEMP_DIR (cap: MAX_FILE_SIZE_MB)
+  -> multer writes to UPLOAD_TEMP_DIR (cap: MAX_FILE_SIZE_MB, default 60)
   -> SHA-256 hash -> ingestion_jobs row (status = processing)     duplicate file -> 409
+  -> header row -> detectFileKind(): 'sales' or 'inventory', + column map and assumptions
   -> background: csv-parser stream (CSV only; XLSX/XLS are read into memory by SheetJS)
-       -> 1,000-row batches -> products upsert + sale_transactions insert
+       -> 1,000-row batches -> sales: products upsert + sale_transactions insert
+                               stock count: SKU lookup + inventory_logs insert
        -> rows_processed / rows_failed / error_log refreshed every 5 chunks
+  -> analysis: detect + recommend (a failure is recorded on the job, never fatal)
   -> client polls GET /api/upload/:jobId/status until completed / failed
 ```
 
@@ -178,7 +231,8 @@ open, and login carries its own strict rate limiter.
 |---|---|---|
 | `GET` | `/health` | liveness + database ping (used by the benchmark to prove the API stays responsive) |
 | `POST` | `/api/auth/login` | `{ email, password, tenantSlug }` -> JWT |
-| `GET` | `/api/overview` | owner KPIs and series |
+| `GET` | `/api/overview` | owner KPIs and series, anchored to the as-of date |
+| `GET` | `/api/overview/baseline` | last-30-day revenue and COGS % for the scenario simulator (`null` below 7 days with sales) |
 | `GET` | `/api/alerts` | anomaly alerts for the tenant |
 | `PATCH` | `/api/alerts/:id/ack` | acknowledge an alert |
 | `PATCH` | `/api/alerts/:id/dismiss` | dismiss an alert |
@@ -187,8 +241,9 @@ open, and login carries its own strict rate limiter.
 | `GET` | `/api/recommendations` | open and completed recommendations |
 | `POST` | `/api/recommendations/generate` | derive recommendations from active alerts |
 | `PATCH` | `/api/recommendations/:id/complete` | mark a recommendation done |
-| `POST` | `/api/upload` | multipart CSV / XLSX upload -> `{ jobId }`, processed asynchronously |
-| `GET` | `/api/upload/:jobId/status` | job progress, `rows_processed`, `rows_failed` |
+| `POST` | `/api/upload` | multipart CSV / XLSX / XLS upload (sales export or stock count) -> `{ jobId }`, processed asynchronously |
+| `GET` | `/api/upload/:jobId/status` | job progress, `rows_processed`, `rows_failed`, reported assumptions, `skippedByStatus` |
+| `GET` | `/api/upload/:jobId/summary` | per-job roll-up: kind, dates, units and revenue (or units on hand), top items, analysis counts |
 
 ---
 
@@ -248,26 +303,40 @@ committed.
 | `DATABASE_URL` | `backend/.env` | PostgreSQL connection string |
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | `backend/.env` | Token signing key and lifetime (default `7d`) |
 | `PORT`, `NODE_ENV` | `backend/.env` | API port (default `3001`) and environment |
-| `MAX_FILE_SIZE_MB`, `UPLOAD_TEMP_DIR` | `backend/.env` | Upload size cap (default `25`) and multer temp directory |
+| `MAX_FILE_SIZE_MB`, `UPLOAD_TEMP_DIR` | `backend/.env` | Upload size cap (default `60`; XLSX workbooks are read into memory) and multer temp directory |
+| `COST_RATIO_DEFAULT` | `backend/.env` | Share of the unit price used as cost when a file has no cost column, `0`–`1` (default `0.6`) |
 | `CORS_ORIGIN` | `backend/.env` | Comma-separated list of allowed frontend origins |
 
 ---
 
 ## Demo accounts
 
-`npm run seed:reset` recreates the demo tenant (`demo-kiryana`), 4 categories, 12 products, both
-users and 90 days of transactions, so the charts have something real to draw.
+Three demo tenants ship with the project, and every demo account uses the password `Demo@1234`. The
+quick sign-in chips prefill the store slug and an account email from `src/config/demoTenants.js`; the
+password field is filled from `VITE_DEMO_PASSWORD` when the build sets one, and otherwise from the
+legacy default in `src/components/auth/LoginScreen.jsx`.
 
-| Role | Email | Password | Tenant slug |
+| Tenant | Slug | Role | Email |
 |---|---|---|---|
-| Owner | `owner@demo.com` | `Demo@1234` | `demo-kiryana` |
-| Manager | `manager@demo.com` | `Demo@1234` | `demo-kiryana` |
+| Demo Kiryana Store | `demo-kiryana` | Owner | `owner@demo.com` |
+| Demo Kiryana Store | `demo-kiryana` | Manager | `manager@demo.com` |
+| London Bakers I-10 | `london-bakers-i10` | Owner | `owner@londonbakers.demo` |
+| London Bakers I-10 | `london-bakers-i10` | Manager | `manager@londonbakers.demo` |
+| London Bakers I-10 | `london-bakers-i10` | Cashier | `cashier@londonbakers.demo` |
+| New Store (Demo) | `demo-onboarding` | Owner | `owner@onboarding.demo` |
+| New Store (Demo) | `demo-onboarding` | Manager | `manager@onboarding.demo` |
 
-### Second demo tenant — London Bakers I-10
+### Demo Kiryana Store
 
-A second, much larger tenant proves multi-tenant isolation and exercises the real ingestion path: a
-731-day point-of-sale export (304,614 line items, 50 SKUs, ~131.9 M PKR) is prepared into an
-upload-ready CSV and seeded by `bakery:prepare` + `bakery:seed`.
+`npm run seed:reset` recreates this tenant, its 4 categories, 12 products, both users and 90 days of
+transactions, so the charts have something real to draw. It is also the tenant the mocked preview
+states (*Healthy Store* / *Struggling Store* / *New Tenant*) describe.
+
+### London Bakers I-10
+
+A much larger tenant proves multi-tenant isolation and exercises the real ingestion path: a 731-day
+point-of-sale export (304,614 line items, 50 SKUs, ~131.9 M PKR) is prepared into an upload-ready CSV
+and seeded by `bakery:prepare` + `bakery:seed`.
 
 ```cmd
 :: run from backend/ — prepare the datasets from the raw export kept outside the repo
@@ -276,20 +345,22 @@ npm run bakery:prepare -- --input "<pos_sales_log.csv>" --daily "<daily_performa
 npm run bakery:seed
 ```
 
-| Role | Email | Password | Tenant slug |
-|---|---|---|---|
-| Owner | `owner@londonbakers.demo` | `Demo@1234` | `london-bakers-i10` |
-| Manager | `manager@londonbakers.demo` | `Demo@1234` | `london-bakers-i10` |
-
 The last day of the export is deliberately held out of the seed into
 `data/processed/london-bakers/london_bakers_live_day.csv`, so the Data Ingestion screen can be
 demonstrated on a file that has never been imported. Unit cost is an **allocation** (mean daily
-COGS ÷ gross revenue), not recorded cost, and this tenant has **no inventory rows** — so upload an
-inventory CSV before showing Stockout Watch, which otherwise lists every product as out of stock. See
-[`docs/data/london_bakers_provenance.md`](docs/data/london_bakers_provenance.md) for the exact
+COGS ÷ gross revenue), not recorded cost. The tenant is seeded with **no inventory rows**, so upload a
+stock count before showing Stockout Watch — which otherwise lists every product as out of stock — or
+generate a **synthetic** one from this tenant's own sales history:
+
+```cmd
+:: from backend/ — writes data/processed/london-bakers-i10/inventory_snapshot.csv
+npm run demo:inventory -- --slug london-bakers-i10
+```
+
+See [`docs/data/london_bakers_provenance.md`](docs/data/london_bakers_provenance.md) for the exact
 columns, filters, date shift, revenue conservation check and full limitations.
 
-### Third demo tenant — New Store (Demo)
+### New Store (Demo)
 
 The live walkthrough is "onboard a new store in two minutes": sign in to an empty store, drag a
 sales file onto Data Ingestion, watch the analysis appear. This tenant deliberately holds no
@@ -302,11 +373,6 @@ npm run demo:onboarding:seed
 :: empty only this tenant's imported data again (nothing else is touched)
 npm run demo:reset -- --slug demo-onboarding
 ```
-
-| Role | Email | Password | Tenant slug |
-|---|---|---|---|
-| Owner | `owner@onboarding.demo` | `Demo@1234` | `demo-onboarding` |
-| Manager | `manager@onboarding.demo` | `Demo@1234` | `demo-onboarding` |
 
 `demo:reset` has a hard allow-list (`demo-onboarding` only). Before deleting it prints the database
 host and the row counts; after deleting it compares every other tenant's counts with its before
@@ -329,8 +395,10 @@ snapshot — if any other tenant moved, it rolls back and exits 1.
 | `backend/` | `npm run bakery:seed` | reset + seed the `london-bakers-i10` tenant from those CSVs |
 | `backend/` | `npm run demo:onboarding:seed` | create or re-blank the blank onboarding demo tenant (`demo-onboarding`) |
 | `backend/` | `npm run demo:reset -- --slug demo-onboarding` | delete that tenant's imported data; other tenants are verified unchanged |
+| `backend/` | `npm run demo:inventory -- --slug london-bakers-i10` | write a synthetic stock-count CSV from that tenant's own sales history (default `data/processed/<slug>/inventory_snapshot.csv`) |
 | `backend/` | `npm run db:migrate` | `psql $DATABASE_URL -f db/schema.sql` |
 | `backend/` | `npm run test:zscore` | rolling z-score self-test (assertions, no database) |
+| `backend/` | `npm run test:validators` | column mapping, date parsing and cost-allocation self-test (assertions, no database) |
 | `backend/` | `npm run validate:detection` | v1 detection validation harness |
 | `backend/` | `npm run validate:detection:v2` | v2 detection validation harness (writes into `docs/validation/`) |
 | `backend/` | `npm run smoke:recs` | recommendation-engine smoke run |
@@ -401,25 +469,30 @@ Retail_Analytics_Dashboard/
 +- src/                          React app (entry: src/main.jsx -> src/App.jsx)
 |  +- api/client.js              fetch wrapper, Bearer JWT, VITE_API_URL
 |  +- components/
-|  |  +- auth/LoginScreen.jsx
+|  |  +- auth/LoginScreen.jsx    sign-in + demo-store switcher
+|  |  +- cashier/               CashierWorkspace (upload-only screen for data_entry_clerk)
 |  |  +- dashboard/              BusinessOwnerDashboard, StoreManagerDashboard,
 |  |  |                          StockoutPrediction, RecommendationsPanel
 |  |  +- ingestion/              DataIngestionHub (live pipeline + preview states)
 |  |  +- layout/DashboardShell.jsx   sidebar, header, role + data-mode switchers
+|  +- config/demoTenants.js      the three demo tenants the switcher offers
 |  +- context/                   AuthContext, ThemeContext (useDesignTokens)
+|  +- utils/salesUpload.js       file contract, downloadable templates, upload wording
 +- backend/
 |  +- src/
 |  |  +- index.js                Express app, helmet, CORS, rate limiters, /health, /api/auth/login
 |  |  +- middleware/             auth.js (JWT -> req.user), tenant.js (-> req.tenantId)
-|  |  +- routes/                 overview, alerts, stockout, recommendations, upload
-|  |  +- services/               rollingZScore, detectionEngine, recommendationEngine
-|  |  +- utils/validators.js     per-row CSV validation + error log
+|  |  +- routes/                 overview (+ /baseline), alerts, stockout, recommendations, upload
+|  |  +- services/               rollingZScore, detectionEngine, recommendationEngine, analysisRunner
+|  |  +- utils/validators.js     column aliases, flexible dates, sales + stock-count row validation
+|  |  +- utils/asOfDate.js       the latest-sale-date anchor every analysis window uses
 |  |  +- seed.js                 demo-tenant reset + reseed
-|  +- db/                        schema.sql + migrations/ (002-004, idempotent)
+|  +- db/                        schema.sql + migrations/ (002-005, idempotent)
 |  +- scripts/                   benchmark/ and validation/ harnesses, smoke tests;
-|  |                             bakery/ (prepareData.js, seedTenant.js) — the London Bakers pipeline
+|  |                             bakery/ (prepareData.js, seedTenant.js) — the London Bakers pipeline;
+|  |                             demo/ (seedEmptyTenant.js, resetTenantData.js, generateInventoryFromSales.js)
 +- docs/validation/              published reports (md) and raw results (csv / json)
-+- docs/data/                    dataset provenance (london_bakers_provenance.md)
++- docs/data/                    upload_templates.md, london_bakers_provenance.md
 ```
 
 ---
@@ -444,19 +517,34 @@ Retail_Analytics_Dashboard/
 
 ## Known limitations
 
+- **Cost is an estimate when the file has none.** With no cost column the import uses
+  `unit_price × COST_RATIO_DEFAULT` (60 % by default) and records that assumption on the job, so any
+  margin, COGS % or simulator baseline built from such an import is an estimate, not a measurement.
+- **Analysis is rule-based and statistical, not machine learning.** Anomalies come from a guarded
+  rolling z-score and advice from a fixed rule set; there is no trained model and no ML dependency.
+- **Detection was validated on synthetic anomalies, not on labelled real data.** The published
+  precision 0.379 / recall 0.544 / F1 0.446 (hold-out seeds 6–10, `detection_results_v2.md` under
+  [`docs/validation/`](docs/validation)) come from a 90-day simulated series with injected anomalies;
+  a real store's export can behave differently.
+- **Detection is deliberately conservative.** Precision stays below 0.5 by design: the guards trade
+  recall for fewer false positives, because a shopkeeper who is warned twenty times a week stops
+  believing the alerts.
+- **XLSX is read in memory; CSV is streamed.** SheetJS has no row-by-row reader, so a workbook is
+  loaded whole and the 60 MB upload cap is the real guard rail for its size. The flat-memory evidence
+  applies to CSV only.
+- **The demo stock count is synthetic.** `npm run demo:inventory` draws days of cover from a seeded
+  generator and derives quantities from sales velocity; it keeps the dashboards internally consistent
+  but says nothing about a real shelf.
+- **As-of anchoring means "now" is the end of the data.** A 30-day window is the 30 days before the
+  latest imported sale, so an old export yields an old analysis rather than an empty one.
+- **Synthetic data.** Validation uses uniformly random rows from a seeded PRNG; real exports have
+  skewed distributions, encoding quirks and duplicate SKUs.
 - **Single machine.** The published figures come from one host (i5-12450H, 7.7 GB RAM, Node 24) with a
   remote database, and the end-to-end runs are single-shot per size — indicative, not a
   distributed-system result.
 - **Round-trip latency dominates ingestion, not parsing.** Roughly two thirds of a 100,000-row import
   is database round-trips. The next real lever is one round-trip per file (`COPY ... FROM STDIN`) or a
   database nearer the API, not more JavaScript tuning.
-- **XLSX files are parsed in memory, bounded by the 25 MB upload cap.** Streaming applies to CSV;
-  the SheetJS path reads the whole workbook before rows are written.
-- **Synthetic data.** Validation uses uniformly random rows from a seeded PRNG; real exports have
-  skewed distributions, encoding quirks and duplicate SKUs.
-- **Detection is deliberately conservative.** Precision stays below 0.5 by design: the guards trade
-  recall for fewer false positives, because a shopkeeper who is warned twenty times a week stops
-  believing the alerts.
 - **No job queue.** Upload processing runs inside the API process, so a crash mid-job leaves that job
   in `processing` until it is retried by hand.
 - **One deliberate constant split.** The parse benchmark's `CHUNK_SIZE = 250` differs from the upload
