@@ -12,6 +12,10 @@
  * With VITE_DEMO_MODE=true the card also offers "Quick sign-in" chips: one per
  * demo user of the store named in the slug field (labels + emails come from
  * src/config/demoTenants.js, the password from VITE_DEMO_PASSWORD).
+ *
+ * Other demo stores live in that same directory and need no special-casing here:
+ *   london-bakers-i10 — a full two-year history (owner/manager/cashier)
+ *   demo-onboarding    — blank by design, for the drag-a-file-in walkthrough
  * ──────────────────────────────────────────────────────────────────────────────
  */
 

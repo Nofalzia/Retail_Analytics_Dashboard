@@ -30,6 +30,7 @@ where a naive in-memory read peaks at ~484 MB
 - [Getting started (Windows CMD)](#getting-started-windows-cmd)
 - [Demo accounts](#demo-accounts)
   - [Second demo tenant — London Bakers I-10](#second-demo-tenant--london-bakers-i-10)
+  - [Third demo tenant — New Store (Demo)](#third-demo-tenant--new-store-demo)
 - [npm scripts](#npm-scripts)
 - [Validation & published evidence](#validation--published-evidence)
 - [Project structure](#project-structure)
@@ -288,6 +289,29 @@ inventory CSV before showing Stockout Watch, which otherwise lists every product
 [`docs/data/london_bakers_provenance.md`](docs/data/london_bakers_provenance.md) for the exact
 columns, filters, date shift, revenue conservation check and full limitations.
 
+### Third demo tenant — New Store (Demo)
+
+The live walkthrough is "onboard a new store in two minutes": sign in to an empty store, drag a
+sales file onto Data Ingestion, watch the analysis appear. This tenant deliberately holds no
+categories, products, sales or inventory, so an upload cannot double-count anything that is
+already there — unlike `london-bakers-i10`, which keeps its history.
+
+```cmd
+:: run from backend/ — create (or re-blank) the tenant, its one store and its two users
+npm run demo:onboarding:seed
+:: empty only this tenant's imported data again (nothing else is touched)
+npm run demo:reset -- --slug demo-onboarding
+```
+
+| Role | Email | Password | Tenant slug |
+|---|---|---|---|
+| Owner | `owner@onboarding.demo` | `Demo@1234` | `demo-onboarding` |
+| Manager | `manager@onboarding.demo` | `Demo@1234` | `demo-onboarding` |
+
+`demo:reset` has a hard allow-list (`demo-onboarding` only). Before deleting it prints the database
+host and the row counts; after deleting it compares every other tenant's counts with its before
+snapshot — if any other tenant moved, it rolls back and exits 1.
+
 ---
 
 ## npm scripts
@@ -303,6 +327,8 @@ columns, filters, date shift, revenue conservation check and full limitations.
 | `backend/` | `npm run seed:reset` | reset + reseed the demo tenant |
 | `backend/` | `npm run bakery:prepare -- --input <pos.csv> --daily <daily.csv>` | build the London Bakers upload CSVs from the raw POS export |
 | `backend/` | `npm run bakery:seed` | reset + seed the `london-bakers-i10` tenant from those CSVs |
+| `backend/` | `npm run demo:onboarding:seed` | create or re-blank the blank onboarding demo tenant (`demo-onboarding`) |
+| `backend/` | `npm run demo:reset -- --slug demo-onboarding` | delete that tenant's imported data; other tenants are verified unchanged |
 | `backend/` | `npm run db:migrate` | `psql $DATABASE_URL -f db/schema.sql` |
 | `backend/` | `npm run test:zscore` | rolling z-score self-test (assertions, no database) |
 | `backend/` | `npm run validate:detection` | v1 detection validation harness |

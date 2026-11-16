@@ -47,6 +47,18 @@ export const DEMO_TENANTS = [
       { label: 'Owner',   email: 'owner@londonbakers.demo' },
     ],
   },
+  {
+    // Blank by design: seeded by backend/scripts/demo/seedEmptyTenant.js and
+    // emptied again by backend/scripts/demo/resetTenantData.js. The live demo is
+    // "onboard a new store": sign in here, upload a file, watch the analysis.
+    label: 'New Store (Demo)',
+    slug: 'demo-onboarding',
+    email: 'owner@onboarding.demo',
+    users: [
+      { label: 'Owner',   email: 'owner@onboarding.demo' },
+      { label: 'Manager', email: 'manager@onboarding.demo' },
+    ],
+  },
 ];
 
 /**

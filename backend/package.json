@@ -11,6 +11,8 @@
     "bakery:prepare": "node scripts/bakery/prepareData.js",
     "bakery:seed": "node scripts/bakery/seedTenant.js",
     "demo:inventory": "node scripts/demo/generateInventoryFromSales.js",
+    "demo:onboarding:seed": "node scripts/demo/seedEmptyTenant.js",
+    "demo:reset": "node scripts/demo/resetTenantData.js",
     "db:migrate": "psql $DATABASE_URL -f db/schema.sql",
     "smoke:recs": "node scripts/smokeRecommendations.js",
     "validate:detection": "node scripts/validation/runDetectionValidation.js",
