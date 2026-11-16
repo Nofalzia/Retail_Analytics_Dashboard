@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AdminRestrictedAccess,
   EmptyState,
+  SectionHeading,
+  StatusPill,
   formatLocalCurrency,
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
@@ -256,9 +258,16 @@ const CurrencyFigure = ({ amount, size = 'md' }) => {
 };
 
 const AlertCard = ({ alert, onAcknowledge, isAcknowledged, onDismiss, isPending = false, actionError = null }) => {
-  const { ALERT_SURFACE, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
-  const styles = ALERT_SURFACE[alert.severity.toLowerCase()] ?? ALERT_SURFACE.warning;
-  const SeverityIcon = alert.severity === 'Critical' ? CriticalIcon : WarningIcon;
+  const { ACCENTS, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
+  // Severity now drives the ink as well as the 4px edge. Previously the badge
+  // and the icon tile both used the muted body ink on a tint, so a Critical and
+  // a Warning alert were only distinguishable by the border colour.
+  const isCritical = alert.severity === 'Critical';
+  const tone = isCritical ? 'danger' : 'warning';
+  const edge = isCritical ? ACCENTS.danger : ACCENTS.warning;
+  const soft = isCritical ? ACCENTS.dangerSoft : ACCENTS.warningSoft;
+  const ink  = isCritical ? ACCENTS.dangerInk : ACCENTS.warningInk;
+  const SeverityIcon = isCritical ? CriticalIcon : WarningIcon;
   const showDismiss = typeof onDismiss === 'function';
   const disabled = isPending || isAcknowledged;
 
@@ -267,22 +276,17 @@ const AlertCard = ({ alert, onAcknowledge, isAcknowledged, onDismiss, isPending 
       className={`flex gap-4 rounded-xl p-5 transition-all duration-200 ease-out ${
         isAcknowledged ? 'opacity-50' : 'opacity-100'
       }`}
-      style={{ ...CARD_SURFACE, borderLeft: `4px solid ${styles.borderColor}` }}
+      style={{ ...CARD_SURFACE, borderLeft: `4px solid ${edge}` }}
     >
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-        style={{ backgroundColor: styles.backgroundColor, color: PALETTE.charcoalMuted }}
+        style={{ backgroundColor: soft, color: ink }}
       >
         <SeverityIcon className="h-4.5 w-4.5" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
-            style={{ backgroundColor: styles.backgroundColor, color: PALETTE.charcoalMuted }}
-          >
-            {alert.severity}
-          </span>
+          <StatusPill tone={tone}>{alert.severity}</StatusPill>
           <span className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
             {alert.timestamp}
           </span>
@@ -337,7 +341,7 @@ const AlertCard = ({ alert, onAcknowledge, isAcknowledged, onDismiss, isPending 
           </div>
         </div>
         {actionError && (
-          <p className="mt-2 text-xs" style={{ color: ALERT_SURFACE.warning.borderColor }}>
+          <p className="mt-2 text-xs" role="alert" style={{ color: ACCENTS.warningInk }}>
             {actionError}
           </p>
         )}
@@ -349,7 +353,7 @@ const AlertCard = ({ alert, onAcknowledge, isAcknowledged, onDismiss, isPending 
 // Shown once every alert has been acknowledged — previously the panel just
 // left dimmed, opacity-50 cards on screen with no sense of closure.
 const AllClearState = () => {
-  const { PALETTE, theme } = useDesignTokens();
+  const { PALETTE } = useDesignTokens();
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl px-5 py-8 text-center">
       <span
@@ -369,7 +373,7 @@ const AllClearState = () => {
 };
 
 const RunDetectionButton = ({ storeId, onComplete }) => {
-  const { PALETTE, PANEL_SURFACE } = useDesignTokens();
+  const { ACCENTS, PALETTE, PANEL_SURFACE } = useDesignTokens();
   const [status, setStatus] = useState('idle');
   const [runSummary, setRunSummary] = useState(null);
 
@@ -398,32 +402,37 @@ const RunDetectionButton = ({ storeId, onComplete }) => {
         onClick={handleRun}
         disabled={isRunning}
         className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-150 ease-out disabled:cursor-not-allowed disabled:opacity-60"
-        style={{ backgroundColor: PALETTE.bottleGreen, color: '#ffffff' }}
+        style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
         onMouseEnter={(e) => { if (!isRunning) e.currentTarget.style.opacity = '0.88'; }}
         onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
       >
         {isRunning ? (
           <>
-            <SpinnerIcon className="h-3.5 w-3.5 animate-spin" style={{ color: '#ffffff' }} />
+            <SpinnerIcon className="h-3.5 w-3.5 animate-spin" style={{ color: PALETTE.cream }} />
             Running…
           </>
         ) : (
           <>
-            <RunDetectionIcon className="h-3.5 w-3.5" style={{ color: '#ffffff' }} />
-            Run Detection
+            <RunDetectionIcon className="h-3.5 w-3.5" style={{ color: PALETTE.cream }} />
+            Run detection
           </>
         )}
       </button>
-      {status === 'success' && runSummary && (
-        <p className="text-[11px] font-medium" style={{ color: PALETTE.bottleGreen }}>
-          ✓ {runSummary.alertsCreated.total} new alert{runSummary.alertsCreated.total !== 1 ? 's' : ''} written ({runSummary.durationMs}ms)
-        </p>
-      )}
-      {status === 'error' && (
-        <p className="text-[11px] font-medium" style={{ color: '#b45309' }}>
-          Detection failed — check server logs.
-        </p>
-      )}
+      {/* Announces the outcome to screen readers; failures stay in the user's
+          language instead of pointing at the server log. */}
+      <p className="text-[11px] font-medium" aria-live="polite">
+        {status === 'success' && runSummary && (
+          <span style={{ color: ACCENTS.positiveInk }}>
+            {runSummary.alertsCreated.total} new alert
+            {runSummary.alertsCreated.total !== 1 ? 's' : ''} found ({runSummary.durationMs}ms)
+          </span>
+        )}
+        {status === 'error' && (
+          <span style={{ color: ACCENTS.dangerInk }}>
+            Detection could not run. Please try again.
+          </span>
+        )}
+      </p>
     </div>
   );
 };
@@ -577,6 +586,7 @@ const EarthSlider = ({ id, label, value, min, max, step, unit, onChange, accent 
         style={{
           background: `linear-gradient(to right, ${accent} 0%, ${accent} ${percent}%, ${PALETTE.sand} ${percent}%, ${PALETTE.sand} 100%)`,
           '--thumb-color': accent,
+          '--thumb-ring': PALETTE.surface,
         }}
       />
       <div className="mt-1.5 flex justify-between text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
@@ -615,7 +625,7 @@ const STRUGGLING_BASELINE = {
 const BASELINE_MIN_DAYS = 7;
 
 const ScenarioSimulationPanel = ({ storeId = null, previewBaseline = BASELINE }) => {
-  const { ALERT_SURFACE, CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE, PANEL_SURFACE } =
+  const { ALERT_SURFACE, ACCENTS, CARD_SURFACE, PALETTE, EARTH, INSET_SURFACE, PANEL_SURFACE } =
     useDesignTokens();
   const [supplyCostIncrease, setSupplyCostIncrease] = useState(BASELINE_SLIDER_VALUES.supplyCostIncrease);
   const [priceAdjustment, setPriceAdjustment] = useState(BASELINE_SLIDER_VALUES.priceAdjustment);
@@ -730,7 +740,7 @@ const ScenarioSimulationPanel = ({ storeId = null, previewBaseline = BASELINE })
                     style={{
                       borderColor: PALETTE.sandBorder,
                       backgroundColor: PALETTE.sand,
-                      color: EARTH.ochre,
+                      color: ACCENTS.warningInk,
                     }}
                     title="Your imports had no cost column, so unit cost was estimated from price. The margin below is an estimate."
                   >
@@ -754,7 +764,7 @@ const ScenarioSimulationPanel = ({ storeId = null, previewBaseline = BASELINE })
               e.currentTarget.style.backgroundColor = PANEL_SURFACE.backgroundColor;
             }}
           >
-            Reset to Base Tenant Baseline
+            Reset to baseline
           </button>
         )}
       </div>
@@ -836,7 +846,7 @@ const ScenarioSimulationPanel = ({ storeId = null, previewBaseline = BASELINE })
               </p>
 
               {isMarginWipedOut && (
-                <p className="mt-2 text-xs font-medium" style={{ color: EARTH.terracotta }}>
+                <p className="mt-2 text-xs font-medium" style={{ color: ACCENTS.dangerInk }}>
                   This combination would eliminate your margin entirely — consider a smaller price cut or cost increase.
                 </p>
               )}
@@ -856,7 +866,7 @@ const ScenarioSimulationPanel = ({ storeId = null, previewBaseline = BASELINE })
                 <CurrencyFigure amount={projection.monthlyProfit} />
               </div>
               <p className="mt-1 text-xs font-medium" style={{ color: PALETTE.charcoalMuted }}>
-                <span style={{ color: profitDeltaPositive ? EARTH.sage : EARTH.terracotta }}>
+                <span style={{ color: profitDeltaPositive ? ACCENTS.positiveInk : ACCENTS.dangerInk }}>
                   {profitDeltaPositive ? '+' : ''}
                   {formatLocalCurrency(projection.profitDelta).prefix}{' '}
                   {formatLocalCurrency(Math.abs(projection.profitDelta)).value}
@@ -866,54 +876,22 @@ const ScenarioSimulationPanel = ({ storeId = null, previewBaseline = BASELINE })
             </div>
           </div>
 
-          <p className="mt-4 text-[11px] leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+      <div className="mt-4 text-[11px] leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
             Simulation uses a simple cost-and-price model against your current baseline cost of goods sold —
             a directional estimate, not a forecast.
-          </p>
+      </div>
         </>
       )}
-
-      <style>{`
-        .earth-slider {
-          -webkit-appearance: none;
-          appearance: none;
-          height: 6px;
-          border-radius: 9999px;
-          outline: none;
-          cursor: pointer;
-        }
-        .earth-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          height: 18px;
-          width: 18px;
-          border-radius: 9999px;
-          background: var(--thumb-color, ${EARTH.terracotta});
-          border: 2px solid #ffffff;
-          box-shadow: 0 1px 3px rgba(68, 64, 60, 0.35);
-          transition: transform 100ms ease-out;
-        }
-        .earth-slider::-webkit-slider-thumb:hover { transform: scale(1.1); }
-        .earth-slider::-webkit-slider-thumb:active { transform: scale(1.25); }
-        .earth-slider::-moz-range-thumb {
-          height: 18px;
-          width: 18px;
-          border-radius: 9999px;
-          background: var(--thumb-color, ${EARTH.terracotta});
-          border: 2px solid #ffffff;
-          box-shadow: 0 1px 3px rgba(68, 64, 60, 0.35);
-          cursor: pointer;
-          transition: transform 100ms ease-out;
-        }
-        .earth-slider::-moz-range-thumb:hover { transform: scale(1.1); }
-        .earth-slider::-moz-range-thumb:active { transform: scale(1.25); }
-        .earth-slider::-moz-range-track { background: transparent; }
-      `}</style>
     </div>
   );
 };
 
-const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMode = 'live' }) => {
+const StoreManagerDashboard = ({
+  activeRole = 'Manager',
+  hasData = true,
+  dataMode = 'live',
+  onOpenView = null,
+}) => {
   const isLive = dataMode === 'live';
 
   // Scope live queries to the store inside the signed-in account's token. The
@@ -955,7 +933,13 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
             description: a.description,
             metricLabel: ALERT_METRIC_LABELS[a.alert_type] ?? 'Observed value',
             metricValue: formatAlertValue(a),
-            timestamp:   new Date(a.created_at).toLocaleDateString('en-GB'),
+            // A full date, spelled out — "12/10/2025" is ambiguous between
+            // en-GB and en-US readers, and these alerts cross tenants.
+            timestamp:   new Date(a.created_at).toLocaleDateString('en-PK', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            }),
           }))
         );
       })
@@ -987,6 +971,8 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
       <EmptyState
         title="No analytics to show yet"
         description="Anomaly detection and scenario simulations need at least a few days of sales history to work with — check back once data starts flowing in."
+        actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+        onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
       />
     );
   }
@@ -1010,16 +996,22 @@ const StoreManagerDashboard = ({ activeRole = 'Manager', hasData = true, dataMod
   const isStruggling = dataMode === 'struggling';
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-          <AnomalyDetectionPanel
-        alerts={isStruggling ? STRUGGLING_ALERTS : alerts}
-        storeId={isLive ? storeId : null}
-        onRefreshAlerts={fetchAlerts}
+    <div>
+      <SectionHeading
+        title="Deep analytics"
+        description="Threshold alerts and a cost-and-price simulator, both computed from your own data."
       />
-      <ScenarioSimulationPanel
-        storeId={isLive ? storeId : null}
-        previewBaseline={isStruggling ? STRUGGLING_BASELINE : BASELINE}
-      />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        <AnomalyDetectionPanel
+          alerts={isStruggling ? STRUGGLING_ALERTS : alerts}
+          storeId={isLive ? storeId : null}
+          onRefreshAlerts={fetchAlerts}
+        />
+        <ScenarioSimulationPanel
+          storeId={isLive ? storeId : null}
+          previewBaseline={isStruggling ? STRUGGLING_BASELINE : BASELINE}
+        />
+      </div>
     </div>
   );
 };

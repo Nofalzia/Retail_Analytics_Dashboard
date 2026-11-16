@@ -17,6 +17,7 @@ import {
   validateSalesFile,
 } from '../../utils/salesUpload.js';
 import ApiErrorNotice from '../ApiErrorNotice';
+import { SectionHeading } from '../layout/DashboardShell';
 
 // Demo-mode simulation banner (only reachable when dataMode !== 'live').
 const SUCCESS_BANNER_MESSAGE =
@@ -147,7 +148,7 @@ const SuccessFeedbackBanner = ({ message, analysisLine = null, actions = [], onD
       className="flex items-start justify-between gap-4 rounded-xl px-4 py-3 sm:px-5"
       style={{
         backgroundColor: theme.successSoft,
-        border: `1px solid rgba(63, 107, 74, 0.22)`,
+        border: `1px solid ${theme.success}`,
         boxShadow: `0 4px 16px ${theme.successSoft}`,
       }}
     >
@@ -312,6 +313,8 @@ const UploadDropzone = ({
 
   return (
     <div className="space-y-3">
+      {/* The whole zone is clickable now; the Browse button stays the keyboard
+          path (a role="button" wrapper would nest a button inside a button). */}
       <div
         onDragOver={(event) => {
           event.preventDefault();
@@ -319,6 +322,7 @@ const UploadDropzone = ({
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
         className="flex min-h-[200px] flex-col items-center justify-center rounded-xl cursor-pointer transition-colors duration-200"
         style={
           isDragging
@@ -354,7 +358,11 @@ const UploadDropzone = ({
         </p>
         <button
           type="button"
-          onClick={() => inputRef.current?.click()}
+          onClick={(event) => {
+            // Without this the click bubbles to the zone and opens the picker twice.
+            event.stopPropagation();
+            inputRef.current?.click();
+          }}
           className="mt-5 rounded-full px-5 py-2 text-xs font-semibold transition-all duration-150"
           style={{
             ...CARD_SURFACE,
@@ -586,7 +594,7 @@ const MockProcessingJobCard = ({ job }) => {
           style={{
             backgroundColor: theme.errorSoft,
             color: theme.error,
-            border: `1px solid rgba(185, 28, 28, 0.2)`,
+            border: `1px solid ${theme.error}`,
           }}
           role="alert"
         >
@@ -730,7 +738,7 @@ const RealProcessingJobCard = ({ upload }) => {
           style={{
             backgroundColor: theme.errorSoft,
             color: theme.error,
-            border: `1px solid rgba(185, 28, 28, 0.2)`,
+            border: `1px solid ${theme.error}`,
           }}
           role="alert"
         >
@@ -1278,6 +1286,13 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
 
   return (
     <div className="space-y-6">
+      {/* Title first: the banners used to push the page heading down, so the
+          screen opened on a success notice with no context above it. */}
+      <SectionHeading
+        title="Data Ingestion Hub"
+        description="Upload sales files or stock counts. Live mode writes directly to your store database — no financial figures are shown here."
+      />
+
       {successBanner && (
         <SuccessFeedbackBanner
           message={successBanner.message}
@@ -1290,16 +1305,6 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
       {notice && (
         <NoticeBanner message={notice.message} onDismiss={() => setNotice(null)} />
       )}
-
-      <div>
-        <h1 className="text-xl font-semibold" style={{ color: PALETTE.charcoal }}>
-          Data Ingestion Hub
-        </h1>
-        <p className="mt-1 text-sm" style={{ color: PALETTE.charcoalMuted }}>
-          Upload sales files or stock counts. Live mode writes directly to your store
-          database — no financial figures are shown here.
-        </p>
-      </div>
 
       <UploadDropzone
         onFiles={handleFilesAccepted}
@@ -1314,7 +1319,12 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
 
       {lastResult && <ResultsPanel upload={lastResult} />}
 
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1.5">
+        {!hasCompletedUpload && (
+          <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+            Available once a file has finished importing.
+          </p>
+        )}
         <button
           type="button"
           onClick={onProceedToAnalytics}
@@ -1467,9 +1477,9 @@ const MockDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
       )}
 
       <div>
-        <h1 className="text-xl font-semibold" style={{ color: PALETTE.charcoal }}>
+        <h2 className="text-xl font-semibold" style={{ color: PALETTE.charcoal }}>
           Data Ingestion Hub
-        </h1>
+        </h2>
         <p className="mt-1 text-sm" style={{ color: PALETTE.charcoalMuted }}>
           Upload and monitor store data files. This preview shows the simulated
           pipeline — switch back to Healthy Store for real imports.
@@ -1488,7 +1498,12 @@ const MockDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
         <RecentUploadsTable uploads={recentUploads} />
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1.5">
+        {!hasCompletedUpload && (
+          <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+            Available once a file has finished importing.
+          </p>
+        )}
         <button
           type="button"
           onClick={onProceedToAnalytics}

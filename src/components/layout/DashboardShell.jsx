@@ -11,76 +11,29 @@ import { DEMO_TENANTS, PRIMARY_DEMO_SLUG } from '../../config/demoTenants';
 
 
 
-// Legacy exports for backward compatibility
-export const PALETTE = {
-  cream: '#FAF7F1',
-  sand: '#F3EDE4',
-  sandBorder: 'rgba(36, 31, 26, 0.07)',
-  charcoal: '#241F1A',
-  charcoalMuted: '#57534E',
-  bottleGreen: '#1E362D',
-  bottleGreenHover: '#294A3D',
-  bottleGreenSoft: 'rgba(30, 54, 45, 0.08)',
-  bottleGreenSoftStrong: 'rgba(30, 54, 45, 0.14)',
-};
-
-/** Shared card containment — ultra-crisp border with sophisticated depth */
-export const CARD_SURFACE = {
-  backgroundColor: '#FFFFFF',
-  border: '1px solid rgba(120, 113, 104, 0.24)',
-  boxShadow:
-    '0 2px 8px -3px rgba(0,0,0,0.05), 0 8px 24px -4px rgba(0,0,0,0.03)',
-};
-
-/** Elevated panel on sand-tinted canvas */
-export const PANEL_SURFACE = {
-  backgroundColor: PALETTE.sand,
-  border: `1px solid rgba(120, 113, 104, 0.18)`,
-  boxShadow: '0 4px 20px rgba(36, 31, 26, 0.04)',
-};
-
-/** Earth-tone accents — charts, urgency states, slider fills */
-export const EARTH = {
-  sage: '#7C9473',
-  sageSoft: 'rgba(124, 148, 115, 0.14)',
-  sand: '#C9A87C',
-  sandSoft: 'rgba(201, 168, 124, 0.16)',
-  terracotta: '#BE6A4B',
-  terracottaSoft: 'rgba(190, 106, 75, 0.10)',
-  ochre: '#B8863B',
-  ochreSoft: 'rgba(184, 134, 59, 0.10)',
-};
-
-/** Ultra-faded chart grid / axis lines — maximizes data-ink ratio */
-export const CHART_AXIS = {
-  grid: 'rgba(87, 83, 78, 0.08)',
-  border: 'rgba(87, 83, 78, 0.08)',
-};
-
-/** Nested inset panel within card surfaces */
-export const INSET_SURFACE = {
-  backgroundColor: PALETTE.sand,
-  border: `1px solid ${PALETTE.sandBorder}`,
-  boxShadow: '0 2px 8px rgba(36, 31, 26, 0.03)',
-};
-
-/** Desaturated alert badge fills — pair with PALETTE.charcoalMuted for label text */
-export const ALERT_SURFACE = {
-  critical: {
-    backgroundColor: 'rgba(190, 106, 75, 0.08)',
-    borderColor: EARTH.terracotta,
-  },
-  warning: {
-    backgroundColor: 'rgba(184, 134, 59, 0.08)',
-    borderColor: EARTH.ochre,
-  },
-};
+// Design tokens (PALETTE, CARD_SURFACE, EARTH, SERIES, ACCENTS, RADII, …) live
+// in src/context/ThemeContext.jsx and are theme-aware. Components must read
+// them through useDesignTokens(); no light-only copies are exported from here.
 
 /** Local commercial currency — returns prefix + formatted value for typographic hierarchy */
 export const formatLocalCurrency = (amount) => ({
   prefix: 'Rs.',
   value: Math.round(amount).toLocaleString('en-PK'),
 });
+
+/**
+ * Short form of the same currency, for chart axis ticks — so an axis label and
+ * a card figure never spell the same amount two different ways (it used to
+ * print "Rs. 3.5L" on the axis and "Rs. 3,518,000" on the card).
+ * @param {number} amount Raw value.
+ * @returns {string} e.g. 'Rs. 4.22M', 'Rs. 214K', 'Rs. 950'.
+ */
+export const formatCompactCurrency = (amount) => {
+  const value = Number(amount) || 0;
+  if (Math.abs(value) >= 1_000_000) return `Rs. ${(value / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(value) >= 1_000) return `Rs. ${Math.round(value / 1_000)}K`;
+  return `Rs. ${Math.round(value)}`;
+};
 
 // ----------------------------------------------------------------------------
 // Navigation & role configuration — the single source of truth
@@ -113,21 +66,39 @@ const isHexColor = (value) =>
   typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim());
 
 /**
- * Picks ink that stays legible on an arbitrary accent. Light accents take the
- * charcoal ink, dark ones keep the cream ink — only the two existing ink tokens
- * are used, so the warm palette is unchanged.
- * @param {string} accent Valid hex colour.
- * @param {Record<string, string>} PALETTE Active design tokens.
- * @returns {string} Ink colour.
+ * WCAG relative luminance of a hex colour.
+ * @param {string} hex '#rgb' or '#rrggbb'.
+ * @returns {number} Luminance in 0..1.
  */
-const readableInkOn = (accent, PALETTE) => {
-  const digits = accent.trim().replace('#', '');
+const relativeLuminance = (hex) => {
+  const digits = hex.trim().replace('#', '');
   const full   = digits.length === 3 ? digits.split('').map((c) => c + c).join('') : digits;
   const linear = (channel) =>
     channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
   const [r, g, b] = [0, 2, 4].map((i) => linear(parseInt(full.slice(i, i + 2), 16) / 255));
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 0.45 ? PALETTE.charcoal : PALETTE.cream;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+/** WCAG contrast ratio between two luminances (order-independent). */
+const contrastRatio = (a, b) => {
+  const [hi, lo] = a > b ? [a, b] : [b, a];
+  return (hi + 0.05) / (lo + 0.05);
+};
+
+/**
+ * Picks the ink that stays legible on an arbitrary tenant accent: it measures
+ * both of the theme's ink tokens against the accent and keeps the better one.
+ * The old rule returned `cream` for every dark accent, which in dark mode is
+ * near-black — so a dark brand colour rendered black-on-black nav pills.
+ * @param {string} accent Valid hex colour.
+ * @param {Record<string, string>} PALETTE Active design tokens.
+ * @returns {string} Ink colour with the higher contrast ratio.
+ */
+const readableInkOn = (accent, PALETTE) => {
+  const accentLuminance = relativeLuminance(accent);
+  const onCream     = contrastRatio(accentLuminance, relativeLuminance(PALETTE.cream));
+  const onCharcoal  = contrastRatio(accentLuminance, relativeLuminance(PALETTE.charcoal));
+  return onCream >= onCharcoal ? PALETTE.cream : PALETTE.charcoal;
 };
 
 /**
@@ -137,6 +108,34 @@ const readableInkOn = (accent, PALETTE) => {
  * @returns {boolean}
  */
 const isPrimaryDemoTenant = (tenant) => !tenant || tenant.slug === PRIMARY_DEMO_SLUG;
+
+/**
+ * True for the seeded demo stores only. The "Switch store" list is demo
+ * tooling, so a real tenant must never see the other tenants' names (or be
+ * offered a route into them).
+ * @param {{slug?: string}|null} tenant Signed-in tenant.
+ * @returns {boolean}
+ */
+const isDemoTenant = (tenant) =>
+  Boolean(tenant?.slug) && DEMO_TENANTS.some((entry) => entry.slug === tenant.slug);
+
+// ----------------------------------------------------------------------------
+// View routing — the active view also lives in the URL hash, so a refresh or a
+// shared link lands on the same view and the browser Back button works. No
+// router dependency: the shell owns five views and history.pushState is enough.
+// ----------------------------------------------------------------------------
+
+const VIEW_IDS = NAV_ITEMS.map((item) => item.id);
+
+/**
+ * Reads `#/view-id` from the URL.
+ * @returns {string|null} A known view id, or null when the hash is absent/unknown.
+ */
+const readViewFromHash = () => {
+  if (typeof window === 'undefined') return null;
+  const candidate = window.location.hash.replace(/^#\/?/, '').trim();
+  return VIEW_IDS.includes(candidate) ? candidate : null;
+};
 
 // ----------------------------------------------------------------------------
 // Icon primitives (hand-rolled, consistent 1.5px stroke — no icon packages)
@@ -259,6 +258,7 @@ const SidebarNavLink = ({ item, isActive, onSelect, accent = null, accentInk = n
     <button
       type="button"
       onClick={() => onSelect(item.id)}
+      aria-current={isActive ? 'page' : undefined}
       className="group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors duration-150"
       style={
         isActive
@@ -279,7 +279,7 @@ const SidebarNavLink = ({ item, isActive, onSelect, accent = null, accentInk = n
 };
 
 const Sidebar = ({ activeView, onSelect, tenant = null }) => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const { PALETTE } = useDesignTokens();
   const { logout } = useAuth();
 
@@ -295,9 +295,7 @@ const Sidebar = ({ activeView, onSelect, tenant = null }) => {
       style={{
         backgroundColor: theme.surface,
         borderRight: `1px solid ${theme.sandBorder}`,
-        boxShadow: isDark
-          ? '4px 0 24px rgba(0, 0, 0, 0.3)'
-          : '4px 0 24px rgba(36, 31, 26, 0.03)',
+        boxShadow: theme.sidebarShadow,
       }}
     >
       <div className="flex items-center gap-3 px-6 py-6">
@@ -335,10 +333,9 @@ const Sidebar = ({ activeView, onSelect, tenant = null }) => {
       </nav>
 
       <div className="px-6 py-6">
-        {/* Sign out and Switch user do the same thing — the second name exists so
-            the hand-over is obvious while presenting (the sign-in screen offers
-            the demo accounts, see src/config/demoTenants.js). */}
-        <div className="mb-3 flex items-center gap-2">
+        {/* One control: "Sign out" and "Switch user" were two buttons wired to
+            the same handler, which read as a choice that did not exist. */}
+        <div className="mb-3">
           <button
             type="button"
             onClick={logout}
@@ -349,26 +346,13 @@ const Sidebar = ({ activeView, onSelect, tenant = null }) => {
           >
             Sign out
           </button>
-          <span aria-hidden="true" className="text-xs" style={{ color: PALETTE.charcoalMuted }}>·</span>
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-lg px-1 py-1 text-left text-xs font-medium transition-colors duration-150"
-            style={{ color: PALETTE.charcoalMuted }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = PALETTE.charcoal; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = PALETTE.charcoalMuted; }}
-          >
-            Switch user
-          </button>
         </div>
         <div
           className="rounded-xl p-4"
           style={{
             backgroundColor: theme.panelBg,
             border: `1px solid ${theme.panelBorder}`,
-            boxShadow: isDark
-              ? '0 2px 8px rgba(0, 0, 0, 0.2)'
-              : '0 2px 8px rgba(36, 31, 26, 0.03)',
+            boxShadow: theme.panelShadow,
           }}
         >
           <p className="text-xs leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
@@ -392,6 +376,7 @@ const DockNavLink = ({ item, isActive, onSelect }) => {
     <button
       type="button"
       onClick={() => onSelect(item.id)}
+      aria-current={isActive ? 'page' : undefined}
       className="flex flex-1 flex-col items-center gap-1 py-2.5"
       style={{ color: isActive ? PALETTE.bottleGreen : PALETTE.charcoalMuted }}
     >
@@ -407,18 +392,16 @@ const DockNavLink = ({ item, isActive, onSelect }) => {
 };
 
 const BottomDock = ({ activeView, onSelect }) => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
 
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-30 flex lg:hidden"
       style={{
-        backgroundColor: theme.surface === '#FFFFFF' ? 'rgba(255, 255, 255, 0.96)' : 'rgba(36, 34, 32, 0.96)',
+        backgroundColor: theme.dockBg,
         borderTop: `1px solid ${theme.sandBorder}`,
-        boxShadow: isDark
-          ? '0 -4px 24px rgba(0, 0, 0, 0.4)'
-          : '0 -4px 24px rgba(36, 31, 26, 0.04)',
-        backdropFilter: 'blur(8px)',
+        boxShadow: theme.headerShadow,
+        backdropFilter: 'blur(10px)',
       }}
       aria-label="Primary"
     >
@@ -451,8 +434,17 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
         setIsOpen(false);
       }
     };
+    // Escape closes the menu without moving focus, so keyboard users are not
+    // trapped in a popover that only ever listened for mouse events.
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   return (
@@ -460,7 +452,7 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        aria-haspopup="listbox"
+        aria-haspopup="true"
         aria-expanded={isOpen}
         className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors"
         style={{
@@ -482,7 +474,6 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
 
       {isOpen && (
         <div
-          role="listbox"
           className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl"
           style={{
             ...CARD_SURFACE,
@@ -501,8 +492,7 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
               <button
                 key={role}
                 type="button"
-                role="option"
-                aria-selected={isSelected}
+                aria-pressed={isSelected}
                 onClick={() => {
                   onSelect(role);
                   setIsOpen(false);
@@ -538,9 +528,9 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
 // ----------------------------------------------------------------------------
 
 const DATA_MODES = [
-  { id: 'live', label: 'Healthy Store' },
-  { id: 'struggling', label: 'Struggling Store' },
-  { id: 'empty', label: 'New Tenant (No Data)' },
+  { id: 'live', label: 'Healthy Store', shortLabel: 'Healthy' },
+  { id: 'struggling', label: 'Struggling Store', shortLabel: 'Struggling' },
+  { id: 'empty', label: 'New Tenant (No Data)', shortLabel: 'No data' },
 ];
 
 const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = () => {} }) => {
@@ -553,10 +543,15 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
   // For every other tenant the switcher reports the live source instead of
   // offering fakes, and still lets you switch back to another store.
   const isPrimaryDemo = isPrimaryDemoTenant(tenant);
-  const otherTenants  = DEMO_TENANTS.filter((entry) => entry.slug !== tenant?.slug);
-  const activeLabel   = isPrimaryDemo
-    ? (DATA_MODES.find((mode) => mode.id === dataMode)?.label ?? 'Healthy Store')
-    : 'Live data';
+  const otherTenants  = isDemoTenant(tenant)
+    ? DEMO_TENANTS.filter((entry) => entry.slug !== tenant?.slug)
+    : [];
+  const activeMode    = DATA_MODES.find((mode) => mode.id === dataMode);
+  const activeLabel   = isPrimaryDemo ? (activeMode?.label ?? 'Healthy Store') : 'Live data';
+  // Below sm the full label does not fit next to the greeting, and the trigger
+  // used to collapse to a bare dot — so the data state was unknowable on a
+  // phone. A short label keeps the state readable at every width.
+  const shortLabel    = isPrimaryDemo ? (activeMode?.shortLabel ?? 'Healthy') : 'Live';
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -564,8 +559,17 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
         setIsOpen(false);
       }
     };
+    // Escape closes the menu without moving focus, so keyboard users are not
+    // trapped in a popover that only ever listened for mouse events.
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   return (
@@ -573,7 +577,7 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        aria-haspopup="listbox"
+        aria-haspopup="true"
         aria-expanded={isOpen}
         className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors"
         style={{
@@ -593,7 +597,8 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
                   : PALETTE.bottleGreen,
           }}
         />
-        <span className="hidden sm:inline">{activeLabel}</span>
+        <span className="truncate text-xs sm:hidden">{shortLabel}</span>
+        <span className="hidden truncate sm:inline">{activeLabel}</span>
         <ChevronDownIcon
           className={`h-3.5 w-3.5 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
           style={{ color: PALETTE.charcoalMuted }}
@@ -602,7 +607,6 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
 
       {isOpen && (
         <div
-          role="listbox"
           className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl"
           style={{
             ...CARD_SURFACE,
@@ -631,8 +635,7 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
               <button
                 key={mode.id}
                 type="button"
-                role="option"
-                aria-selected={isSelected}
+                aria-pressed={isSelected}
                 onClick={() => {
                   onSelect(mode.id);
                   setIsOpen(false);
@@ -671,8 +674,6 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
                 <button
                   key={entry.slug}
                   type="button"
-                  role="option"
-                  aria-selected={false}
                   onClick={() => {
                     onSwitchTenant(entry.slug, entry.email);
                     setIsOpen(false);
@@ -702,13 +703,14 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
 // ----------------------------------------------------------------------------
 
 /**
- * Greets the active role with the store's customary greeting.
+ * Greets the active role. Deliberately locale-neutral: the product is
+ * multi-tenant, so the shell must not hardcode one region's customary greeting.
  * The role comes from AuthContext (via initialRole) — no display name is
  * invented from the sign-in email (T9).
  * @param {string} activeRole Role currently previewed ('Owner' | 'Manager').
- * @returns {string} e.g. "Assalam-o-Alaikum, Owner."
+ * @returns {string} e.g. "Welcome back, Owner."
  */
-const getGreeting = (activeRole) => `Assalam-o-Alaikum, ${activeRole}.`;
+const getGreeting = (activeRole) => `Welcome back, ${activeRole}.`;
 
 const TopHeader = ({
   activeRole,
@@ -722,13 +724,11 @@ const TopHeader = ({
 
   return (
     <header
-      className="sticky top-0 z-20 flex items-center justify-between px-4 py-4 sm:px-6 lg:px-8"
+      className="sticky top-0 z-20 flex items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8"
       style={{
         backgroundColor: theme.background,
         borderBottom: `1px solid ${theme.sandBorder}`,
-        boxShadow: isDark
-          ? '0 4px 12px rgba(0,0,0,0.3)'
-          : '0 2px 12px rgba(36, 31, 26, 0.03)',
+        boxShadow: theme.headerShadow,
       }}
     >
       <div className="min-w-0">
@@ -745,7 +745,7 @@ const TopHeader = ({
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={toggleTheme}
@@ -757,7 +757,7 @@ const TopHeader = ({
             color: theme.charcoal,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = isDark ? '#3d3935' : '#e8e3da';
+            e.currentTarget.style.backgroundColor = theme.controlHover;
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = theme.panelBg;
@@ -796,7 +796,9 @@ const DashboardShell = ({
 }) => {
   const { theme } = useTheme();
   const { tenant, switchTenant } = useAuth();
-  const [activeView, setActiveView] = useState(initialView);
+  // A hash in the URL wins over the prop, so refreshing or opening a shared link
+  // keeps the view the user was on.
+  const [activeView, setActiveView] = useState(() => readViewFromHash() ?? initialView);
   const [activeRole, setActiveRole] = useState(initialRole);
   const [dataMode, setDataMode] = useState(initialDataMode);
 
@@ -804,8 +806,24 @@ const DashboardShell = ({
   // tenant is pinned to live mode whatever the switcher was left on.
   const effectiveDataMode = isPrimaryDemoTenant(tenant) ? dataMode : 'live';
 
+  // Back/forward (and a hand-edited hash) re-sync the active view.
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = readViewFromHash();
+      if (next) setActiveView(next);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   const handleNavigate = (id) => {
     setActiveView(id);
+    if (readViewFromHash() !== id) {
+      // pushState keeps the Back button meaningful and, unlike assigning
+      // location.hash, does not fire hashchange — so the state above stays the
+      // single source of truth.
+      window.history.pushState(null, '', `#/${id}`);
+    }
     onNavigate(id);
   };
 
@@ -844,7 +862,7 @@ const DashboardShell = ({
         />
 
         <main className="p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">
-          <div className="mx-auto max-w-6xl">{content}</div>
+          <div className="mx-auto max-w-[1400px]">{content}</div>
         </main>
       </div>
 
@@ -950,6 +968,103 @@ export const AdminRestrictedAccess = () => {
       </div>
     </div>
   );
+};
+
+// ----------------------------------------------------------------------------
+// Shared presentation primitives — added so the five views stop hand-rolling
+// their own page titles and status pills (which is how the same badge ended up
+// with four different inks).
+// ----------------------------------------------------------------------------
+
+/**
+ * Page title for a view. The sticky header owns the greeting (h1), so a view
+ * starts at h2 — previously Overview and Deep Analytics had no title at all.
+ */
+export const SectionHeading = ({ title, description = null, actions = null }) => {
+  const { PALETTE } = useDesignTokens();
+
+  return (
+    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <h2 className="text-lg font-semibold tracking-tight" style={{ color: PALETTE.charcoal }}>
+          {title}
+        </h2>
+        {description && (
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
+            {description}
+          </p>
+        )}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    </div>
+  );
+};
+
+/**
+ * Tone-driven status pill. Every tone pairs a soft fill with that tone's *Ink
+ * text token, so a badge is never pastel-on-pastel (the old badges used the
+ * muted body ink on a tint, which measured ~4.2:1 at 11px).
+ * @param {{tone?: 'positive'|'warning'|'danger'|'info'|'neutral', children: React.ReactNode}} props
+ */
+export const StatusPill = ({ tone = 'neutral', children }) => {
+  const { isDark } = useTheme();
+  const { ACCENTS, PALETTE } = useDesignTokens();
+
+  const TONE_STYLES = {
+    positive: { backgroundColor: ACCENTS.positiveSoft, color: ACCENTS.positiveInk },
+    warning:  { backgroundColor: ACCENTS.warningSoft,  color: ACCENTS.warningInk },
+    danger:   { backgroundColor: ACCENTS.dangerSoft,   color: ACCENTS.dangerInk },
+    info:     { backgroundColor: ACCENTS.violetSoft,   color: isDark ? ACCENTS.violet : PALETTE.charcoal },
+    neutral:  { backgroundColor: PALETTE.sand,         color: PALETTE.charcoalMuted },
+  };
+
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+      style={TONE_STYLES[tone] ?? TONE_STYLES.neutral}
+    >
+      {children}
+    </span>
+  );
+};
+
+// ----------------------------------------------------------------------------
+// Stock urgency — one scale for every "days of inventory left" surface.
+// Overview and Stockout Watch used to disagree (10 days was "Healthy" on one
+// page and "Watch" on the other, and the bars filled in opposite directions).
+// ----------------------------------------------------------------------------
+
+export const STOCK_URGENCY = {
+  act:     { maxDays: 3,        label: 'Act now' },
+  watch:   { maxDays: 7,        label: 'Watch' },
+  healthy: { maxDays: Infinity, label: 'Healthy' },
+};
+
+/** Maps an urgency key onto a StatusPill tone. */
+export const STOCK_URGENCY_TONE = { act: 'danger', watch: 'warning', healthy: 'positive' };
+
+/**
+ * Classifies a days-of-stock figure.
+ * @param {number} daysLeft Days of inventory left (may be Infinity).
+ * @returns {'act'|'watch'|'healthy'}
+ */
+export const getStockUrgency = (daysLeft) => {
+  if (!Number.isFinite(daysLeft)) return 'healthy';
+  if (daysLeft <= STOCK_URGENCY.act.maxDays) return 'act';
+  if (daysLeft <= STOCK_URGENCY.watch.maxDays) return 'watch';
+  return 'healthy';
+};
+
+/**
+ * Bar fill for a days-of-stock figure: the fuller the bar, the more urgent.
+ * Both inventory surfaces use this so the same number always draws the same bar.
+ * @param {number} daysLeft Days of inventory left.
+ * @param {number} horizonDays Days at which the bar is empty.
+ * @returns {number} 0-100.
+ */
+export const stockRiskFillPercent = (daysLeft, horizonDays = 14) => {
+  if (!Number.isFinite(daysLeft)) return 0;
+  return Math.max(0, Math.min(100, 100 - (daysLeft / horizonDays) * 100));
 };
 
 export default DashboardShell;

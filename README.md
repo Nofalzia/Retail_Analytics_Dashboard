@@ -558,9 +558,10 @@ Retail_Analytics_Dashboard/
 - **Generic entities only** — Product, Category, SaleTransaction, InventoryLog. No industry-specific
   vocabulary in the schema, variables or components, so the same build serves any store.
 - **Tenant safety first** — `req.tenantId` from the JWT is the only accepted source of tenant identity.
-- **Warm Euro-Asian minimalist UI** — colours come from `useDesignTokens()` (`PALETTE`, `EARTH`,
-  `ALERT_SURFACE`), icons are inline SVG at a 1.5 px stroke, and money is rendered only through
-  `formatLocalCurrency()`.
+- **Cool bottle-green/violet analytics UI** — one brand hue per theme (bottle green in light mode, violet in dark)
+  plus teal/amber/rose semantics; colours come from `useDesignTokens()` (`PALETTE`, `EARTH`, `ACCENTS`,
+  `SERIES`, `RADII`, `ALERT_SURFACE`), never from hardcoded hex; icons are inline SVG at a 1.5 px
+  stroke, and money is rendered only through `formatLocalCurrency()`.
 - **Explainable analytics** — rule-based / statistical logic only; no ML dependency, no hidden model.
 - **Node scripts over frameworks** — validation, smoke tests and benchmarks are plain Node files that
   can run against a real database with no extra infrastructure.

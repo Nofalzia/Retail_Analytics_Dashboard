@@ -50,13 +50,27 @@ function AppContent() {
 
         switch (activeView) {
           case 'overview':
-            return <BusinessOwnerDashboard activeRole={activeRole} hasData={hasData} dataMode={dataMode} />;
+            return (
+              <BusinessOwnerDashboard
+                activeRole={activeRole}
+                hasData={hasData}
+                dataMode={dataMode}
+                onOpenView={onOpenView}
+              />
+            );
           case 'deep-analytics':
-            return <StoreManagerDashboard activeRole={activeRole} hasData={hasData} dataMode={dataMode} />;
+            return (
+              <StoreManagerDashboard
+                activeRole={activeRole}
+                hasData={hasData}
+                dataMode={dataMode}
+                onOpenView={onOpenView}
+              />
+            );
           case 'stockout-prediction':
-            return <StockoutPrediction hasData={hasData} dataMode={dataMode} />;
+            return <StockoutPrediction hasData={hasData} dataMode={dataMode} onOpenView={onOpenView} />;
           case 'recommendations':
-            return <RecommendationsPanel hasData={hasData} dataMode={dataMode} />;
+            return <RecommendationsPanel hasData={hasData} dataMode={dataMode} onOpenView={onOpenView} />;
           case 'data-ingestion':
             // T12d: an import now ends with its analysis already run, so the hub
             // can send the user straight to the view that shows it.
@@ -68,7 +82,14 @@ function AppContent() {
               />
             );
           default:
-            return <BusinessOwnerDashboard activeRole={activeRole} hasData={hasData} dataMode={dataMode} />;
+            return (
+              <BusinessOwnerDashboard
+                activeRole={activeRole}
+                hasData={hasData}
+                dataMode={dataMode}
+                onOpenView={onOpenView}
+              />
+            );
         }
       }}
     </DashboardShell>

@@ -1,12 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { EmptyState, formatLocalCurrency } from '../layout/DashboardShell';
+import {
+  EmptyState,
+  SectionHeading,
+  StatusPill,
+  formatLocalCurrency,
+  getStockUrgency,
+} from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext';
 import { resolveStoreId } from '../../utils/resolveStoreId.js';
 import ApiErrorNotice, { LoadingState } from '../ApiErrorNotice';
 import { INITIAL_ALERTS, STRUGGLING_ALERTS } from './StoreManagerDashboard';
-import { PRODUCTS, STRUGGLING_PRODUCTS, getUrgencyTier } from './StockoutPrediction';
+import { PRODUCTS, STRUGGLING_PRODUCTS } from './StockoutPrediction';
 
 /**
  * RecommendationsPanel — plain-language actions for the store manager.
@@ -47,6 +53,10 @@ const CheckIcon = ({ className, style }) => (
 // can be sorted into a single list.
 const PRIORITY_RANK = { critical: 0, warning: 1, info: 1, healthy: 2 };
 
+// The stock scale returns act/watch/healthy; this view ranks on the alert
+// vocabulary, so map it back when mixing the two sources into one list.
+const STOCK_TIER = { act: 'critical', watch: 'warning', healthy: 'healthy' };
+
 const buildRecommendations = (alerts, products) => {
   const fromAlerts = alerts.map((alert) => ({
     id: `rec-alert-${alert.id}`,
@@ -59,7 +69,7 @@ const buildRecommendations = (alerts, products) => {
 
   const fromStockouts = products.map((product) => {
     const daysRemaining = product.currentStock / product.avgDailySales;
-    const tier = getUrgencyTier(daysRemaining);
+    const tier = STOCK_TIER[getStockUrgency(daysRemaining)];
     return {
       id: `rec-stock-${product.id}`,
       tier,
@@ -75,30 +85,40 @@ const buildRecommendations = (alerts, products) => {
   );
 };
 
+const TIER_TONE = { critical: 'danger', warning: 'warning', info: 'info', healthy: 'positive' };
+
+/**
+ * Soft fill + readable ink + strong edge for a status tone. The badge and the
+ * icon tile share the ink, so a "critical" card no longer paints muted grey text
+ * on a pink tint.
+ */
+const tonePalette = (tone, ACCENTS) => {
+  if (tone === 'danger')  return { soft: ACCENTS.dangerSoft,   ink: ACCENTS.dangerInk,   edge: ACCENTS.danger };
+  if (tone === 'warning') return { soft: ACCENTS.warningSoft,  ink: ACCENTS.warningInk,  edge: ACCENTS.warning };
+  if (tone === 'info')    return { soft: ACCENTS.violetSoft,   ink: ACCENTS.violet,      edge: ACCENTS.violet };
+  return { soft: ACCENTS.positiveSoft, ink: ACCENTS.positiveInk, edge: ACCENTS.positive };
+};
+
 const RecommendationCard = ({ recommendation, onAcknowledge, isAcknowledged }) => {
-  const { ALERT_SURFACE, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
-  const styles = ALERT_SURFACE[recommendation.tier] ?? ALERT_SURFACE.warning;
+  const { ACCENTS, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
+  const tone = TIER_TONE[recommendation.tier] ?? 'warning';
+  const palette = tonePalette(tone, ACCENTS);
 
   return (
     <div
       className={`flex gap-4 rounded-xl p-5 transition-all duration-200 ease-out ${
         isAcknowledged ? 'opacity-50' : 'opacity-100'
       }`}
-      style={{ ...CARD_SURFACE, borderLeft: `4px solid ${styles.borderColor}` }}
+      style={{ ...CARD_SURFACE, borderLeft: `4px solid ${palette.edge}` }}
     >
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-        style={{ backgroundColor: styles.backgroundColor, color: PALETTE.charcoalMuted }}
+        style={{ backgroundColor: palette.soft, color: palette.ink }}
       >
         <ArrowRightIcon className="h-4.5 w-4.5" />
       </span>
       <div className="min-w-0 flex-1">
-        <span
-          className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
-          style={{ backgroundColor: styles.backgroundColor, color: PALETTE.charcoalMuted }}
-        >
-          {recommendation.tier}
-        </span>
+        <StatusPill tone={tone}>{recommendation.tier}</StatusPill>
         <h3 className="mt-2 text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
           {recommendation.action}
         </h3>
@@ -160,20 +180,21 @@ const dueDateLabel = (dueDate) => {
   return `In ${days} days`;
 };
 
-// Priority 1 (most urgent) → 10 (least). The pill shifts hue smoothly from
-// terracotta through ochre to sage as urgency eases — existing tokens only.
-const getPriorityTone = (priority, EARTH) => {
-  if (priority <= 3) return { word: 'High',   color: EARTH.terracotta, soft: EARTH.terracottaSoft };
-  if (priority <= 6) return { word: 'Medium', color: EARTH.ochre,      soft: EARTH.ochreSoft };
-  return             { word: 'Low',    color: EARTH.sage,       soft: EARTH.sageSoft };
+// Priority 1 (most urgent) → 10 (least). Each band pairs a soft fill with the
+// matching *Ink text token; the previous version used the base fill colour as
+// text, which measured ~4.2:1 at 11px on its own tint.
+const getPriorityTone = (priority, ACCENTS) => {
+  if (priority <= 3) return { word: 'High',   ink: ACCENTS.dangerInk,  soft: ACCENTS.dangerSoft,   edge: ACCENTS.danger };
+  if (priority <= 6) return { word: 'Medium', ink: ACCENTS.warningInk, soft: ACCENTS.warningSoft,  edge: ACCENTS.warning };
+  return             { word: 'Low',    ink: ACCENTS.positiveInk, soft: ACCENTS.positiveSoft, edge: ACCENTS.positive };
 };
 
 /** A single live recommendation card. */
 const LiveRecommendationCard = ({ rec, onComplete, isPending, error }) => {
-  const { CARD_SURFACE, PALETTE, PANEL_SURFACE, EARTH } = useDesignTokens();
+  const { ACCENTS, CARD_SURFACE, PALETTE, PANEL_SURFACE } = useDesignTokens();
 
   const priority    = Number(rec.priority) || 5;
-  const tone        = getPriorityTone(priority, EARTH);
+  const tone        = getPriorityTone(priority, ACCENTS);
   const due         = dueDateLabel(rec.due_date);
   const atRisk      = Number(rec.revenue_at_risk) > 0 ? formatLocalCurrency(rec.revenue_at_risk) : null;
   const hasQuantity = rec.suggested_quantity != null && Number(rec.suggested_quantity) > 0;
@@ -184,13 +205,13 @@ const LiveRecommendationCard = ({ rec, onComplete, isPending, error }) => {
       className="flex gap-4 rounded-xl p-5 transition-all duration-200 ease-out"
       style={{
         ...CARD_SURFACE,
-        borderLeft: `4px solid ${tone.color}`,
+        borderLeft: `4px solid ${tone.edge}`,
         opacity: isPending ? 0.6 : 1,
       }}
     >
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-        style={{ backgroundColor: tone.soft, color: tone.color }}
+        style={{ backgroundColor: tone.soft, color: tone.ink }}
       >
         <ArrowRightIcon className="h-4.5 w-4.5" />
       </span>
@@ -198,7 +219,7 @@ const LiveRecommendationCard = ({ rec, onComplete, isPending, error }) => {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span
             className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide transition-colors duration-300"
-            style={{ backgroundColor: tone.soft, color: tone.color }}
+            style={{ backgroundColor: tone.soft, color: tone.ink }}
           >
             {tone.word} · {priority}
           </span>
@@ -244,7 +265,7 @@ const LiveRecommendationCard = ({ rec, onComplete, isPending, error }) => {
           <p
             className="text-xs"
             aria-live="polite"
-            style={{ color: error ? EARTH.terracotta : PALETTE.charcoalMuted }}
+            style={{ color: error ? ACCENTS.dangerInk : PALETTE.charcoalMuted }}
           >
             {error || (rec.product_name ? `For ${rec.product_name}` : '')}
           </p>
@@ -296,7 +317,7 @@ const writeMockDoneIds = (mode, ids) => {
   }
 };
 
-const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
+const RecommendationsPanel = ({ hasData = true, dataMode = 'live', onOpenView = null }) => {
   const { PALETTE } = useDesignTokens();
   const isLive = dataMode === 'live';
 
@@ -411,6 +432,8 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
       <EmptyState
         title="No recommendations yet"
         description="Once alerts and stock levels start coming in, we'll surface prioritized, plain-language actions here."
+        actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+        onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
       />
     );
   }
@@ -440,20 +463,16 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
 
     return (
       <div>
-        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-              Recommendations
-            </h2>
-            <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-              Plain-language actions, prioritized from your alerts and stock levels.
-            </p>
-          </div>
-          <span className="shrink-0 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-            {items.length} {items.length === 1 ? 'action' : 'actions'} waiting
-            {atRiskLabel && <> · {atRiskLabel.prefix} {atRiskLabel.value} at risk</>}
-          </span>
-        </div>
+        <SectionHeading
+          title="Recommendations"
+          description="Plain-language actions, prioritized from your alerts and stock levels."
+          actions={
+            <span className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
+              {items.length} {items.length === 1 ? 'action' : 'actions'} waiting
+              {atRiskLabel && <> · {atRiskLabel.prefix} {atRiskLabel.value} at risk</>}
+            </span>
+          }
+        />
         <div className="space-y-3">
           {items.map((rec) => (
             <LiveRecommendationCard
@@ -473,19 +492,11 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live' }) => {
   return (
     <div>
       {/* Header — stacks on mobile, side-by-side on sm+ */}
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-            Recommendations
-          </h2>
-          <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-            Plain-language actions, prioritized from your alerts and stock levels.
-          </p>
-        </div>
-        <span className="shrink-0 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-          {openCount} open
-        </span>
-      </div>
+      <SectionHeading
+        title="Recommendations"
+        description="Plain-language actions, prioritized from your alerts and stock levels."
+        actions={<span className="text-xs" style={{ color: PALETTE.charcoalMuted }}>{openCount} open</span>}
+      />
       <div className="space-y-3">
         {mockRecs.map((rec) => (
           <RecommendationCard

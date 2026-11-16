@@ -235,7 +235,7 @@ const Stat = ({ label, value }) => {
 };
 
 const SummaryCard = ({ summary, analysis, onUploadAnother, onSwitchUser }) => {
-  const { CARD_SURFACE, EARTH, PALETTE } = useDesignTokens();
+  const { ACCENTS, CARD_SURFACE, EARTH, PALETTE } = useDesignTokens();
   const { prefix, value } = formatLocalCurrency(summary?.revenue ?? 0);
   const listed = Array.isArray(summary?.topItems) ? summary.topItems : [];
   const topItems = listed.slice(0, 3);
@@ -249,7 +249,7 @@ const SummaryCard = ({ summary, analysis, onUploadAnother, onSwitchUser }) => {
       <div className="flex items-center gap-3">
         <span
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-          style={{ backgroundColor: EARTH.sageSoft, color: EARTH.sage }}
+          style={{ backgroundColor: EARTH.sageSoft, color: ACCENTS.positiveInk }}
         >
           <TickIcon className="h-6 w-6" />
         </span>
@@ -335,7 +335,7 @@ const SummaryCard = ({ summary, analysis, onUploadAnother, onSwitchUser }) => {
           onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = PALETTE.sand; }}
           onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
         >
-          Switch to Manager view
+          Sign out
         </button>
       </div>
     </div>
@@ -348,7 +348,7 @@ const SummaryCard = ({ summary, analysis, onUploadAnother, onSwitchUser }) => {
 // ----------------------------------------------------------------------------
 
 export default function CashierWorkspace() {
-  const { isDark, theme } = useTheme();
+  const { theme } = useTheme();
   const { CARD_SURFACE, PALETTE } = useDesignTokens();
   const { tenant, logout } = useAuth();
   const upload = useSalesUpload();
@@ -363,9 +363,7 @@ export default function CashierWorkspace() {
           backgroundColor: theme.surface,
           borderRight:    `1px solid ${theme.sandBorder}`,
           borderBottom:   `1px solid ${theme.sandBorder}`,
-          boxShadow: isDark
-            ? '4px 0 24px rgba(0, 0, 0, 0.3)'
-            : '4px 0 24px rgba(36, 31, 26, 0.03)',
+          boxShadow: theme.sidebarShadow,
         }}
       >
         <div className="flex items-center gap-3 px-6 py-6">
@@ -388,15 +386,16 @@ export default function CashierWorkspace() {
         <div className="mx-6 h-px" style={{ backgroundColor: theme.sandBorder }} />
 
         <nav className="flex-1 space-y-1 px-4 py-6" aria-label="Primary">
-          <button
-            type="button"
+          {/* Not a button: this workspace has a single screen, so an interactive
+              element with no handler only looked clickable (and stole a tab stop). */}
+          <p
             aria-current="page"
             className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium"
             style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
           >
             <UploadIcon className="h-4.5 w-4.5 shrink-0" />
             <span className="truncate">Upload today's sales</span>
-          </button>
+          </p>
         </nav>
 
         <div className="px-6 py-6">
@@ -422,7 +421,7 @@ export default function CashierWorkspace() {
           }}
         >
           <h1 className="text-base font-semibold sm:text-lg" style={{ color: theme.charcoal }}>
-            Assalam-o-Alaikum. Let's record today's sales.
+            Upload today's sales.
           </h1>
         </header>
 

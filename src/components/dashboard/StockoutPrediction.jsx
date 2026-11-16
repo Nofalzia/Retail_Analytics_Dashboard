@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { EmptyState } from '../layout/DashboardShell';
+import {
+  EmptyState,
+  SectionHeading,
+  StatusPill,
+  getStockUrgency,
+  STOCK_URGENCY,
+  STOCK_URGENCY_TONE,
+  stockRiskFillPercent,
+} from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext';
@@ -61,19 +69,10 @@ export const STRUGGLING_PRODUCTS = [
   { id: 'sku-6', name: 'Detergent Powder 1kg',   category: 'Household', currentStock: 6,  avgDailySales: 3   },
 ];
 
-// Urgency thresholds — documented here so the "how did you tune this"
-// question (Phase 5 methodology) has a clear, defensible answer.
-export const URGENCY = {
-  critical: { maxDays: 3,        label: 'Reorder now'  },
-  warning:  { maxDays: 7,        label: 'Reorder soon' },
-  healthy:  { maxDays: Infinity,  label: 'Healthy'      },
-};
-
-export const getUrgencyTier = (daysRemaining) => {
-  if (daysRemaining <= URGENCY.critical.maxDays) return 'critical';
-  if (daysRemaining <= URGENCY.warning.maxDays)  return 'warning';
-  return 'healthy';
-};
+// The urgency scale itself lives in DashboardShell (STOCK_URGENCY /
+// getStockUrgency), shared with the Overview KPI card so "10 days left" cannot
+// mean Healthy on one screen and Watch on the other. Thresholds: <= 3 days =
+// act now, <= 7 days = watch, otherwise healthy.
 
 // ── "Data as of …" note ──────────────────────────────────────────────────────
 // Days-of-inventory-left is measured from the store's latest sale date, not from
@@ -103,31 +102,37 @@ const daysSinceAsOf = (isoDate) => {
 // ── Card ─────────────────────────────────────────────────────────────────────
 
 const StockoutCard = ({ product }) => {
-  const { CARD_SURFACE, INSET_SURFACE, PALETTE, EARTH } = useDesignTokens();
+  const { ACCENTS, CARD_SURFACE, INSET_SURFACE, PALETTE } = useDesignTokens();
 
   const daysRemaining = useMemo(
     () => (product.avgDailySales > 0 ? product.currentStock / product.avgDailySales : Infinity),
     [product.currentStock, product.avgDailySales],
   );
-  const tier = getUrgencyTier(daysRemaining);
+  const urgency = getStockUrgency(daysRemaining);
 
-  const tierColor = { critical: EARTH.terracotta, warning: EARTH.ochre, healthy: EARTH.sage }[tier];
-  const tierSoft  = { critical: EARTH.terracottaSoft, warning: EARTH.ochreSoft, healthy: EARTH.sageSoft }[tier];
-
-  // Progress bar fills toward 100% as days-remaining shrinks toward 0 —
-  // capped at a 14-day horizon so the bar has a meaningful full state.
-  const HORIZON_DAYS = 14;
-  const fillPercent  = daysRemaining === Infinity
-    ? 0
-    : Math.max(0, Math.min(100, 100 - (daysRemaining / HORIZON_DAYS) * 100));
+  // Same tone map and the same fill direction as the Overview card: the fuller
+  // the bar, the closer the product is to running out. The bar used to fill the
+  // opposite way here (capped at a 14-day horizon) while Overview filled
+  // proportionally to days left.
+  const urgencyFill = {
+    act: ACCENTS.danger,
+    watch: ACCENTS.warning,
+    healthy: ACCENTS.positive,
+  }[urgency];
+  const urgencySoft = {
+    act: ACCENTS.dangerSoft,
+    watch: ACCENTS.warningSoft,
+    healthy: ACCENTS.positiveSoft,
+  }[urgency];
+  const fillPercent = stockRiskFillPercent(daysRemaining);
 
   return (
-    <div className="rounded-xl p-5 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
+    <div className="rounded-xl p-5" style={CARD_SURFACE}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: tierSoft, color: tierColor }}
+            style={{ backgroundColor: urgencySoft, color: urgencyFill }}
           >
             <BoxIcon className="h-4 w-4" />
           </span>
@@ -140,12 +145,7 @@ const StockoutCard = ({ product }) => {
             </p>
           </div>
         </div>
-        <span
-          className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
-          style={{ backgroundColor: tierSoft, color: tierColor }}
-        >
-          {URGENCY[tier].label}
-        </span>
+        <StatusPill tone={STOCK_URGENCY_TONE[urgency]}>{STOCK_URGENCY[urgency].label}</StatusPill>
       </div>
 
       <div className="mt-4">
@@ -164,7 +164,7 @@ const StockoutCard = ({ product }) => {
         >
           <div
             className="h-full rounded-full transition-all duration-300 ease-out"
-            style={{ width: `${fillPercent}%`, backgroundColor: tierColor }}
+            style={{ width: `${fillPercent}%`, backgroundColor: urgencyFill }}
           />
         </div>
       </div>
@@ -187,8 +187,8 @@ const StockoutCard = ({ product }) => {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
-  const { PALETTE, EARTH } = useDesignTokens();
+const StockoutPrediction = ({ hasData = true, dataMode = 'live', onOpenView = null }) => {
+  const { ACCENTS, PALETTE } = useDesignTokens();
   // Scope the query to the store inside the signed-in account's token. The demo
   // tenant keeps its historic id as a fallback (see resolveStoreId); any other
   // tenant with no store claim resolves to null and is told so below.
@@ -285,6 +285,8 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
       <EmptyState
         title="No stock levels to watch yet"
         description="Upload your product and inventory data to start tracking depletion rates and stockout risk."
+        actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+        onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
       />
     );
   }
@@ -308,6 +310,8 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
         <EmptyState
           title="No inventory data for this store yet"
           description="Upload an inventory file to see days of stock left."
+          actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+          onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
         />
       );
     }
@@ -316,6 +320,8 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
         <EmptyState
           title="No stock levels to watch yet"
           description="Upload your product and inventory data to start tracking depletion rates and stockout risk."
+          actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+          onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
         />
       );
     }
@@ -326,25 +332,23 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live' }) => {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-          Stockout Watch
-        </h2>
-        <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-          Estimated days of inventory left, based on current stock and average daily sales velocity.
+      <SectionHeading
+        title="Stockout Watch"
+        description="Estimated days of inventory left, based on current stock and average daily sales velocity."
+      />
+      {/* Where the velocity is measured to: the store's latest sale date. Kept
+          next to the title (not inside each card) so the whole grid shares one
+          measurement date. */}
+      {asOfLabel && (
+        <p className="-mt-3 mb-4 text-xs" style={{ color: PALETTE.charcoalMuted }}>
+          Data as of {asOfLabel}
         </p>
-        {/* Where the velocity is measured to: the store's latest sale date. */}
-        {asOfLabel && (
-          <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
-            Data as of {asOfLabel}
-          </p>
-        )}
-        {asOfLabel && staleDays !== null && staleDays > STALE_AFTER_DAYS && (
-          <p className="mt-1 text-xs" style={{ color: EARTH.ochre }}>
-            Your latest sales are from {staleDays} days ago, so this analysis is measured from that date.
-          </p>
-        )}
-      </div>
+      )}
+      {asOfLabel && staleDays !== null && staleDays > STALE_AFTER_DAYS && (
+        <p className="mb-4 text-xs" style={{ color: ACCENTS.warningInk }}>
+          Your latest sales are from {staleDays} days ago, so this analysis is measured from that date.
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sortedProducts.map((product) => (
           <StockoutCard key={product.id} product={product} />

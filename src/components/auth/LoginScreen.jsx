@@ -39,53 +39,60 @@ const PREFILL_PASSWORD = ENV_DEMO_PASSWORD || LEGACY_DEMO_PASSWORD;
 const SHOW_QUICK_SIGN_IN = import.meta.env.VITE_DEMO_MODE === 'true';
 
 // ── Design tokens (kept local — no DashboardShell dependency at login time) ──
+// Mirror of LIGHT_THEME in src/context/ThemeContext.jsx. The gate renders before
+// any dashboard chrome and is intentionally light-only.
 
 const PALETTE = {
-  cream:           '#FAF7F1',
-  sand:            '#F3EDE4',
-  sandBorder:      'rgba(36, 31, 26, 0.07)',
-  charcoal:        '#241F1A',
-  charcoalMuted:   '#57534E',
+  cream:           '#F4F6F9',
+  sand:            '#F2F5FA',
+  sandBorder:      'rgba(16, 24, 40, 0.07)',
+  charcoal:        '#0F172A',
+  charcoalMuted:   '#667085',
   bottleGreen:     '#1E362D',
   bottleGreenHover:'#294A3D',
   bottleGreenSoft: 'rgba(30, 54, 45, 0.08)',
   bottleGreenSoftStrong: 'rgba(30, 54, 45, 0.14)',
-  terracottaSoft:  'rgba(190, 106, 75, 0.10)',
-  terracotta:      '#BE6A4B',
+  terracottaSoft:  'rgba(229, 72, 77, 0.10)',
+  terracotta:      '#E5484D',
+  terracottaBorder:'rgba(229, 72, 77, 0.24)',
 };
 
 const CARD_SURFACE = {
   backgroundColor: '#FFFFFF',
-  border:          '1px solid rgba(120, 113, 104, 0.24)',
-  boxShadow:       '0 2px 8px -3px rgba(0,0,0,0.05), 0 8px 24px -4px rgba(0,0,0,0.03)',
+  border:          '1px solid rgba(16, 24, 40, 0.06)',
+  boxShadow:       '0 1px 2px rgba(16, 24, 40, 0.04), 0 18px 36px -20px rgba(16, 24, 40, 0.16)',
 };
 
 // ── Input field ───────────────────────────────────────────────────────────────
 
-function Field({ label, type = 'text', value, onChange, placeholder, autoComplete }) {
+function Field({ id, label, type = 'text', value, onChange, placeholder, autoComplete }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label
+        htmlFor={id}
         className="text-xs font-semibold uppercase tracking-wide"
         style={{ color: PALETTE.charcoalMuted }}
       >
         {label}
       </label>
       <input
+        id={id}
+        name={id}
         type={type}
+        required
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete={autoComplete}
-        className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-all duration-150"
+        className="w-full rounded-xl px-4 py-3 text-sm transition-all duration-150"
         style={{
           backgroundColor: PALETTE.sand,
           border:           `1px solid ${PALETTE.sandBorder}`,
           color:            PALETTE.charcoal,
         }}
         onFocus={(e) => {
-          e.currentTarget.style.border = `1px solid rgba(30, 54, 45, 0.4)`;
-          e.currentTarget.style.boxShadow = `0 0 0 3px rgba(30, 54, 45, 0.06)`;
+          e.currentTarget.style.border = `1px solid ${PALETTE.bottleGreen}`;
+          e.currentTarget.style.boxShadow = `0 0 0 3px ${PALETTE.bottleGreenSoft}`;
         }}
         onBlur={(e) => {
           e.currentTarget.style.border = `1px solid ${PALETTE.sandBorder}`;
@@ -186,8 +193,16 @@ export default function LoginScreen() {
     if (ENV_DEMO_PASSWORD) submit(entry.email, ENV_DEMO_PASSWORD, tenantSlug);
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') handleLogin();
+  /**
+   * Real form submit: Enter works from any field and the browser's own required
+   * validation runs before we touch the API. The old version listened for
+   * Enter on a div, so the semantics were invisible to assistive tech.
+   * @param {React.FormEvent<HTMLFormElement>} event Submit event.
+   */
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (loading) return;
+    handleLogin();
   };
 
   return (
@@ -239,8 +254,9 @@ export default function LoginScreen() {
             </p>
           )}
 
-          <div className="mt-8 flex flex-col gap-5" onKeyDown={handleKeyDown}>
+          <form id="login-form" className="mt-8 flex flex-col gap-5" onSubmit={handleSubmit}>
             <Field
+              id="login-email"
               label="Email"
               type="email"
               value={form.email}
@@ -249,6 +265,7 @@ export default function LoginScreen() {
               autoComplete="email"
             />
             <Field
+              id="login-password"
               label="Password"
               type="password"
               value={form.password}
@@ -257,32 +274,35 @@ export default function LoginScreen() {
               autoComplete="current-password"
             />
             <Field
+              id="login-tenant-slug"
               label="Store Slug"
               value={form.tenantSlug}
               onChange={set('tenantSlug')}
               placeholder="your-store-slug"
               autoComplete="organization"
             />
-          </div>
+          </form>
 
           {/* Error */}
           {error && (
             <div
+              role="alert"
               className="mt-5 rounded-xl px-4 py-3 text-sm"
               style={{
                 backgroundColor: PALETTE.terracottaSoft,
                 color: PALETTE.charcoal,
-                border: `1px solid rgba(190, 106, 75, 0.20)`,
+                border: `1px solid ${PALETTE.terracottaBorder}`,
               }}
             >
               {error}
             </div>
           )}
 
-          {/* Submit */}
+          {/* Submit — outside the <form> element but wired to it, so the button
+              sits under the error message while still being a real submit. */}
           <button
-            type="button"
-            onClick={handleLogin}
+            type="submit"
+            form="login-form"
             disabled={loading}
             className="mt-6 w-full rounded-xl py-3 text-sm font-semibold transition-colors duration-150"
             style={{

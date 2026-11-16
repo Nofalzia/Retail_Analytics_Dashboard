@@ -12,7 +12,14 @@ import {
 import {
   AdminRestrictedAccess,
   EmptyState,
+  SectionHeading,
+  StatusPill,
+  formatCompactCurrency,
   formatLocalCurrency,
+  getStockUrgency,
+  STOCK_URGENCY,
+  STOCK_URGENCY_TONE,
+  stockRiskFillPercent,
 } from '../layout/DashboardShell';
 import { useDesignTokens } from '../../context/ThemeContext';
 import { api } from '../../api/client.js';
@@ -56,7 +63,7 @@ function daysSinceAsOf(isoDate) {
  * (preview data modes), so those states are untouched.
  */
 const AsOfDateNotice = ({ asOfDate }) => {
-  const { PALETTE, EARTH } = useDesignTokens();
+  const { PALETTE, ACCENTS } = useDesignTokens();
   const label = formatAsOfDate(asOfDate);
   if (!label) return null;
 
@@ -68,7 +75,7 @@ const AsOfDateNotice = ({ asOfDate }) => {
         Data as of {label}
       </p>
       {staleDays !== null && staleDays > STALE_AFTER_DAYS && (
-        <p className="mt-1 text-xs" style={{ color: EARTH.ochre }}>
+        <p className="mt-1 text-xs" style={{ color: ACCENTS.warningInk }}>
           Your latest sales are from {staleDays} days ago, so this analysis is measured from that date.
         </p>
       )}
@@ -88,6 +95,21 @@ const strokeProps = {
   strokeWidth: 1.5,
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
+};
+
+/**
+ * Turns a token hex into an rgba() string, so a gradient can reuse the exact
+ * series colour instead of a hand-written copy that drifts from the palette
+ * (the hero chart's fill was a leftover sage from the old warm theme).
+ * @param {string} hex '#rgb' or '#rrggbb'.
+ * @param {number} alpha 0-1.
+ * @returns {string} rgba() colour.
+ */
+const withAlpha = (hex, alpha) => {
+  const digits = hex.trim().replace('#', '');
+  const full = digits.length === 3 ? digits.split('').map((c) => c + c).join('') : digits;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
 const TrendUpIcon = ({ className }) => (
@@ -125,10 +147,13 @@ const InventoryIcon = ({ className }) => (
 const CurrencyFigure = ({ amount, size = 'lg' }) => {
   const { PALETTE } = useDesignTokens();
   const { prefix, value } = formatLocalCurrency(amount);
-  const sizeClass = size === 'lg' ? 'text-4xl sm:text-[3.5rem]' : 'text-3xl';
+  // One size for every KPI numeral. The revenue figure used to be set at
+  // text-[3.5rem] while its neighbours were text-[3.6rem], so the three cards
+  // never lined up on the baseline.
+  const sizeClass = size === 'lg' ? 'text-4xl sm:text-[3.6rem]' : 'text-3xl';
 
   return (
-    <p className={`${sizeClass} tracking-tight font-bold`} style={{ color: PALETTE.charcoal }}>
+    <p className={`metric-numeral ${sizeClass} font-bold`} style={{ color: PALETTE.charcoal }}>
       <span className="mr-1.5 text-base font-semibold" style={{ color: PALETTE.charcoalMuted }}>{prefix}</span>
       <span>{value}</span>
     </p>
@@ -139,7 +164,7 @@ const MetricCard = ({ icon, label, children }) => {
   const { CARD_SURFACE, PALETTE, INSET_SURFACE } = useDesignTokens();
 
   return (
-    <div className="flex h-full flex-col rounded-xl p-6 sm:p-7 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
+    <div className="flex h-full flex-col rounded-xl p-6 sm:p-7" style={CARD_SURFACE}>
       <div className="flex items-center gap-3" style={{ color: PALETTE.charcoalMuted }}>
         <span
           className="flex h-9 w-9 items-center justify-center rounded-2xl"
@@ -155,26 +180,22 @@ const MetricCard = ({ icon, label, children }) => {
 };
 
 const TotalRevenueCard = ({ amount, growthPercent }) => {
-  const { EARTH, PALETTE } = useDesignTokens();
+  const { PALETTE } = useDesignTokens();
   const isPositive = growthPercent >= 0;
 
   return (
     <MetricCard icon={<RevenueIcon className="h-4.5 w-4.5" />} label="Total Revenue">
       <CurrencyFigure amount={amount} />
       <div className="mt-3 flex items-center gap-1.5">
-        <span
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors duration-150"
-          style={{
-            backgroundColor: isPositive ? EARTH.sageSoft : EARTH.terracottaSoft,
-            color: PALETTE.charcoalMuted,
-          }}
-        >
-          <TrendUpIcon className={`h-3 w-3 ${isPositive ? '' : 'rotate-90'}`} />
+        <StatusPill tone={isPositive ? 'positive' : 'danger'}>
+          <TrendUpIcon className={`mr-1 h-3 w-3 ${isPositive ? '' : 'rotate-90'}`} />
           {isPositive ? '+' : ''}
           {growthPercent.toFixed(1)}%
-        </span>
+        </StatusPill>
+        {/* "last month" was inaccurate: the window is whatever the trend query
+            returned (30 days in live mode), and the two halves are compared. */}
         <span className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
-          vs last month
+          vs previous period
         </span>
       </div>
     </MetricCard>
@@ -187,61 +208,55 @@ const UnitsSoldCard = ({ count, windowDays = null }) => {
 
   return (
     <MetricCard icon={<OrdersIcon className="h-4.5 w-4.5" />} label="Units sold">
-      <p className="text-4xl font-bold tracking-tight sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
+      <p className="metric-numeral text-4xl font-bold sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
         {formatted}
       </p>
       {/* The value is a period total, never a daily figure. Only name a window
           when the number really was aggregated over one (the live overview
           request); the mock datasets expose no window, so they show the total
-          on its own rather than claim one. */}
+          on its own rather than claim one. The footer used to repeat the big
+          numeral verbatim ("1,284 / 1,284 units in the last 30 days"). */}
       {windowDays != null && (
-        <p className="mt-3 text-xs tracking-wide uppercase" style={{ color: PALETTE.charcoalMuted }}>
-          <span className="font-semibold" style={{ color: PALETTE.charcoal }}>{formatted} units</span> in the last {windowDays} days
+        <p className="mt-3 text-xs uppercase tracking-wide" style={{ color: PALETTE.charcoalMuted }}>
+          Over the last {windowDays} days
         </p>
       )}
     </MetricCard>
   );
 };
 
-const INVENTORY_CAP_DAYS = 30;
-
-const getInventoryUrgency = (daysLeft, EARTH) => {
-  if (daysLeft >= 14) return { tone: 'Healthy', color: EARTH.sage, soft: EARTH.sageSoft };
-  if (daysLeft >= 7) return { tone: 'Watch', color: EARTH.tan, soft: EARTH.sandSoft };
-  return { tone: 'Act now', color: EARTH.terracotta, soft: EARTH.terracottaSoft };
-};
-
 const DaysOfInventoryCard = ({ daysLeft }) => {
-  const { EARTH, PALETTE } = useDesignTokens();
+  const { ACCENTS, PALETTE } = useDesignTokens();
   const hasEstimate = typeof daysLeft === 'number' && Number.isFinite(daysLeft);
-  const { tone, color, soft } = hasEstimate
-    ? getInventoryUrgency(daysLeft, EARTH)
-    : { tone: null, color: null, soft: PALETTE.sand };
-  const fillPercent = hasEstimate
-    ? Math.max(4, Math.min(100, (daysLeft / INVENTORY_CAP_DAYS) * 100))
-    : 0;
+  const urgency = getStockUrgency(daysLeft);
+  // Shared with Stockout Watch: the bar fills as risk rises (fewer days left),
+  // so 9 days reads as "partly urgent" on both screens instead of a mostly
+  // full green bar here and a mostly full amber bar there.
+  const fillPercent = hasEstimate ? Math.max(4, stockRiskFillPercent(daysLeft)) : 0;
+  const urgencyFill = {
+    act: ACCENTS.danger,
+    watch: ACCENTS.warning,
+    healthy: ACCENTS.positive,
+  }[urgency];
 
   return (
     <MetricCard icon={<InventoryIcon className="h-4.5 w-4.5" />} label="Days of Inventory Left">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-4xl font-bold tracking-tight sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
+        <p className="metric-numeral text-4xl font-bold sm:text-[3.6rem]" style={{ color: PALETTE.charcoal }}>
           {hasEstimate ? daysLeft : '—'}
           {hasEstimate && (
             <span className="ml-1 text-sm font-semibold" style={{ color: PALETTE.charcoalMuted }}>days</span>
           )}
         </p>
-        <span
-          className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wider"
-          style={{ backgroundColor: hasEstimate ? soft : PALETTE.sand, color: PALETTE.charcoalMuted }}
-        >
-          {hasEstimate ? tone : 'Not enough data'}
-        </span>
+        <StatusPill tone={hasEstimate ? STOCK_URGENCY_TONE[urgency] : 'neutral'}>
+          {hasEstimate ? STOCK_URGENCY[urgency].label : 'Not enough data'}
+        </StatusPill>
       </div>
       <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: PALETTE.sand }}>
         {hasEstimate && (
           <div
             className="h-full rounded-full transition-all duration-700 ease-out"
-            style={{ width: `${fillPercent}%`, backgroundColor: color }}
+            style={{ width: `${fillPercent}%`, backgroundColor: urgencyFill }}
           />
         )}
       </div>
@@ -363,8 +378,8 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
 
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 260);
-    gradient.addColorStop(0, 'rgba(124, 148, 115, 0.28)');
-    gradient.addColorStop(1, 'rgba(124, 148, 115, 0.02)');
+    gradient.addColorStop(0, withAlpha(EARTH.sage, 0.26));
+    gradient.addColorStop(1, withAlpha(EARTH.sage, 0.02));
 
     chartInstanceRef.current = new Chart(ctx, {
       type: 'line',
@@ -376,12 +391,12 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
             data: chartRevenue,
             borderColor: EARTH.sage,
             backgroundColor: gradient,
-            pointBackgroundColor: EARTH.tan,
-            pointBorderColor: PALETTE.cardBg || '#ffffff',
+            pointBackgroundColor: EARTH.sage,
+            pointBorderColor: PALETTE.surface,
             pointBorderWidth: 1.5,
             pointRadius: 3,
             pointHoverRadius: 5,
-            pointHoverBackgroundColor: EARTH.terracotta,
+            pointHoverBackgroundColor: EARTH.sage,
             borderWidth: 2.5,
             tension: 0.4,
             fill: true,
@@ -423,11 +438,9 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
             ticks: {
               color: PALETTE.charcoalMuted,
               font: { size: 11 },
-              callback: (value) => {
-                if (value >= 100000) return `Rs. ${(value / 100000).toFixed(1)}L`;
-                if (value >= 1000) return `Rs. ${(value / 1000).toFixed(0)}K`;
-                return `Rs. ${value}`;
-              },
+              // Same formatter the currency cards use, so the axis can never
+              // disagree with the KPI numerals about how an amount is written.
+              callback: (value) => formatCompactCurrency(value),
             },
           },
         },
@@ -437,14 +450,14 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
     return () => {
       chartInstanceRef.current?.destroy();
     };
-  }, [PALETTE, CHART_AXIS, EARTH, chartRevenue]);
+  }, [PALETTE, CHART_AXIS, EARTH, chartRevenue, chartLabels]);
 
   return (
-    <div className="rounded-xl p-6 sm:p-8 transition-shadow duration-200 ease-out" style={CARD_SURFACE}>
+    <div className="rounded-xl p-6 sm:p-8" style={CARD_SURFACE}>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-            Revenue, Last 14 Days
+            Revenue, last 14 days
           </h2>
           <p className="mt-1 text-xs" style={{ color: PALETTE.charcoalMuted }}>
             A quiet look at how sales have been trending — no configuration needed.
@@ -462,7 +475,12 @@ const PerformanceChart = ({ chartRevenue = CHART_REVENUE, chartLabels = CHART_LA
   );
 };
 
-const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode = 'live' }) => {
+const BusinessOwnerDashboard = ({
+  activeRole = 'Owner',
+  hasData = true,
+  dataMode = 'live',
+  onOpenView = null,
+}) => {
   // Scope every query to the store inside the signed-in account's token. The
   // demo tenant keeps its historic id as a fallback (see resolveStoreId); any
   // other tenant with no store claim resolves to null and is told so below.
@@ -578,6 +596,8 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
       <EmptyState
         title="No sales data yet"
         description="Once your store's sales start coming in, your revenue, orders, and inventory health will show up here automatically."
+        actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+        onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
       />
     );
   }
@@ -599,6 +619,8 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
         <EmptyState
           title="No sales data yet"
           description="Once your store's sales start coming in, your revenue, orders, and inventory health will show up here automatically."
+          actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+          onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
         />
       );
     }
@@ -606,6 +628,10 @@ const BusinessOwnerDashboard = ({ activeRole = 'Owner', hasData = true, dataMode
 
   return (
     <div className="space-y-6">
+      <SectionHeading
+        title="Store overview"
+        description="Revenue, units sold and inventory runway for this store."
+      />
       {/* Where the analysis is measured to (store's latest sale date). */}
       <AsOfDateNotice asOfDate={asOfDate} />
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">

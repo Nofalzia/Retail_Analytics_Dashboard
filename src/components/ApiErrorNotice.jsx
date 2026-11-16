@@ -40,6 +40,7 @@ export default function ApiErrorNotice({
 
   return (
     <div
+      role="alert"
       className="flex min-h-[240px] items-center justify-center rounded-xl p-8 text-center sm:p-10"
       style={{
         ...CARD_SURFACE,

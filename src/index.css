@@ -1,1 +1,113 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design foundation — bottle green (light) / violet (dark) system.
+   These are Tailwind v4 theme variables, so every rounded-* / font-sans
+   utility in the app inherits them; components never hardcode geometry.
+   Colour values never live here: ThemeContext publishes them as CSS custom
+   properties (--brand, --focus-ring, --card-shadow-lift, …) on :root, so
+   index.css only ever refers to the variables.
+   --------------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-lg: 0.875rem; /* 14px — chips, inputs, small tiles */
+  --radius-xl: 1.125rem; /* 18px — standard cards          */
+  --radius-2xl: 1.375rem; /* 22px — hero cards, empty states */
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    /* Tabular figures keep 8- and 9-digit totals from shifting columns. */
+    font-variant-numeric: tabular-nums;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* One focus treatment for every interactive control. Buttons in this app are
+     styled inline, so a component-level ring would have to be repeated on
+     every control; this is the single place it lives. The colour comes from
+     the active theme (brand in light, violet in dark). */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus-ring, currentColor);
+    outline-offset: 2px;
+  }
+
+  /* Range input — the only control restyled from scratch. Lives here instead
+     of an injected <style> tag inside the simulation panel so the thumb and
+     track can be theme tokens rather than one hardcoded white border. */
+  .earth-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 9999px;
+    cursor: pointer;
+  }
+
+  .earth-slider:focus-visible {
+    outline: 2px solid var(--focus-ring, currentColor);
+    outline-offset: 6px;
+  }
+
+  .earth-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 18px;
+    width: 18px;
+    border-radius: 9999px;
+    background: var(--thumb-color, currentColor);
+    border: 2px solid var(--thumb-ring, transparent);
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.28);
+    transition: transform 100ms ease-out;
+  }
+
+  .earth-slider::-webkit-slider-thumb:hover { transform: scale(1.1); }
+  .earth-slider::-webkit-slider-thumb:active { transform: scale(1.25); }
+
+  .earth-slider::-moz-range-thumb {
+    height: 18px;
+    width: 18px;
+    border-radius: 9999px;
+    background: var(--thumb-color, currentColor);
+    border: 2px solid var(--thumb-ring, transparent);
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.28);
+    cursor: pointer;
+    transition: transform 100ms ease-out;
+  }
+
+  .earth-slider::-moz-range-thumb:hover { transform: scale(1.1); }
+  .earth-slider::-moz-range-thumb:active { transform: scale(1.25); }
+
+  .earth-slider::-moz-range-track { background: transparent; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+
+    .earth-slider::-webkit-slider-thumb:hover,
+    .earth-slider::-webkit-slider-thumb:active,
+    .earth-slider::-moz-range-thumb:hover,
+    .earth-slider::-moz-range-thumb:active {
+      transform: none;
+    }
+  }
+}
+
+@layer utilities {
+  /* Optical tightening for the large KPI numerals. */
+  .metric-numeral {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+}
+
