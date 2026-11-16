@@ -888,10 +888,22 @@ const InboxIcon = ({ className }) => (
   </svg>
 );
 
+/**
+ * @param {Object} props
+ * @param {React.ReactNode} [props.icon] Illustration for the empty card.
+ * @param {string} [props.title]
+ * @param {string} [props.description]
+ * @param {string|null} [props.hint] Optional footnote that explains *why* the
+ *   view is empty. Used by the preview data states, where an intentionally
+ *   blank view would otherwise look like a broken import.
+ * @param {string} [props.actionLabel]
+ * @param {() => void} [props.onAction]
+ */
 export const EmptyState = ({
   icon,
   title = 'Nothing here yet',
   description = 'Once sales data comes in, this view fills in automatically.',
+  hint = null,
   actionLabel,
   onAction,
 }) => {
@@ -919,6 +931,14 @@ export const EmptyState = ({
         <p className="mt-3 text-sm leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
           {description}
         </p>
+        {hint && (
+          <p
+            className="mt-4 rounded-xl border px-3.5 py-2.5 text-xs leading-relaxed"
+            style={{ borderColor: theme.sandBorder, color: PALETTE.charcoalMuted }}
+          >
+            {hint}
+          </p>
+        )}
         {actionLabel && onAction && (
           <button
             type="button"

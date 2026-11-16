@@ -591,11 +591,16 @@ const BusinessOwnerDashboard = ({
     return <AdminRestrictedAccess />;
   }
 
+  // Preview data state ('New Tenant (No Data)' in the header switcher) — every
+  // view is pinned empty on purpose. The hint says so, otherwise a completed
+  // import looks broken here and the header switcher is the last place anyone
+  // looks for the cause.
   if (!hasData) {
     return (
       <EmptyState
         title="No sales data yet"
         description="Once your store's sales start coming in, your revenue, orders, and inventory health will show up here automatically."
+        hint="Preview state: the header data state is 'New Tenant (No Data)', so this view is empty by design — no import is missing. Set it back to 'Healthy Store' to see this store's live figures."
         actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
         onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
       />

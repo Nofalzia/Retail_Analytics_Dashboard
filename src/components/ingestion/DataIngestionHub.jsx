@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDesignTokens, useTheme } from '../../context/ThemeContext';
+import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext';
 import { resolveStoreId } from '../../utils/resolveStoreId.js';
 import {
@@ -1499,11 +1500,17 @@ const MockDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
       </div>
 
       <div className="flex flex-col items-end gap-1.5">
-        {!hasCompletedUpload && (
-          <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
-            Available once a file has finished importing.
-          </p>
-        )}
+        {/* A simulated upload writes nothing, so "Proceed to Analytics" lands on
+            whatever data state the header switcher holds. Say that before the
+            click, not after the user has concluded the import failed. */}
+        <p
+          className="max-w-md text-right text-xs leading-relaxed"
+          style={{ color: PALETTE.charcoalMuted }}
+        >
+          {hasCompletedUpload
+            ? "Preview mode: this upload was simulated and wrote nothing to your store. Set the header data state to 'Healthy Store' to import real files and see live analytics."
+            : 'Available once a file has finished importing.'}
+        </p>
         <button
           type="button"
           onClick={onProceedToAnalytics}
