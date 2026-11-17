@@ -32,11 +32,17 @@
  *   --phase real      read the real London Bakers workbook, fit ONE model on the
  *                     tenant's 35 days and write iforest_real_flags.md with the top
  *                     flagged product-days and an empty "manager confirmed?" column.
+ *   --phase overlap   diagnostic on the SAME spent seeds: how many injected
+ *                     anomalies each detector catches alone, jointly, and never,
+ *                     plus the F1 of their union and intersection. Appends one
+ *                     delimited section to iforest_results.md and NEVER rewrites
+ *                     the frozen config (no threshold is chosen here).
  *
  * Runs from backend/:
  *   node scripts/validation/runIsolationForestValidation.js --phase dev
  *   node scripts/validation/runIsolationForestValidation.js --phase freeze
  *   node scripts/validation/runIsolationForestValidation.js --phase holdout
+ *   node scripts/validation/runIsolationForestValidation.js --phase overlap
  *   node scripts/validation/runIsolationForestValidation.js --phase real --input "<workbook.xlsx>"
  * ──────────────────────────────────────────────────────────────────────────────
  */
@@ -48,7 +54,7 @@ import { fileURLToPath } from 'node:url';
 import * as XLSX from 'xlsx';
 
 import { generateDataset, GROUND_TRUTH_TOTAL } from './generateSyntheticData.js';
-import { confusionCounts, classificationMetrics } from './metrics.js';
+import { confusionCounts, classificationMetrics, pairKey, toPairSet } from './metrics.js';
 import { DEFAULT_PARAMS as V2_PARAMS, scoreSeries } from '../../src/services/rollingZScore.js';
 import {
   DEFAULT_IFOREST_PARAMS,
@@ -836,6 +842,7 @@ function buildResultsMarkdown(config, results, thresholdCompare, budgetCompare, 
     'npm run validate:iforest -- --phase dev      :: grid preview, writes nothing',
     'npm run validate:iforest -- --phase freeze   :: writes frozen_config_iforest.json',
     'npm run validate:iforest -- --phase holdout  :: one shot; refuses to repeat',
+    'npm run validate:iforest -- --phase overlap  :: flag overlap vs v2 (idempotent)',
     '```',
     '',
   ].join('\n');
@@ -871,6 +878,206 @@ function buildRecommendationSection(config, thresholdCompare, budgetCompare) {
     '- What would overturn this: a larger held-out sweep (more seeds, or more anomalies per seed) where the matched-budget delta stays positive beyond its spread, or a labelled real sample where IF flags days v2 demonstrably misses.',
     '',
   ];
+}
+
+// ── Phase: flag overlap with v2 (diagnostic on the already-spent seeds) ──────
+// The hold-out section answers "which detector scores better?". This one answers
+// "would a manager see anything new if BOTH ran?" — a different question, asked
+// on the same five spent seeds, so it can describe the evidence but cannot feed a
+// parameter choice. The frozen config is read and never written here.
+const OVERLAP_START = '<!-- overlap:start -->';
+const OVERLAP_END = '<!-- overlap:end -->';
+
+/**
+ * Computes one seed's flag overlap and the F1 of the union / intersection.
+ *
+ * "Only IF" and "only v2" are counted twice over: once for flags (any flagged
+ * product-day) and once for TRUE anomalies (ground-truth pairs one detector
+ * caught and the other missed). The second table is the one that decides whether
+ * a second detector is worth a UI surface.
+ * @param {number} seed Dataset seed.
+ * @param {number} contamination Frozen contamination.
+ * @returns {object} Per-seed overlap, union and intersection metrics.
+ */
+function overlapForSeed(seed, contamination) {
+  const dataset = sealedSeries(seed);
+  const detection = detectAnomalies(
+    toDetectorRows(dataset),
+    { ...DEFAULT_IFOREST_PARAMS, contamination },
+  );
+  if (detection.model === null) {
+    abort(`seed ${seed}: Isolation Forest could not fit (${detection.sampleCount} samples)`);
+  }
+
+  const iforestFlags = detection.flagged.map(({ productKey, date }) => ({ sku: productKey, date }));
+  const v2Flags = v2FlagsFor(dataset);
+  const iforestKeys = toPairSet(iforestFlags);
+  const v2Keys = toPairSet(v2Flags);
+  // The generator stores the SKU as `productSku`; pairKey wants `sku`, which is
+  // the same normalisation metrics.confusionCounts applies to the ground truth.
+  const truthKeys = new Set(
+    dataset.groundTruth.map((truth) => pairKey(truth.productSku, truth.date)),
+  );
+
+  const unionFlags = new Set([...iforestKeys, ...v2Keys]);
+  const intersectionFlags = new Set([...iforestKeys].filter((key) => v2Keys.has(key)));
+  const countTruth = (predicate) => [...truthKeys].filter(predicate).length;
+
+  return {
+    seed,
+    iforest: metricsFor(iforestFlags, dataset.groundTruth),
+    v2: metricsFor(v2Flags, dataset.groundTruth),
+    union: metricsFor(unionFlags, dataset.groundTruth),
+    intersection: metricsFor(intersectionFlags, dataset.groundTruth),
+    flags: {
+      iforest: iforestKeys.size,
+      v2: v2Keys.size,
+      both: [...iforestKeys].filter((key) => v2Keys.has(key)).length,
+      onlyIforest: [...iforestKeys].filter((key) => !v2Keys.has(key)).length,
+      onlyV2: [...v2Keys].filter((key) => !iforestKeys.has(key)).length,
+    },
+    truth: {
+      total: truthKeys.size,
+      both: countTruth((key) => iforestKeys.has(key) && v2Keys.has(key)),
+      onlyIforest: countTruth((key) => iforestKeys.has(key) && !v2Keys.has(key)),
+      onlyV2: countTruth((key) => !iforestKeys.has(key) && v2Keys.has(key)),
+      neither: countTruth((key) => !iforestKeys.has(key) && !v2Keys.has(key)),
+    },
+  };
+}
+
+/**
+ * Renders the overlap section. Every sentence about a winner is derived from the
+ * measured means, so the file states "the union does not beat the better single
+ * detector" only when that is what the numbers show.
+ * @param {object} config Frozen config.
+ * @param {Array<object>} perSeed Output of overlapForSeed, one row per seed.
+ * @returns {string} Markdown block, including its delimiters.
+ */
+function buildOverlapSection(config, perSeed) {
+  const flagMean = (key) => meanOf(perSeed.map((row) => row.flags[key]));
+  const truthMean = (key) => meanOf(perSeed.map((row) => row.truth[key]));
+  const f1Mean = (arm) => meanOf(perSeed.map((row) => row[arm].f1));
+  const precisionMean = (arm) => meanOf(perSeed.map((row) => row[arm].precision));
+  const recallMean = (arm) => meanOf(perSeed.map((row) => row[arm].recall));
+  const flagsMean = (arm) => meanOf(perSeed.map((row) => row[arm].flaggedTotal));
+
+  const arms = ['iforest', 'v2', 'union', 'intersection'];
+  const f1 = Object.fromEntries(arms.map((arm) => [arm, f1Mean(arm)]));
+  const bestSingle = Math.max(f1.iforest, f1.v2);
+  const bestArm = f1.iforest >= f1.v2 ? 'iforest' : 'v2';
+  const unionBeatsBoth = f1.union > bestSingle;
+  const intersectionBeatsBoth = f1.intersection > bestSingle;
+
+  const verdict = unionBeatsBoth
+    ? `The union beats the better single detector (${bestArm === 'iforest' ? 'IF' : 'v2'}) by ${fmt(f1.union - bestSingle, 4)} F1 on average, so the two detectors are not redundant on this harness — they miss different days. That is a reason to keep measuring, not a reason to ship a combined surface: the evidence is still five synthetic seeds.`
+    : `The union does NOT beat the better single detector (${bestArm === 'iforest' ? 'IF' : 'v2'}, ${fmt(bestSingle, 4)} F1) — it scores ${fmt(f1.union, 4)}. The extra days IF flags are paid for with extra false flags, so a manager running both would get more alerts of the same quality, not better alerts. On this harness there is no case for a combined surface, and none is being built.`;
+
+  const lines = [
+    OVERLAP_START,
+    '## Flag overlap with v2 — same held-out seeds, diagnostic only',
+    '',
+    `Measured ${new Date().toISOString().slice(0, 10)} from the frozen config (contamination ${config.params.contamination}) on seeds ${HOLDOUT_SEEDS.join(', ')} — the SAME seeds the one-shot hold-out already scored. Nothing is tuned, no threshold is chosen, and \`frozen_config_iforest.json\` is not rewritten: this answers "would running both detectors surface anything new?", not "which detector wins?".`,
+    '',
+    '### What each detector contributed (mean per seed)',
+    '',
+    '| contribution | mean per seed |',
+    '| --- | --- |',
+    `| flags — IF only | ${fmt(flagMean('onlyIforest'), 1)} |`,
+    `| flags — v2 only | ${fmt(flagMean('onlyV2'), 1)} |`,
+    `| flags — both detectors | ${fmt(flagMean('both'), 1)} |`,
+    `| true anomalies caught by both | ${fmt(truthMean('both'), 1)} |`,
+    `| true anomalies caught by IF only | ${fmt(truthMean('onlyIforest'), 1)} |`,
+    `| true anomalies caught by v2 only | ${fmt(truthMean('onlyV2'), 1)} |`,
+    `| true anomalies caught by neither | ${fmt(truthMean('neither'), 1)} |`,
+    `| injected anomalies per seed | ${fmt(truthMean('total'), 0)} |`,
+    '',
+    '### F1 of running them together (mean over the five seeds)',
+    '',
+    '| arm | flags/seed | precision | recall | F1 |',
+    '| --- | --- | --- | --- | --- |',
+    `| IF alone, frozen threshold | ${fmt(flagsMean('iforest'), 1)} | ${fmt(precisionMean('iforest'))} | ${fmt(recallMean('iforest'))} | ${fmt(f1.iforest)} |`,
+    `| v2 alone | ${fmt(flagsMean('v2'), 1)} | ${fmt(precisionMean('v2'))} | ${fmt(recallMean('v2'))} | ${fmt(f1.v2)} |`,
+    `| UNION (either detector flags) | ${fmt(flagsMean('union'), 1)} | ${fmt(precisionMean('union'))} | ${fmt(recallMean('union'))} | ${fmt(f1.union)} |`,
+    `| INTERSECTION (both flag) | ${fmt(flagsMean('intersection'), 1)} | ${fmt(precisionMean('intersection'))} | ${fmt(recallMean('intersection'))} | ${fmt(f1.intersection)} |`,
+    '',
+    '### Per seed',
+    '',
+    '| seed | IF F1 | v2 F1 | union F1 | intersection F1 | TP both | TP only IF | TP only v2 | TP neither |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...perSeed.map((row) => `| ${row.seed} | ${fmt(row.iforest.f1)} | ${fmt(row.v2.f1)} | ${fmt(row.union.f1)} | ${fmt(row.intersection.f1)} | ${row.truth.both} | ${row.truth.onlyIforest} | ${row.truth.onlyV2} | ${row.truth.neither} |`),
+    '',
+    '### Reading',
+    '',
+    verdict,
+    '',
+    `- The intersection ${intersectionBeatsBoth ? 'scores higher' : 'scores lower'} on F1 (${fmt(f1.intersection, 4)}), but at ${fmt(recallMean('intersection'))} recall against ${fmt(recallMean('v2'))} for v2 and ${fmt(recallMean('iforest'))} for IF: it fires only where both detectors agree, so any precision it gains is paid for in true anomalies missed. That describes a possible "confirmed by two methods" screen, not a detector that replaces either one — nothing is being built from it.`,
+    '- The union is an upper bound on what a combined surface could show and the intersection is the lower bound. Neither is a shipped design; measuring both brackets what a two-detector screen could be worth before any wiring, schema or UI code exists.',
+    '- Same limits as the hold-out section: five synthetic seeds, 36 injected multiplicative spikes each, exact-(SKU, date) matching, no labelled real data. This section is a diagnostic on spent seeds, so on its own it can neither overturn nor improve the hold-out verdict.',
+    '',
+    '```',
+    'cd backend',
+    'npm run validate:iforest -- --phase overlap   :: idempotent; rewrites only this section',
+    '```',
+    '',
+    OVERLAP_END,
+    '',
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * Runs the overlap diagnostic and replaces its delimited section in
+ * iforest_results.md, leaving every other line of that report untouched.
+ * @returns {Promise<void>} Resolves once the report is written.
+ */
+async function runOverlapPhase() {
+  const config = await loadFrozenConfig(); // no hold-out guard: no threshold is chosen here
+  console.log(banner('Isolation Forest — FLAG OVERLAP WITH V2 (diagnostic)'));
+
+  const perSeed = HOLDOUT_SEEDS.map((seed) => overlapForSeed(seed, config.params.contamination));
+  assertMatchesReference(summarise(perSeed, 'v2'), V2_HOLDOUT_REFERENCE, 'overlap seeds 6-10');
+
+  const markdown = await readTextIfExists(RESULTS_MD_PATH);
+  if (markdown === null) {
+    abort(`${RESULTS_MD_PATH} does not exist; run --phase holdout first (this section is appended to that report)`);
+  }
+
+  const block = buildOverlapSection(config, perSeed);
+  const start = markdown.indexOf(OVERLAP_START);
+  let updated;
+  if (start === -1) {
+    // New section: place it before the reproduce block so the report still ends
+    // with "how to run this", not with a diagnostic that belongs beside the results.
+    const anchor = markdown.indexOf('\n## Reproduce');
+    updated = anchor === -1
+      ? `${markdown.replace(/\n*$/, '\n')}\n${block}`
+      : `${markdown.slice(0, anchor)}\n${block}${markdown.slice(anchor + 1)}`;
+  } else {
+    const end = markdown.indexOf(OVERLAP_END, start);
+    if (end === -1) abort(`${RESULTS_MD_PATH} has an "${OVERLAP_START}" marker with no matching "${OVERLAP_END}"; fix the file by hand`);
+    // Normalise the whitespace on both sides so re-running this phase is a no-op
+    // rather than adding one blank line per pass.
+    const before = markdown.slice(0, start).replace(/\n*$/, '\n\n');
+    const after = markdown.slice(end + OVERLAP_END.length).replace(/^\n*/, '\n');
+    updated = `${before}${block.replace(/\n*$/, '\n')}${after}`;
+  }
+  await writeFile(RESULTS_MD_PATH, updated, 'utf8');
+
+  for (const row of perSeed) {
+    const show = (label, metrics) => console.log(
+      `  seed ${String(row.seed).padEnd(2)} ${label.padEnd(13)} F1 ${fmt(metrics.f1)}  P ${fmt(metrics.precision)}  R ${fmt(metrics.recall)}  flags ${metrics.flaggedTotal}`,
+    );
+    show('IF', row.iforest);
+    show('v2', row.v2);
+    show('union', row.union);
+    show('intersection', row.intersection);
+    console.log(`  seed ${row.seed}   truth — both ${row.truth.both}, only IF ${row.truth.onlyIforest}, only v2 ${row.truth.onlyV2}, neither ${row.truth.neither}; flags — both ${row.flags.both}, only IF ${row.flags.onlyIforest}, only v2 ${row.flags.onlyV2}`);
+  }
+
+  console.log(banner('WROTE'));
+  console.log('docs/validation/iforest_results.md → "Flag overlap with v2" section');
+  console.log('frozen_config_iforest.json deliberately NOT rewritten — no parameter is chosen here.');
 }
 
 // ── Phase: real workbook sanity check ────────────────────────────────────────
@@ -1161,10 +1368,11 @@ function buildRealFlagsMarkdown(config, read, detection, shown, flagTotal, count
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 const USAGE = [
-  'Usage: node scripts/validation/runIsolationForestValidation.js --phase <dev|freeze|holdout|real>',
+  'Usage: node scripts/validation/runIsolationForestValidation.js --phase <dev|freeze|holdout|overlap|real>',
   '  --phase dev       tune contamination on seeds 1-5 (writes nothing)',
   '  --phase freeze    write docs/validation/frozen_config_iforest.json',
   '  --phase holdout   score held-out seeds 6-10 once (needs the frozen config)',
+  '  --phase overlap   flag overlap vs v2 on the same seeds (appends one section)',
   '  --phase real      --input "<workbook.xlsx>" sanity-check real flags',
   '  --force           allow overwriting a frozen config / re-reading the hold-out',
 ].join('\n');
@@ -1184,6 +1392,10 @@ async function main() {
   }
   if (phase === 'holdout') {
     await runHoldoutPhase(force);
+    return;
+  }
+  if (phase === 'overlap') {
+    await runOverlapPhase();
     return;
   }
   if (phase === 'real') {
