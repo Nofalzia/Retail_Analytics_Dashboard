@@ -1,0 +1,536 @@
+{
+  "status": "frozen",
+  "detector": "isolation_forest",
+  "module": "backend/src/services/isolationForest.js",
+  "harness": "backend/scripts/validation/runIsolationForestValidation.js",
+  "frozenAt": "2026-11-17T12:08:05.038Z",
+  "params": {
+    "seed": 20261117,
+    "treeCount": 100,
+    "subsampleSize": 256,
+    "historyDays": 14,
+    "weekdayLookback": 4,
+    "minWeekdayPriors": 2,
+    "ratioClip": 20,
+    "contamination": 0.025,
+    "scoreThreshold": null,
+    "minSamples": 30
+  },
+  "featureNames": [
+    "units",
+    "revenue",
+    "residualVsWeekdayMean",
+    "ratioToPrevious14dMean"
+  ],
+  "series": {
+    "generator": "backend/scripts/validation/generateSyntheticData.js",
+    "productCount": 20,
+    "dayCount": 90,
+    "groundTruthPerSeed": 36,
+    "endDateUsed": "2026-10-10T07:00:00.000Z",
+    "lastDay": "2026-10-09",
+    "note": "Pinned to the clock the v2 hold-out ran on (2026-10-10), so both detectors are scored on byte-identical series and ground truth."
+  },
+  "selectionRule": "Highest mean F1 over dev seeds 1-5 across CONTAMINATION_GRID; ties go to the smaller contamination (quieter detector). Rule fixed before the hold-out was run.",
+  "devProtocol": {
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "grid": [
+      0.01,
+      0.015,
+      0.02,
+      0.025,
+      0.03,
+      0.035,
+      0.04,
+      0.05,
+      0.06,
+      0.08,
+      0.1,
+      0.12,
+      0.15
+    ],
+    "metric": "mean F1 over the five dev seeds, exact-(SKU, date) matching"
+  },
+  "devResults": {
+    "chosenContamination": 0.025,
+    "iforest": {
+      "precision": 0.4308,
+      "precisionSd": 0.0548,
+      "recall": 0.4667,
+      "recallSd": 0.0593,
+      "f1": 0.448,
+      "f1Sd": 0.0569,
+      "flagsPerSeed": 39,
+      "tp": 16.8,
+      "fp": 22.2,
+      "fn": 19.2
+    },
+    "iforestMatchedBudget": {
+      "budgetPerSeed": 50,
+      "precision": 0.3693,
+      "recall": 0.5111,
+      "f1": 0.4279
+    },
+    "v2Reference": {
+      "precision": 0.3881,
+      "recall": 0.5389,
+      "f1": 0.4503,
+      "flagsPerSeed": 50
+    },
+    "grid": [
+      {
+        "contamination": 0.01,
+        "precision": 0.6875,
+        "recall": 0.3056,
+        "f1": 0.4231,
+        "f1Sd": 0.0807,
+        "flags": 16,
+        "tp": 11,
+        "fp": 5,
+        "fn": 25
+      },
+      {
+        "contamination": 0.015,
+        "precision": 0.5652,
+        "recall": 0.3611,
+        "f1": 0.4407,
+        "f1Sd": 0.0743,
+        "flags": 23,
+        "tp": 13,
+        "fp": 10,
+        "fn": 23
+      },
+      {
+        "contamination": 0.02,
+        "precision": 0.471,
+        "recall": 0.4056,
+        "f1": 0.4358,
+        "f1Sd": 0.0696,
+        "flags": 31,
+        "tp": 14.6,
+        "fp": 16.4,
+        "fn": 21.4
+      },
+      {
+        "contamination": 0.025,
+        "precision": 0.4308,
+        "recall": 0.4667,
+        "f1": 0.448,
+        "f1Sd": 0.0569,
+        "flags": 39,
+        "tp": 16.8,
+        "fp": 22.2,
+        "fn": 19.2
+      },
+      {
+        "contamination": 0.03,
+        "precision": 0.3957,
+        "recall": 0.5056,
+        "f1": 0.4439,
+        "f1Sd": 0.0625,
+        "flags": 46,
+        "tp": 18.2,
+        "fp": 27.8,
+        "fn": 17.8
+      },
+      {
+        "contamination": 0.035,
+        "precision": 0.3519,
+        "recall": 0.5278,
+        "f1": 0.4222,
+        "f1Sd": 0.0466,
+        "flags": 54,
+        "tp": 19,
+        "fp": 35,
+        "fn": 17
+      },
+      {
+        "contamination": 0.04,
+        "precision": 0.318,
+        "recall": 0.5389,
+        "f1": 0.4,
+        "f1Sd": 0.0463,
+        "flags": 61,
+        "tp": 19.4,
+        "fp": 41.6,
+        "fn": 16.6
+      },
+      {
+        "contamination": 0.05,
+        "precision": 0.2779,
+        "recall": 0.5944,
+        "f1": 0.3788,
+        "f1Sd": 0.0428,
+        "flags": 77,
+        "tp": 21.4,
+        "fp": 55.6,
+        "fn": 14.6
+      },
+      {
+        "contamination": 0.06,
+        "precision": 0.2413,
+        "recall": 0.6167,
+        "f1": 0.3469,
+        "f1Sd": 0.0412,
+        "flags": 92,
+        "tp": 22.2,
+        "fp": 69.8,
+        "fn": 13.8
+      },
+      {
+        "contamination": 0.08,
+        "precision": 0.1885,
+        "recall": 0.6389,
+        "f1": 0.2911,
+        "f1Sd": 0.0349,
+        "flags": 122,
+        "tp": 23,
+        "fp": 99,
+        "fn": 13
+      },
+      {
+        "contamination": 0.1,
+        "precision": 0.1569,
+        "recall": 0.6667,
+        "f1": 0.254,
+        "f1Sd": 0.0201,
+        "flags": 153,
+        "tp": 24,
+        "fp": 129,
+        "fn": 12
+      },
+      {
+        "contamination": 0.12,
+        "precision": 0.1366,
+        "recall": 0.6944,
+        "f1": 0.2283,
+        "f1Sd": 0.0216,
+        "flags": 183,
+        "tp": 25,
+        "fp": 158,
+        "fn": 11
+      },
+      {
+        "contamination": 0.15,
+        "precision": 0.1144,
+        "recall": 0.7278,
+        "f1": 0.1977,
+        "f1Sd": 0.0181,
+        "flags": 229,
+        "tp": 26.2,
+        "fp": 202.8,
+        "fn": 9.8
+      }
+    ],
+    "perSeed": [
+      {
+        "seed": 1,
+        "threshold": 0.609795,
+        "sampleCount": 1520,
+        "iforest": {
+          "precision": 0.3846,
+          "recall": 0.4167,
+          "f1": 0.4,
+          "flags": 39,
+          "tp": 15,
+          "fp": 24,
+          "fn": 21
+        },
+        "iforestMatchedBudget": {
+          "f1": 0.381,
+          "flags": 48
+        },
+        "v2": {
+          "precision": 0.375,
+          "recall": 0.5,
+          "f1": 0.4286,
+          "flags": 48
+        }
+      },
+      {
+        "seed": 2,
+        "threshold": 0.606646,
+        "sampleCount": 1520,
+        "iforest": {
+          "precision": 0.4359,
+          "recall": 0.4722,
+          "f1": 0.4533,
+          "flags": 39,
+          "tp": 17,
+          "fp": 22,
+          "fn": 19
+        },
+        "iforestMatchedBudget": {
+          "f1": 0.4,
+          "flags": 54
+        },
+        "v2": {
+          "precision": 0.3889,
+          "recall": 0.5833,
+          "f1": 0.4667,
+          "flags": 54
+        }
+      },
+      {
+        "seed": 3,
+        "threshold": 0.622983,
+        "sampleCount": 1520,
+        "iforest": {
+          "precision": 0.4615,
+          "recall": 0.5,
+          "f1": 0.48,
+          "flags": 39,
+          "tp": 18,
+          "fp": 21,
+          "fn": 18
+        },
+        "iforestMatchedBudget": {
+          "f1": 0.4516,
+          "flags": 57
+        },
+        "v2": {
+          "precision": 0.386,
+          "recall": 0.6111,
+          "f1": 0.4731,
+          "flags": 57
+        }
+      },
+      {
+        "seed": 4,
+        "threshold": 0.612743,
+        "sampleCount": 1520,
+        "iforest": {
+          "precision": 0.359,
+          "recall": 0.3889,
+          "f1": 0.3733,
+          "flags": 39,
+          "tp": 14,
+          "fp": 25,
+          "fn": 22
+        },
+        "iforestMatchedBudget": {
+          "f1": 0.3704,
+          "flags": 45
+        },
+        "v2": {
+          "precision": 0.3778,
+          "recall": 0.4722,
+          "f1": 0.4198,
+          "flags": 45
+        }
+      },
+      {
+        "seed": 5,
+        "threshold": 0.620041,
+        "sampleCount": 1520,
+        "iforest": {
+          "precision": 0.5128,
+          "recall": 0.5556,
+          "f1": 0.5333,
+          "flags": 39,
+          "tp": 20,
+          "fp": 19,
+          "fn": 16
+        },
+        "iforestMatchedBudget": {
+          "f1": 0.5366,
+          "flags": 46
+        },
+        "v2": {
+          "precision": 0.413,
+          "recall": 0.5278,
+          "f1": 0.4634,
+          "flags": 46
+        }
+      }
+    ]
+  },
+  "holdoutProtocol": {
+    "seeds": [
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "arms": [
+      "threshold at the frozen contamination",
+      "top-k budget matched to the v2 flag count of the same seed"
+    ],
+    "evaluated": true,
+    "evaluatedAt": "2026-11-17T12:11:30.756Z",
+    "note": "Run exactly once: `npm run validate:iforest -- --phase holdout`. The harness sets evaluated=true after writing the results, so re-reading the hold-out needs --force and has to be disclosed in the report."
+  },
+  "holdoutResults": {
+    "iforest": {
+      "precision": 0.4537,
+      "recall": 0.4889,
+      "f1": 0.4706,
+      "f1Sd": 0.0625,
+      "flagsPerSeed": 38.8
+    },
+    "iforestMatchedBudget": {
+      "precision": 0.3664,
+      "recall": 0.5278,
+      "f1": 0.4323,
+      "f1Sd": 0.0357,
+      "budgetPerSeed": 51.8
+    },
+    "v2Reference": {
+      "precision": 0.3785,
+      "recall": 0.5444,
+      "f1": 0.4463,
+      "flagsPerSeed": 51.8
+    },
+    "f1DeltaVsV2": {
+      "threshold": {
+        "mean": 0.0243,
+        "sd": 0.0791,
+        "wins": 4,
+        "perSeed": [
+          0.0498,
+          0.0446,
+          0.0031,
+          0.1333,
+          -0.1094
+        ]
+      },
+      "matchedBudget": {
+        "mean": -0.014,
+        "sd": 0.0586,
+        "wins": 1,
+        "perSeed": [
+          -0.022,
+          0,
+          0,
+          0.0667,
+          -0.1149
+        ]
+      }
+    },
+    "perSeed": [
+      {
+        "seed": 6,
+        "threshold": 0.605329,
+        "iforest": {
+          "precision": 0.5128,
+          "recall": 0.5556,
+          "f1": 0.5333,
+          "flags": 39
+        },
+        "iforestMatchedBudget": {
+          "precision": 0.3818,
+          "recall": 0.5833,
+          "f1": 0.4615,
+          "flags": 55
+        },
+        "v2": {
+          "precision": 0.4,
+          "recall": 0.6111,
+          "f1": 0.4835,
+          "flags": 55
+        }
+      },
+      {
+        "seed": 7,
+        "threshold": 0.609884,
+        "iforest": {
+          "precision": 0.4737,
+          "recall": 0.5,
+          "f1": 0.4865,
+          "flags": 38
+        },
+        "iforestMatchedBudget": {
+          "precision": 0.38,
+          "recall": 0.5278,
+          "f1": 0.4419,
+          "flags": 50
+        },
+        "v2": {
+          "precision": 0.38,
+          "recall": 0.5278,
+          "f1": 0.4419,
+          "flags": 50
+        }
+      },
+      {
+        "seed": 8,
+        "threshold": 0.604371,
+        "iforest": {
+          "precision": 0.4103,
+          "recall": 0.4444,
+          "f1": 0.4267,
+          "flags": 39
+        },
+        "iforestMatchedBudget": {
+          "precision": 0.3673,
+          "recall": 0.5,
+          "f1": 0.4235,
+          "flags": 49
+        },
+        "v2": {
+          "precision": 0.3673,
+          "recall": 0.5,
+          "f1": 0.4235,
+          "flags": 49
+        }
+      },
+      {
+        "seed": 9,
+        "threshold": 0.597834,
+        "iforest": {
+          "precision": 0.5128,
+          "recall": 0.5556,
+          "f1": 0.5333,
+          "flags": 39
+        },
+        "iforestMatchedBudget": {
+          "precision": 0.3889,
+          "recall": 0.5833,
+          "f1": 0.4667,
+          "flags": 54
+        },
+        "v2": {
+          "precision": 0.3333,
+          "recall": 0.5,
+          "f1": 0.4,
+          "flags": 54
+        }
+      },
+      {
+        "seed": 10,
+        "threshold": 0.59249,
+        "iforest": {
+          "precision": 0.359,
+          "recall": 0.3889,
+          "f1": 0.3733,
+          "flags": 39
+        },
+        "iforestMatchedBudget": {
+          "precision": 0.3137,
+          "recall": 0.4444,
+          "f1": 0.3678,
+          "flags": 51
+        },
+        "v2": {
+          "precision": 0.4118,
+          "recall": 0.5833,
+          "f1": 0.4828,
+          "flags": 51
+        }
+      }
+    ]
+  },
+  "artifacts": [
+    "docs/validation/iforest_dev_tuning.md",
+    "docs/validation/iforest_results.md",
+    "docs/validation/iforest_results.csv",
+    "docs/validation/iforest_real_flags.md"
+  ]
+}
