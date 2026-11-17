@@ -178,7 +178,7 @@ const StockoutCard = ({ product }) => {
           <span className="font-medium" style={{ color: PALETTE.charcoal }}>
             {product.avgDailySales > 0 ? product.avgDailySales.toFixed(1) : '—'}
           </span>
-          {' '}sold/day avg
+          {' '}{product.demandBasis === 'holt_winters' ? 'forecast/day avg' : 'sold/day avg'}
         </span>
       </div>
     </div>
@@ -207,6 +207,10 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live', onOpenView = nu
   const [inventoryMissing, setInventoryMissing] = useState(false);
   // The store's as-of date from the API — velocity is measured from here.
   const [asOfDate, setAsOfDate] = useState(null);
+  // Demand engine the API actually used. Only set when the backend has
+  // FORECAST_ENGINE=holt_winters, so the default screen keeps its original copy
+  // and every label below stays gated on this being non-null.
+  const [forecastHorizonDays, setForecastHorizonDays] = useState(null);
 
   useEffect(() => {
     if (dataMode !== 'live') {
@@ -215,6 +219,7 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live', onOpenView = nu
       setProductsLoaded(true);
       // Preview modes are curated fixtures with no real sale dates — no note.
       setAsOfDate(null);
+      setForecastHorizonDays(null);
       return;
     }
 
@@ -226,12 +231,19 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live', onOpenView = nu
     setLoadError(false);
     setProductsLoaded(false);
     setAsOfDate(null);
+    setForecastHorizonDays(null);
     api.getStockout({ storeId, velocityDays: 14 })
       .then((response) => {
         const rows = Array.isArray(response?.products) ? response.products : [];
         // Velocity is averaged over the 14 days before the store's latest sale
         // date, so surface that date — never today's.
         setAsOfDate(response?.asOfDate ?? null);
+        // Present only when the API is forecasting; null keeps the default copy.
+        setForecastHorizonDays(
+          response?.forecastEngine === 'holt_winters'
+            ? (Number(response?.forecastHorizonDays) || 7)
+            : null,
+        );
         // A row with no last_counted_date has never been counted, so it carries
         // no stock level to project from. The API drops such products and reports
         // hasInventoryData === false when none are left; the same rule is applied
@@ -252,6 +264,9 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live', onOpenView = nu
                 category:      p.sku,
                 currentStock:  parseInt(p.quantity_on_hand)    || 0,
                 avgDailySales: parseFloat(p.avg_daily_velocity) || 0,
+                // 'holt_winters' | 'velocity_fallback' when the API is
+                // forecasting; null/absent on the default velocity engine.
+                demandBasis:   p.daily_demand_basis ?? null,
               })),
         );
       })
@@ -334,7 +349,9 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live', onOpenView = nu
     <div>
       <SectionHeading
         title="Stockout Watch"
-        description="Estimated days of inventory left, based on current stock and average daily sales velocity."
+        description={forecastHorizonDays
+          ? `Estimated days of inventory left, based on current stock and a ${forecastHorizonDays}-day demand forecast.`
+          : 'Estimated days of inventory left, based on current stock and average daily sales velocity.'}
       />
       {/* Where the velocity is measured to: the store's latest sale date. Kept
           next to the title (not inside each card) so the whole grid shares one
@@ -347,6 +364,14 @@ const StockoutPrediction = ({ hasData = true, dataMode = 'live', onOpenView = nu
       {asOfLabel && staleDays !== null && staleDays > STALE_AFTER_DAYS && (
         <p className="mb-4 text-xs" style={{ color: ACCENTS.warningInk }}>
           Your latest sales are from {staleDays} days ago, so this analysis is measured from that date.
+        </p>
+      )}
+      {/* Only rendered when the API actually forecast: with the default velocity
+          engine this sentence would be false, so it is flag-gated. */}
+      {forecastHorizonDays && (
+        <p className="mb-4 text-xs" style={{ color: PALETTE.charcoalMuted }}>
+          Daily demand uses Holt-Winters weekly seasonality; products with under two
+          weeks of sales fall back to their sales velocity.
         </p>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

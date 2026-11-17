@@ -11,6 +11,7 @@
  *   PATCH /api/alerts/:id/ack      — acknowledge alert
  *   PATCH /api/alerts/:id/dismiss  — dismiss alert
  *   GET  /api/stockout             — stockout prediction
+ *   GET  /api/forecast             — per-product daily demand forecast
  *   POST /api/upload               — CSV/XLSX file ingest
  *   GET  /api/upload/:jobId/status — poll ingest job progress
  * ──────────────────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ import pool             from './db/pool.js';
 import overviewRouter   from './routes/overview.js';
 import alertsRouter     from './routes/alerts.js';
 import stockoutRouter   from './routes/stockout.js';
+import forecastRouter   from './routes/forecast.js';
 import uploadRouter     from './routes/upload.js';
 import recommendationsRouter from './routes/recommendations.js';
 
@@ -109,6 +111,7 @@ app.get('/health', async (_req, res) => {
 app.use('/api/overview', overviewRouter);
 app.use('/api/alerts',   alertsRouter);
 app.use('/api/stockout', stockoutRouter);
+app.use('/api/forecast', forecastRouter);
 app.use('/api/upload',   uploadRouter);
 app.use('/api/recommendations', recommendationsRouter);
 

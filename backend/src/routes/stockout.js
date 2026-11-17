@@ -18,6 +18,17 @@
  *
  * Phase 3 will add z-score deviation detection on top of this baseline.
  *
+ * Demand basis (FORECAST_ENGINE, see services/forecastService.js):
+ *   velocity      — default. The average daily units above, unchanged.
+ *   holt_winters  — a 7-day Holt-Winters forecast per product, averaged to a
+ *                   daily demand figure.
+ * The flag is the only switch: with the default the SQL, the response keys and
+ * every value are exactly what they were before the engine existed, and the
+ * forecast-only fields below are added only when the flag is on, so the default
+ * screen cannot change by accident. Per row, `daily_demand_basis` says which
+ * figure produced that product's days_remaining ('holt_winters' or
+ * 'velocity_fallback' when the product has too little history to fit).
+ *
  * Query params:
  *   storeId       — UUID (required)
  *   velocityDays  — number of past days to calculate avg velocity (default: 14)
@@ -34,8 +45,79 @@ import { requireAuth, requireDashboardRead } from '../middleware/auth.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { query }         from '../db/pool.js';
 import { getStoreAsOfDate } from '../utils/asOfDate.js';
+import {
+  FORECAST_HORIZON_DAYS,
+  forecastDailyDemand,
+  resolveForecastEngine,
+} from '../services/forecastService.js';
 
 const router = Router();
+
+/**
+ * Classifies a product exactly the way the route's SQL does, so a forecast-based
+ * projection uses the same tier boundaries as the velocity-based one.
+ * @param {number} quantityOnHand Latest counted stock (0 when never counted).
+ * @param {number} dailyDemand Average units sold/forecast per day.
+ * @returns {{daysRemaining: number|null, urgencyTier: string, ratio: number}}
+ *   `daysRemaining` is the rounded ratio the SQL's ROUND() produced.
+ */
+function projectCover(quantityOnHand, dailyDemand) {
+  if (!(dailyDemand > 0)) return { daysRemaining: null, urgencyTier: 'no_data', ratio: Infinity };
+  const ratio = quantityOnHand / dailyDemand;
+  let urgencyTier = 'healthy';
+  if (quantityOnHand === 0) urgencyTier = 'stockout';
+  else if (ratio < 7) urgencyTier = 'critical';
+  else if (ratio < 14) urgencyTier = 'warning';
+  return { daysRemaining: Math.round(ratio), urgencyTier, ratio };
+}
+
+/** @returns {number} Days of cover on a row's active demand basis (Infinity when none). */
+function coverRatio(row) {
+  const demand = Number(row.avg_daily_velocity) || 0;
+  return demand > 0 ? (Number(row.quantity_on_hand) || 0) / demand : Infinity;
+}
+
+/**
+ * Replaces each stockout row's velocity demand with the Holt-Winters forecast.
+ *
+ * `avg_daily_velocity` keeps its name because that is the key every consumer
+ * already reads; it now carries whichever demand basis the flag selected, and
+ * `velocity_avg_daily_units` keeps the old 14-day figure for comparison.
+ * Products the forecast could not fit (too little history, no sales) fall back
+ * to their SQL velocity and are labelled 'velocity_fallback'.
+ *
+ * @param {Array<object>} rows Rows from the stockout query.
+ * @param {{tenantId: string, storeId: string, asOfDate: string, velocityDays: number}} scope
+ * @returns {Promise<Array<object>>} Rows with forecast demand applied.
+ */
+async function applyForecastDemand(rows, { tenantId, storeId, asOfDate, velocityDays }) {
+  const demand = await forecastDailyDemand(query, tenantId, storeId, {
+    asOfDate,
+    engine: 'holt_winters',
+    horizonDays: FORECAST_HORIZON_DAYS,
+    velocityDays,
+  });
+  const byProduct = new Map(demand.products.map((product) => [product.productId, product]));
+
+  return rows.map((row) => {
+    const forecast = byProduct.get(row.product_id) ?? null;
+    const velocityAvgDailyUnits = Number(row.avg_daily_velocity) || 0;
+    const dailyDemand = forecast ? forecast.forecastAvgDailyUnits : velocityAvgDailyUnits;
+    const { daysRemaining, urgencyTier } = projectCover(
+      Number(row.quantity_on_hand) || 0, dailyDemand,
+    );
+
+    return {
+      ...row,
+      avg_daily_velocity: dailyDemand,
+      days_remaining: daysRemaining,
+      urgency_tier: urgencyTier,
+      daily_demand_basis: forecast?.method ?? 'velocity_fallback',
+      forecast_avg_daily_units: forecast ? forecast.forecastAvgDailyUnits : null,
+      velocity_avg_daily_units: velocityAvgDailyUnits,
+    };
+  });
+}
 
 // Read-only route: owner / manager / system_admin only.
 router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, res) => {
@@ -43,6 +125,11 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
   const storeId      = req.query.storeId;
   const velocityDays = Math.max(1, Math.min(parseInt(req.query.velocityDays) || 14, 90));
   const urgencyOnly  = req.query.urgencyOnly === 'true';
+  const forecastEngine = resolveForecastEngine();
+  // The urgency threshold is demand-based. With the forecast engine the demand
+  // figure is only known after the forecast runs, so the filter moves to JS;
+  // with the default engine it stays in the SQL exactly as it was.
+  const filterUrgencyInSql = urgencyOnly && forecastEngine === 'velocity';
 
   if (!storeId) {
     return res.status(400).json({ error: 'MISSING_PARAM', message: 'storeId is required.' });
@@ -100,7 +187,7 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
        LEFT JOIN velocity v ON v.product_id = p.id
        WHERE p.tenant_id = $1
          AND p.is_active = TRUE
-         ${urgencyOnly ? "AND COALESCE(li.quantity_on_hand, 0)::float / NULLIF(COALESCE(v.avg_daily_units, 0), 0) < 14" : ''}
+         ${filterUrgencyInSql ? "AND COALESCE(li.quantity_on_hand, 0)::float / NULLIF(COALESCE(v.avg_daily_units, 0), 0) < 14" : ''}
        ORDER BY
          CASE
            WHEN COALESCE(v.avg_daily_units, 0) = 0 THEN 99
@@ -126,7 +213,24 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
     );
 
     // Summary counts for the dashboard badges
-    const summary = rows.reduce(
+    let products = rows;
+    if (forecastEngine === 'holt_winters') {
+      products = await applyForecastDemand(rows, { tenantId, storeId, asOfDate, velocityDays });
+
+      // Same predicate as the SQL's `... / NULLIF(avg, 0) < 14`: a product with
+      // no demand has no cover figure and is not at risk.
+      if (urgencyOnly) products = products.filter((row) => coverRatio(row) < 14);
+
+      // The SQL ordered by velocity; the ranking now has to follow the forecast.
+      products = [...products].sort((a, b) => {
+        const ratioA = coverRatio(a);
+        const ratioB = coverRatio(b);
+        if (ratioA === ratioB) return 0;
+        return ratioA < ratioB ? -1 : 1;
+      });
+    }
+
+    const summary = products.reduce(
       (acc, row) => { acc[row.urgency_tier] = (acc[row.urgency_tier] || 0) + 1; return acc; },
       { stockout: 0, critical: 0, warning: 0, healthy: 0, no_data: 0 },
     );
@@ -138,8 +242,16 @@ router.get('/', requireAuth, resolveTenant, requireDashboardRead, async (req, re
       velocityWindowDays: velocityDays,
       // Additive: false when this store has never had an inventory count.
       hasInventoryData,
+      // Forecast-only keys: absent at the default engine, so the default
+      // response stays byte-for-byte what it was and the UI can gate its label
+      // on their presence.
+      ...(forecastEngine === 'holt_winters' ? {
+        forecastEngine,
+        forecastHorizonDays: FORECAST_HORIZON_DAYS,
+        forecastFallbackCount: products.filter((row) => row.daily_demand_basis === 'velocity_fallback').length,
+      } : {}),
       summary,
-      products: rows,
+      products,
     });
   } catch (err) {
     console.error('[stockout] Query error:', err.message);
