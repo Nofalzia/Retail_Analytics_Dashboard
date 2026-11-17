@@ -85,6 +85,7 @@ import {
   validateRow,
 } from '../utils/validators.js';
 import { runAnalysis }    from '../services/analysisRunner.js';
+import { computeProgressPct } from '../utils/uploadProgress.js';
 import { invalidateForecastCache } from '../services/forecastCache.js';
 
 const router = Router();
@@ -274,15 +275,24 @@ router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
   }
 
   const job = rows[0];
-  const progressPct = job.total_rows
-    ? Math.round((job.rows_processed / job.total_rows) * 100)
-    : null;
 
   // The assumptions the import had to make and the rows its status filter
   // ignored are stored beside the column mapping under reserved keys (T12a).
+  // They are read before the percentage because skipped rows count towards it.
   const storedMap   = job.column_map && typeof job.column_map === 'object' ? job.column_map : {};
   const assumptions = Array.isArray(storedMap._assumptions) ? storedMap._assumptions : [];
   const skippedByStatus = Number(storedMap._skippedByStatus) || 0;
+
+  // Rows skipped by the status filter were never written and never failed, so
+  // they are invisible to rows_processed / rows_failed. Counting them here is
+  // what stops a finished import from reporting e.g. 69 % (see utils/uploadProgress.js).
+  const progressPct = computeProgressPct({
+    status:          job.status,
+    totalRows:       job.total_rows,
+    rowsProcessed:   job.rows_processed,
+    rowsFailed:      job.rows_failed,
+    skippedByStatus,
+  });
 
   return res.json({
     ...job,

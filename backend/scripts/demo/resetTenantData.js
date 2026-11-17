@@ -127,15 +127,16 @@ function describeDatabaseTarget(connectionString) {
 
 /**
  * Counts every tenant's rows in every business table, in one round-trip.
- * @param {(text: string, params?: Array<*>) => Promise<{rows: Array<Object>}>} exec
- *   Query runner — a checked-out client's query inside the transaction.
+ * @param {{query: (text: string, params?: Array<*>) => Promise<{rows: Array<Object>}>}} client
+ *   Checked-out pg client — counting inside the same transaction keeps the
+ *   before/after snapshots consistent with the deletes.
  * @returns {Promise<Array<Object>>} One row per tenant: id, slug and the counts.
  */
-async function countAllTenants(exec) {
+async function countAllTenants(client) {
   const selects = REPORT_TABLES
     .map((table) => `(SELECT count(*) FROM ${table} WHERE tenant_id = t.id)::int AS ${table}`)
     .join(',\n              ');
-  const { rows } = await exec(`SELECT t.id, t.slug, ${selects} FROM tenants t ORDER BY t.slug`);
+  const { rows } = await client.query(`SELECT t.id, t.slug, ${selects} FROM tenants t ORDER BY t.slug`);
   return rows;
 }
 
