@@ -1,17 +1,21 @@
-# Retail Analytics Dashboard
+# HisaabIQ
 
-A **multi-tenant SaaS dashboard** for independent retail stores. A store uploads its own
-point-of-sale and inventory exports (CSV or XLSX) and the dashboard answers the three
-questions a small retailer actually has:
+**HisaabIQ** is a **multi-tenant SaaS dashboard** for independent retail stores. A store uploads its
+own point-of-sale and inventory exports (CSV or XLSX) and the dashboard answers the three questions a
+small retailer actually has:
 
 - **What is happening?** — revenue, top products and store health (owner view).
 - **What is about to go wrong?** — anomaly alerts and stockout watch (manager view).
 - **What should I do about it?** — rule-based reorder suggestions with the revenue at risk.
 
-The analytics layer is **rule-based / statistical only — no machine-learning libraries**.
-Anomalies come from a per-product rolling z-score (`backend/src/services/rollingZScore.js`) and
-suggestions from a decision rule set (`backend/src/services/recommendationEngine.js`), so every
-alert can be explained to a shopkeeper in one sentence.
+The analytics layer is **rule-based and statistical — no machine-learning library is a dependency**.
+Anomalies in production come from a per-product rolling z-score (`backend/src/services/rollingZScore.js`)
+and advice from a decision rule set (`backend/src/services/recommendationEngine.js`), so every alert
+can be explained to a shopkeeper in one sentence. Two further engines are **evaluated, not shipped**: a
+Holt-Winters demand forecaster behind `FORECAST_ENGINE` (default stays `velocity`, because
+Holt-Winters lost to it on the real workbook) and a pure-JS Isolation Forest that exists as validated
+offline code only. Each was judged against a protocol written down *before* its results were read —
+see [Detection engines — what ships and what does not](#detection-engines--what-ships-and-what-does-not).
 
 CSV ingestion is **streamed, not buffered**: the production route parses CSV with pause/resume and
 writes 1,000-row batches, holding a flat ~50–62 MB peak RSS from 100,000 to 1,000,000 rows, where a
@@ -36,9 +40,11 @@ naive in-memory read peaks at ~484 MB (XLSX/XLS workbooks *are* read into memory
 - [Upload templates](./docs/data/upload_templates.md)
 - [npm scripts](#npm-scripts)
 - [Validation & published evidence](#validation--published-evidence)
+- [Detection engines — what ships and what does not](#detection-engines--what-ships-and-what-does-not)
 - [Project structure](#project-structure)
 - [Deployment](#deployment)
 - [Known limitations](#known-limitations)
+- [Roadmap — deferred by evidence](#roadmap--deferred-by-evidence)
 - [Design conventions](#design-conventions)
 - [Credits](#credits)
 
@@ -238,6 +244,7 @@ open, and login carries its own strict rate limiter.
 | `PATCH` | `/api/alerts/:id/dismiss` | dismiss an alert |
 | `POST` | `/api/alerts/run-detection` | run the rolling z-score engine and persist alerts |
 | `GET` | `/api/stockout` | days-of-cover / stockout risk ranking |
+| `GET` | `/api/forecast` | per-product daily demand for the next `horizonDays` (1–14, default 7); `storeId` required, `historyDays` 14–120 and `velocityDays` 1–90 optional. Returns `method: 'velocity'` with the default `FORECAST_ENGINE`, or `'holt_winters'` when that engine is switched on — never a second opinion the dashboard is not using |
 | `GET` | `/api/recommendations` | open and completed recommendations |
 | `POST` | `/api/recommendations/generate` | derive recommendations from active alerts |
 | `PATCH` | `/api/recommendations/:id/complete` | mark a recommendation done |
@@ -305,7 +312,14 @@ committed.
 | `PORT`, `NODE_ENV` | `backend/.env` | API port (default `3001`) and environment |
 | `MAX_FILE_SIZE_MB`, `UPLOAD_TEMP_DIR` | `backend/.env` | Upload size cap (default `60`; XLSX workbooks are read into memory) and multer temp directory |
 | `COST_RATIO_DEFAULT` | `backend/.env` | Share of the unit price used as cost when a file has no cost column, `0`–`1` (default `0.6`) |
+| `FORECAST_ENGINE` | `backend/.env` | Demand engine used by `/api/stockout` and `/api/forecast`: `velocity` (default — the 14-day mean, which is what ships) or `holt_winters` (implemented and selectable, but **not** the default because it lost on the real workbook). A typo falls back to `velocity`; it never silently selects the other engine |
 | `CORS_ORIGIN` | `backend/.env` | Comma-separated list of allowed frontend origins |
+| `VITE_DEMO_MODE`, `VITE_DEMO_PASSWORD` | `.env` (frontend) | Optional demo conveniences: quick sign-in chips for the selected demo store, off unless set. `VITE_*` values are inlined at build time |
+
+**There is no detector-engine flag.** The guarded rolling z-score is the only detector that writes
+`anomaly_alerts`; the Isolation Forest is offline validation code with no route and no table, and
+`FORECAST_ENGINE` selects a *forecast* method, never a detector. Nothing half-built is exposed as a
+switch.
 
 ---
 
@@ -378,6 +392,28 @@ npm run demo:reset -- --slug demo-onboarding
 host and the row counts; after deleting it compares every other tenant's counts with its before
 snapshot — if any other tenant moved, it rolls back and exits 1.
 
+Need something to upload? `npm run demo:generate` writes upload-ready CSVs from one seed — no
+database and no network involved:
+
+```cmd
+:: from backend/ — writes data/processed/synthetic/
+npm run demo:generate -- --days 90 --skus 40 --seed 20261117
+```
+
+| File | What it demonstrates |
+|---|---|
+| `sales_healthy.csv` | canonical header, steady demand — imports with 0 failures |
+| `sales_struggling.csv` | demand climbing ~85 % from the first day to the last (week-average +68 %), with the last days stocked out for part of the catalogue |
+| `stockcount_struggling.csv` | a matching 0–3 days of cover per SKU (needs the sales file first — a count never creates a product) |
+| `sales_messy.csv` | different header wording (`Bill Date`, `Item Code`, `Qty`, `Rate`, `Order Status`, `Branch`), DD/MM/YYYY dates, no cost column, cancelled/refunded rows, and five rows that must be rejected |
+| `manifest.json` | seeds, row counts and what each file is meant to prove |
+
+Measured on 17 Nov 2026 through the real upload route into a blank `demo-onboarding` tenant (90 days,
+40 SKUs): healthy 3,595 rows / 0 failed; struggling 3,573 / 0 failed (stockout days are omitted rather
+than written as zero-unit sales); stock count 40 / 0 failed; messy 3,599 rows → 2,471 imported, 1,123
+skipped by status, 5 rejected with their row numbers. The same `--seed` writes byte-identical files,
+and `data/processed/` is gitignored, so nothing generated here can dirty the committed tree.
+
 ---
 
 ## npm scripts
@@ -393,14 +429,20 @@ snapshot — if any other tenant moved, it rolls back and exits 1.
 | `backend/` | `npm run seed:reset` | reset + reseed the demo tenant |
 | `backend/` | `npm run bakery:prepare -- --input <pos.csv> --daily <daily.csv>` | build the London Bakers upload CSVs from the raw POS export |
 | `backend/` | `npm run bakery:seed` | reset + seed the `london-bakers-i10` tenant from those CSVs |
+| `backend/` | `npm run demo:generate -- --days 90 --skus 40 --seed <n>` | write seeded, upload-ready synthetic sales + stock-count CSVs to `data/processed/synthetic/` (no database) |
 | `backend/` | `npm run demo:onboarding:seed` | create or re-blank the blank onboarding demo tenant (`demo-onboarding`) |
 | `backend/` | `npm run demo:reset -- --slug demo-onboarding` | delete that tenant's imported data; other tenants are verified unchanged |
 | `backend/` | `npm run demo:inventory -- --slug london-bakers-i10` | write a synthetic stock-count CSV from that tenant's own sales history (default `data/processed/<slug>/inventory_snapshot.csv`) |
 | `backend/` | `npm run db:migrate` | `psql $DATABASE_URL -f db/schema.sql` |
 | `backend/` | `npm run test:zscore` | rolling z-score self-test (assertions, no database) |
+| `backend/` | `npm run test:holt-winters` | Holt-Winters + `FORECAST_ENGINE` parsing self-test (assertions, no database) |
+| `backend/` | `npm run test:iforest` | Isolation Forest self-test — determinism, scoring, feature windows (assertions, no database) |
 | `backend/` | `npm run test:validators` | column mapping, date parsing and cost-allocation self-test (assertions, no database) |
+| `backend/` | `npm run test:upload-progress` | import progress arithmetic self-test — skipped/rejected rows and completed jobs (assertions, no database) |
 | `backend/` | `npm run validate:detection` | v1 detection validation harness |
 | `backend/` | `npm run validate:detection:v2` | v2 detection validation harness (writes into `docs/validation/`) |
+| `backend/` | `npm run validate:forecast -- --input <workbook.xlsx>` | forecast backtest on a real export; `--score-holdout` scores the sealed week once |
+| `backend/` | `npm run validate:iforest -- --phase <dev\|freeze\|holdout\|overlap\|real>` | Isolation Forest dev grid, frozen protocol, one-shot hold-out, flag overlap with v2, real-workbook flag list |
 | `backend/` | `npm run smoke:recs` | recommendation-engine smoke run |
 | `backend/` | `npm run bench:parse` | naive vs streamed parse, median of 3 child processes |
 | `backend/` | `npm run bench:ingest` | end-to-end ingestion through the real HTTP route |
@@ -435,6 +477,39 @@ fixed-percentage baseline comes close: a 30 % deviation rule scores precision 0.
 F1 0.134 and a 50 % rule 0.168 / 0.722 / 0.270, against v2's 0.379 / 0.544 / 0.446. v2 beats both
 baselines on precision and F1 and only concedes on recall.
 
+### Forecasting evidence — a pre-registered hold-out (`forecast_results.md` §17)
+
+The protocol was frozen and committed **before** its final week was read
+([`frozen_config.json`](docs/validation/frozen_config.json) records the methods, the selection rule and
+the engine-change rule). The real export is **35 days of one store** (13,544 line items, 50 SKUs,
+2026-09-01 … 2026-10-05). Its **28-day development window** (2026-09-01 … 2026-09-28) was scored with
+seven expanding-window folds — 1,400 SKU-days — and the remaining **7 days**
+(2026-09-29 … 2026-10-05) were **sealed** and then scored **once**, on 2026-11-17, as a single
+confirmatory run (350 SKU-days). `--score-holdout` now refuses to run again and the config records
+`holdOut.scoredOnce: true`.
+
+| Method — pooled WAPE % | dev, 7 folds | sealed hold-out |
+|---|---|---|
+| M6 store weekday profile × SKU level | **30.82** | **32.32** |
+| M3 velocity, 14-day mean (ships) | 31.48 | 33.63 |
+| M2 7-day moving average, flat | 32.35 | 33.66 |
+| M4 Holt-Winters, in-service grid | 44.55 | 39.54 |
+| M1 seasonal naive | 45.71 | 43.22 |
+
+Paired per-SKU-day error against the shipping baseline: Holt-Winters is **reliably worse than the
+14-day velocity** (+0.717 units, 95 % block-bootstrap interval [+0.492, +0.931]), while the 7-day mean
+is indistinguishable from it (+0.003, [−0.122, +0.142]). It lost on both windows, so
+`FORECAST_ENGINE` **defaults to `velocity`**; the frozen engine-change rule additionally requires the
+winner to be an implemented engine, so no switch was made after the result was seen either.
+
+The weekday-profile model (M6) had the lowest error on both windows and beat velocity on the hold-out
+by **−0.159 units/SKU-day** ([−0.262, −0.052]) — about 1.3 % of mean demand, resting on **seven
+bootstrap blocks**. It is a **candidate for future work, not a shipped engine**: it is not implemented
+in `backend/src/`, the frozen rule does not admit it, and its interval's upper bound is −0.05 units.
+**A one-week hold-out is indicative, not conclusive** — one week, one fit, no replication — so it is
+read as "the incumbent was not shown to be beaten by Holt-Winters, and M6 was not shown to be beaten by
+anything", not as a promise that M6 wins on another store.
+
 ### Ingestion scalability (`ingestion_benchmark.md`)
 
 Parse benchmark, median of 3 isolated child processes — the streamed parser keeps a **flat memory
@@ -459,6 +534,35 @@ Moving from 250-row chunks with 4 statements each to 1,000-row chunks with ~1.2 
 ingestion **4.29× / 8.14× / 9.64×** faster at those sizes, while `GET /health` stayed flat (median
 152 ms idle vs 151 ms during the 100,000-row import — the event loop is not starved). The benchmark
 asserts `rows_processed == file rows` and `rows_failed == 0` on each run.
+
+---
+
+## Detection engines — what ships and what does not
+
+Three statistical engines exist in the repository and they are **not** interchangeable in status. Each
+was judged under a protocol written to `docs/validation/frozen_config*.json` **before** its numbers
+were read, and no parameter was changed after.
+
+| Engine | Status | Where it runs | Evidence | Decision |
+|---|---|---|---|---|
+| Rolling z-score v2 (`services/rollingZScore.js`) | **ships — the only detector** | `POST /api/alerts/run-detection` → `anomaly_alerts`, then recommendations | hold-out seeds 6–10: precision 0.379 / recall 0.544 / **F1 0.446**, ~52 flags/seed | production detector |
+| Holt-Winters demand (`services/holtWinters.js`) | implemented behind `FORECAST_ENGINE`, **default stays `velocity`** | `/api/stockout` and `/api/forecast` when switched on | dev WAPE 44.55 % vs velocity 31.48 %; sealed hold-out week 39.54 % vs 33.63 % — worse on both | not the default |
+| Isolation Forest (`services/isolationForest.js`) | **offline validation code only** — no route, no table, no flag | `scripts/validation/runIsolationForestValidation.js` | hold-out seeds 6–10: **F1 0.471** at the frozen contamination, 0.432 when cut to v2's flag budget, against v2's 0.446 | do not switch |
+
+**How the Isolation Forest was judged.** Contamination was tuned on dev seeds 1–5 only
+(`iforest_dev_tuning.md`), frozen at **0.025**, and seeds 6–10 were then scored once. The forest led v2
+by +0.0243 ± 0.0791 F1 at its own threshold (4/5 seeds) but *trailed* by −0.0140 ± 0.0586 F1 when it
+was allowed exactly as many flags as v2 (1/5 seeds). Both deltas are smaller than their own
+seed-to-seed spread, and a detector that wins only by flagging less has not won. Flag-overlap analysis
+on the same seeds (`iforest_results.md`, "Flag overlap with v2") closed the question: the union of the
+two detectors scores **0.413** F1 — worse than either alone — so running both would produce more
+alerts of the same quality, not better ones. IF therefore stays validated-but-unshipped, and no
+combined-detector persistence was built (see [Roadmap](#roadmap--deferred-by-evidence)).
+
+**Why this is still "no ML library".** The Isolation Forest is ~400 lines of plain JavaScript written
+for this project: a seeded PRNG, random feature/threshold splits and a path-length score. There is no
+NumPy, scikit-learn or TensorFlow anywhere in `package.json`, and the detector that writes alerts
+remains a z-score a shopkeeper can be told about in one sentence.
 
 ---
 
@@ -520,12 +624,28 @@ Retail_Analytics_Dashboard/
 - **Cost is an estimate when the file has none.** With no cost column the import uses
   `unit_price × COST_RATIO_DEFAULT` (60 % by default) and records that assumption on the job, so any
   margin, COGS % or simulator baseline built from such an import is an estimate, not a measurement.
-- **Analysis is rule-based and statistical, not machine learning.** Anomalies come from a guarded
-  rolling z-score and advice from a fixed rule set; there is no trained model and no ML dependency.
-- **Detection was validated on synthetic anomalies, not on labelled real data.** The published
-  precision 0.379 / recall 0.544 / F1 0.446 (hold-out seeds 6–10, `detection_results_v2.md` under
-  [`docs/validation/`](docs/validation)) come from a 90-day simulated series with injected anomalies;
-  a real store's export can behave differently.
+- **The shipped detector is a z-score, not a model.** Anomalies come from the guarded rolling z-score
+  v2 and advice from a fixed rule set; there is no trained model and no ML dependency. The
+  Holt-Winters forecaster exists behind `FORECAST_ENGINE` but is not the default (it lost to the
+  velocity baseline on the real workbook), and the Isolation Forest is offline validation code that
+  writes no alerts — see
+  [Detection engines](#detection-engines--what-ships-and-what-does-not).
+- **Real data covers 35 days.** The London Bakers export is five weeks of one store, so every
+  real-data result (the forecast hold-out, the flag list in `iforest_real_flags.md`) rests on 35 days
+  and blocks of at most 7. Nothing in this repository has seen a full seasonal cycle.
+- **Validation truth is injected, not observed.** Detection and forecast scores are measured against
+  known multipliers added by a seeded generator, or against the next 7 days of the same workbook; no
+  manager has yet labelled a real anomaly. The headline precision 0.379 / recall 0.544 / F1 0.446
+  (hold-out seeds 6–10, `detection_results_v2.md`) comes from a 90-day simulated series with injected
+  anomalies, and a real store's export can behave differently. That is why the reports describe
+  ranking behaviour rather than business value.
+- **Holt-Winters is weekly only.** Its season length is fixed at 7 days with a 1–14-day horizon and a
+  14-day minimum history, fitted per product independently: no annual seasonality, no holiday or
+  promotion regressors, and no cross-product pooling.
+- **The expanded dataset is for demonstration and scale only.** The generated CSVs under
+  `data/processed/synthetic/` and the benchmark's generated rows exercise uploads, column mapping,
+  ingestion throughput and tenant isolation at volume. They are not a data source and no analytic
+  claim in this README is drawn from them.
 - **Detection is deliberately conservative.** Precision stays below 0.5 by design: the guards trade
   recall for fewer false positives, because a shopkeeper who is warned twenty times a week stops
   believing the alerts.
@@ -553,6 +673,33 @@ Retail_Analytics_Dashboard/
 
 ---
 
+## Roadmap — deferred by evidence
+
+These items are deliberately **not** built. Each was deferred after its evidence came in, and the
+reason stays here so the decision is reopened by new data rather than a new opinion.
+
+- **Both-detector persistence — deferred because the Isolation Forest showed no reliable gain.** A
+  migration `006` (a table for a second detector's flags) and a `DETECTOR_ENGINE=both` switch were
+  sketched and are **not** implemented. On the held-out seeds the forest led the z-score by
+  +0.0243 ± 0.0791 F1 at its own threshold but trailed by −0.0140 ± 0.0586 once it was allowed the
+  same number of flags, and the union of both detectors scores 0.413 F1 — worse than either alone. A
+  second detector would add a table, a migration, a route and UI for alerts a shopkeeper does not
+  need. IF therefore remains **validated offline code** (`services/isolationForest.js` and its
+  harness) that no route can reach.
+- **No half-built flag ships.** There is no `DETECTOR_ENGINE` variable in the code, in
+  `backend/.env.example`, or in this README; the only engine switch is `FORECAST_ENGINE`, which selects
+  a *forecast* method and is fully implemented for both of its values. Nothing in the API can select a
+  detector that is not finished.
+- **Holt-Winters stays behind its flag** until a longer real history exists: it lost to velocity in
+  7 of 7 folds, and a 35-day export cannot support an annual cycle.
+- **Next evidence to collect, in order:** (1) fill the `manager confirmed?` column of
+  `iforest_real_flags.md` from the shop — the cheapest labelled real sample available; (2) a second
+  store's export, so detection is not tuned to one tenant; (3) a full year of history before any
+  seasonal claim. If a labelled real sample shows the forest flagging days the z-score misses, the
+  both-detector work returns to the backlog with a number attached.
+
+---
+
 ## Design conventions
 
 - **Generic entities only** — Product, Category, SaleTransaction, InventoryLog. No industry-specific
@@ -571,6 +718,7 @@ Retail_Analytics_Dashboard/
 ## Credits
 
 - **Developer:** Nofal Zia
+- **Project partner:** <!-- TODO: add project partner name -->
 - **Supervisor:** <!-- TODO: add supervisor name -->
 - **Institution:** Bahria University Islamabad
 - **Term:** Fall 2026

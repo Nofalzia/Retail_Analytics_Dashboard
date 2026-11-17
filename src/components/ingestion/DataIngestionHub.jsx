@@ -634,13 +634,22 @@ const describeErrors = (errorLog) => {
 // Three honest stages, all derived from real job fields — status, total_rows,
 // rows_processed, rows_failed. A null percent renders the pulsing "working"
 // ring; nothing here is fabricated.
+//
+// The percentage itself comes from the server (`progress_pct`), which counts
+// rows skipped by the status filter as settled work. Recomputing it here from
+// rows_processed / total_rows would show e.g. 69 % for a finished import that
+// skipped cancelled rows. The local arithmetic is kept only as the fallback for
+// a job whose counters arrived before the server's percentage did.
 const deriveRealStages = (upload) => {
   const missing = missingColumnsFromLog(upload.errorLog);
   const isFailed = upload.status === 'failed';
   const isSchemaError = isFailed && missing.length > 0;
-  const rowsPct = upload.totalRows
-    ? Math.round((upload.rowsProcessed / upload.totalRows) * 100)
-    : 0;
+  const serverPct = Number.isFinite(upload.progressPct) ? upload.progressPct : null;
+  const rowsPct = serverPct !== null
+    ? serverPct
+    : (upload.totalRows
+      ? Math.round((upload.rowsProcessed / upload.totalRows) * 100)
+      : 0);
 
   return [
     {

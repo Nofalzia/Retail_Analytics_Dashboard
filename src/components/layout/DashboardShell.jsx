@@ -309,10 +309,10 @@ const Sidebar = ({ activeView, onSelect, tenant = null }) => {
           {/* Signed in → the store's own name heads the sidebar, with the
               platform name kept as a small caption beneath it. */}
           <p className="truncate text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-            {tenant?.name ?? 'Retail Analytics'}
+            {tenant?.name ?? 'HisaabIQ'}
           </p>
           <p className="truncate text-xs" style={{ color: PALETTE.charcoalMuted }}>
-            {tenant ? 'Retail Analytics' : 'Store Intelligence'}
+            {tenant ? 'HisaabIQ' : 'Store Intelligence'}
           </p>
         </div>
       </div>
