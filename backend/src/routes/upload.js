@@ -85,6 +85,7 @@ import {
   validateRow,
 } from '../utils/validators.js';
 import { runAnalysis }    from '../services/analysisRunner.js';
+import { invalidateForecastCache } from '../services/forecastCache.js';
 
 const router = Router();
 
@@ -806,6 +807,16 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
         jobId,
       ],
     );
+
+    // ── Invalidate cached forecasts for this store ────────────────────────────
+    // The rows just written are the input a forecast is computed from, so any
+    // forecast cached for this store before this import is now stale. Dropping it
+    // here (rather than waiting out the cache TTL) means the next dashboard poll
+    // reflects the import immediately. A no-op when nothing was cached.
+    const droppedForecasts = invalidateForecastCache(tenantId, storeId);
+    if (droppedForecasts > 0) {
+      console.log(`[upload] Job ${jobId}: invalidated ${droppedForecasts} cached forecast(s)`);
+    }
 
   } catch (err) {
     await query(

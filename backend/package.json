@@ -20,6 +20,7 @@
     "test:zscore": "node scripts/validation/rollingZScore.selftest.js",
     "test:validators": "node scripts/validation/validators.selftest.js",
     "test:holt-winters": "node scripts/validation/holtWinters.selftest.js",
+    "validate:forecast": "node scripts/validation/forecastBacktest.js",
     "bench:parse": "node scripts/benchmark/runParseBenchmark.js",
     "bench:ingest": "node scripts/benchmark/runIngestionBenchmark.js"
  },

@@ -31,6 +31,7 @@
  */
 
 import { getStoreAsOfDate } from '../utils/asOfDate.js';
+import { buildForecastCacheKey, readForecastCache, writeForecastCache } from './forecastCache.js';
 import {
   DEFAULT_PARAMS,
   MIN_HISTORY_DAYS,
@@ -220,10 +221,11 @@ function round2(value) {
  * @param {string} storeId Store UUID.
  * @param {{
  *   asOfDate?: string, engine?: 'velocity'|'holt_winters', horizonDays?: number,
- *   historyDays?: number, velocityDays?: number,
+ *   historyDays?: number, velocityDays?: number, useCache?: boolean,
  * }} [options] `asOfDate` defaults to the store's latest sale date; `engine`
  *   defaults to FORECAST_ENGINE; `historyDays` is raised to `velocityDays` and
- *   MIN_HISTORY_DAYS when smaller.
+ *   MIN_HISTORY_DAYS when smaller; `useCache` defaults to true (see
+ *   services/forecastCache.js).
  * @returns {Promise<{
  *   asOfDate: string, engine: string, horizonDays: number,
  *   historyDays: number, velocityDays: number, seasonLength: number,
@@ -260,6 +262,18 @@ export async function forecastDailyDemand(runQuery, tenantId, storeId, options =
   const forecastDates = Array.from(
     { length: horizonDays }, (_unused, i) => shiftIsoDate(asOfDate, i + 1),
   );
+
+  // Polling Stockout Watch asks for the same forecast repeatedly; a cache hit
+  // returns the previous answer unchanged (including its generatedAt). The key
+  // covers every input that changes the result, and routes/upload.js drops the
+  // store's entries as soon as an import completes.
+  const cacheKey = options.useCache === false
+    ? null
+    : buildForecastCacheKey({ tenantId, storeId, asOfDate, engine, horizonDays, historyDays, velocityDays });
+  if (cacheKey) {
+    const cached = readForecastCache(cacheKey);
+    if (cached) return cached;
+  }
 
   const loaded = await getDailyUnitsByProduct(
     runQuery, tenantId, storeId, { startDate, endDate: asOfDate },
@@ -318,7 +332,7 @@ export async function forecastDailyDemand(runQuery, tenantId, storeId, options =
     velocity:         products.filter((p) => p.method === 'velocity').length,
   };
 
-  return {
+  const result = {
     asOfDate,
     engine,
     horizonDays,
@@ -329,6 +343,9 @@ export async function forecastDailyDemand(runQuery, tenantId, storeId, options =
     summary,
     products,
   };
+
+  if (cacheKey) writeForecastCache(cacheKey, result);
+  return result;
 }
 
 /** Re-exported so callers do not import two modules to describe the model. */
