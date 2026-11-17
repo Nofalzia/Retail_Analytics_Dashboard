@@ -1,120 +1,176 @@
 {
-  "_what": "Frozen Phase 2 decision and protocol. Committed BEFORE the sealed hold-out is read, so the hold-out is a single confirmatory run and not another round of selection. Nothing here may be edited after 2026-09-29..2026-10-05 is scored.",
+  "_what": "Frozen Phase 2 decision and protocol, computed from the REAL London Bakers workbook. Committed BEFORE the sealed hold-out is read, so the hold-out is a single confirmatory run and not another round of selection. Nothing here may be edited after 2026-09-29..2026-10-05 is scored.",
   "phase": 2,
   "frozenAt": "2026-11-17",
   "branch": "feature/hisaabiq-ml",
-  "phaseOneCommit": "dfcb3b9",
   "status": "dev-folds-complete-holdout-sealed",
+
+  "dataProvenance": {
+    "workbook": "Real London Bakers 5 Week Performance.xlsx",
+    "sheet": "POS Sales Log",
+    "rowsInSheet": 13544,
+    "rowsUsedInDevWindow": 10834,
+    "rowsDroppedAsHoldOut": 2710,
+    "skus": 50,
+    "calendarDaysInFile": 35,
+    "calendarDaysUsed": 28,
+    "dateRangeInFile": { "first": "2026-09-01", "last": "2026-10-05" },
+    "dateShiftDays": 0,
+    "statusColumnPresent": false,
+    "inputGuards": "scripts/validation/forecastBacktest.js --data-kind real aborts unless rows < 50000, the span lies within 2026-09-01..2026-10-05 and distinct days <= 35; --end-date is refused on real data",
+    "notAccuracyEvidence": "docs/validation/forecast_results_synthetic.md and frozen_config_synthetic_superseded.json came from London_Bakers_Dataset.xlsx, an extrapolated 731-day series, and are superseded"
+  },
 
   "productionEngine": {
     "envVar": "FORECAST_ENGINE",
     "default": "velocity",
     "changed": false,
-    "reason": "The Holt-Winters engine scored 36.91% pooled dev WAPE against velocity's 29.62%, and lost in 7 of 7 folds. Paired per-SKU-day difference +1.007 units, 95% bootstrap CI [0.851, 1.167] — reliably worse. It is not switched on."
+    "reason": "Holt-Winters scored 44.55% pooled dev WAPE against velocity's 31.48% and lost in 7 of 7 folds. Paired per-SKU-day difference +1.554 units, 95% block-bootstrap CI [1.259, 1.756] — reliably worse. It is not switched on."
   },
 
   "winner": {
     "method": "M6_weekday_profile",
     "label": "store weekday profile x SKU level",
     "shippedAsEngine": false,
-    "note": "Lowest pooled dev WAPE and reliably better than both M1 and velocity, but it exists only in scripts/validation/forecastBacktest.js. Recorded as a candidate for a later phase; nothing in src/ was changed for it.",
+    "note": "Lowest pooled dev WAPE (30.82%) and reliably better than M1 seasonal naive, but it exists only in scripts/validation/forecastBacktest.js and its edge over velocity is NOT reliable (CI straddles 0). Recorded as a Phase 5 candidate; nothing in src/ was changed for it.",
     "config": {
-      "historyDays": 28,
-      "level": "mean of the SKU's own 28 training days",
-      "weekdayIndex": "mean store-wide units per weekday over the same 28 days, divided by the mean across all days",
+      "historyDays": "expanding 21..27 (the fold's full training window)",
+      "level": "mean of the SKU's own training days",
+      "weekdayIndex": "mean store-wide units per weekday over the same training days, divided by the mean across all days",
       "forecast": "level x weekdayIndex for the projected day's weekday, clipped at 0",
       "horizonDays": 7,
       "tunedParameters": null
     },
     "devMetrics": {
-      "pooledWapePct": 28.87,
-      "pooledMaeUnits": 3.98,
-      "pooledBiasPct": -1.27,
-      "wapeH1to3Pct": 28.52,
-      "wapeH4to7Pct": 29.17,
-      "pairedVsSeasonalNaive": { "meanDiffUnits": -1.287, "ci95": [-1.453, -1.127] },
-      "pairedVsVelocity": { "meanDiffUnits": -0.103, "ci95": [-0.179, -0.024] }
+      "pooledWapePct": 30.82,
+      "pooledMaeUnits": 3.67,
+      "pooledBiasPct": 3.01,
+      "wapeH1to3Pct": 30.18,
+      "wapeH4to7Pct": 32.0,
+      "pairedVsSeasonalNaive": { "meanDiffUnits": -1.771, "ci95": [-2.085, -1.398] },
+      "pairedVsVelocity": { "meanDiffUnits": -0.0789, "ci95": [-0.2222, 0.0459], "reliable": false },
+      "foldsWonAgainstVelocity": 7
     }
   },
 
   "rejectedEngine": {
     "method": "M4_hw_grid",
-    "label": "Holt-Winters, in-service grid search (src/services/holtWinters.js)",
+    "label": "Holt-Winters, in-service grid search (224 triples)",
     "devMetrics": {
-      "pooledWapePct": 36.91,
-      "pooledMaeUnits": 5.09,
-      "pooledBiasPct": -1.01,
-      "wapeH1to3Pct": 35.6,
-      "wapeH4to7Pct": 38.03,
-      "pairedVsSeasonalNaive": { "meanDiffUnits": -0.178, "ci95": [-0.324, -0.025] },
-      "pairedVsVelocity": { "meanDiffUnits": 1.007, "ci95": [0.851, 1.167] }
+      "pooledWapePct": 44.55,
+      "pooledMaeUnits": 5.3,
+      "pooledBiasPct": 6.5,
+      "wapeH1to3Pct": 43.52,
+      "wapeH4to7Pct": 46.44,
+      "pairedVsVelocity": { "meanDiffUnits": 1.554, "ci95": [1.259, 1.756], "reliable": true, "direction": "worse" },
+      "pairedVsSeasonalNaive": { "meanDiffUnits": -0.138, "ci95": [-0.544, 0.223], "reliable": false },
+      "foldsLostAgainstVelocity": 7
     },
-    "diagnosis": "Grid search picked alpha = 0.1 (its lowest value) in 238 of 350 fits and beta = 0 every time: a selector sitting on its own boundary means one-step in-sample SSE is fitting noise. Error grows with horizon (+2.4 points h1-3 to h4-7) and bias is one-sided (-1.01%)."
-  },
-
-  "referenceMethods": {
-    "M1_seasonal_naive": { "pooledWapePct": 38.2, "pooledMaeUnits": 5.27, "pooledBiasPct": -0.26 },
-    "M2_ma7": { "pooledWapePct": 30.67, "pooledMaeUnits": 4.23, "pooledBiasPct": -0.23 },
-    "M3_velocity14": { "pooledWapePct": 29.62, "pooledMaeUnits": 4.09, "pooledBiasPct": -0.06, "role": "incumbent engine" },
-    "M5_bestPreset": { "method": "M5_hw_a0.2_g0.5", "pooledWapePct": 35.97 }
-  },
-
-  "dataset": {
-    "source": "London_Bakers_Dataset.xlsx (supplied by path, not committed)",
-    "sheet": "POS Sales Log",
-    "rowsRead": 304614,
-    "rowsKept": 299687,
-    "excluded": { "status_not_completed": 4310, "quantity_not_positive": 617 },
-    "skuDatePairs": 36051,
-    "skus": 50,
-    "sourceRange": { "first": "2023-10-01", "last": "2025-09-30" },
-    "dateShiftDays": 377,
-    "alignedRange": { "first": "2024-10-12", "last": "2026-10-12" },
-    "calendarDays": 731,
-    "zeroFilledCells": 499,
-    "meanUnitsPerSkuDay": 13.8,
-    "poissonWapeFloorPct": 21.48
+    "diagnosis": {
+      "fits": 350,
+      "fallbacks": 0,
+      "alphaAtGridMinimum": { "value": 0.1, "count": 232 },
+      "betaZero": { "count": 260 },
+      "oneStepErrorsPerFit": "14..20 (training days minus the 14-day two-season initialisation)",
+      "reading": "The grid sits on its own boundary (alpha = 0.1 in 66% of fits, beta = 0 in 74%) and has one pass over the data after initialisation; the result tracks seasonal naive (44.55 vs 45.71) rather than a seasonal model."
+    }
   },
 
   "protocol": {
     "devWindow": { "start": "2026-09-01", "end": "2026-09-28" },
-    "holdOut": { "start": "2026-09-29", "end": "2026-10-05" },
-    "foldCount": 7,
-    "foldStepDays": 4,
-    "historyDays": 28,
+    "holdOut": { "start": "2026-09-29", "end": "2026-10-05", "sealed": true, "evaluated": false },
+    "foldMode": "expanding",
+    "foldOrigins": ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26", "2026-09-27"],
+    "trainDaysPerFold": [21, 22, 23, 24, 25, 26, 27],
+    "minTrainDays": 21,
+    "maxHistoryDays": 28,
     "velocityDays": 14,
     "horizonDays": 7,
-    "scoredSkuDays": 2300,
-    "bootstrap": { "draws": 2000, "seed": 20260917, "baseline": "M1_seasonal_naive" },
-    "m5Presets": [
-      { "alpha": 0.2, "beta": 0, "gamma": 0.2 },
-      { "alpha": 0.2, "beta": 0, "gamma": 0.3 },
-      { "alpha": 0.2, "beta": 0, "gamma": 0.5 },
-      { "alpha": 0.3, "beta": 0, "gamma": 0.2 },
-      { "alpha": 0.3, "beta": 0, "gamma": 0.3 },
-      { "alpha": 0.3, "beta": 0, "gamma": 0.5 },
-      { "alpha": 0.5, "beta": 0, "gamma": 0.2 },
-      { "alpha": 0.5, "beta": 0, "gamma": 0.3 },
-      { "alpha": 0.5, "beta": 0, "gamma": 0.5 }
-    ],
-    "selectionRule": "Lowest pooled dev WAPE wins, but only if its paired per-SKU-day absolute error versus M1 has a 95% bootstrap interval entirely below 0; otherwise 'no reliable improvement' and FORECAST_ENGINE stays velocity. Engine changes additionally require the winner to be a shipped engine that reliably beats the incumbent. No tuning after the numbers are seen.",
-    "m7Ridge": "not run — precondition (M4/M5 do not beat M1) not met"
+    "scoredDays": 28,
+    "scoredSkuDays": 1400,
+    "methods": ["M1_seasonal_naive", "M2_ma7", "M3_velocity14", "M4_hw_grid", "M5_hw_a0.2_g0.2", "M5_hw_a0.2_g0.3", "M5_hw_a0.2_g0.5", "M5_hw_a0.3_g0.2", "M5_hw_a0.3_g0.3", "M5_hw_a0.3_g0.5", "M5_hw_a0.5_g0.2", "M5_hw_a0.5_g0.3", "M5_hw_a0.5_g0.5", "M6_weekday_profile"],
+    "horizonBuckets": { "h1-3": [1, 3], "h4-7": [4, 7] },
+    "bootstrap": {
+      "method": "block bootstrap by calendar day: 7 scored days resampled with replacement, observations pooled per draw, estimator matched to the observation-weighted point estimate",
+      "blocks": 7,
+      "blockSizes": [50, 100, 150, 200, 250, 300, 350],
+      "draws": 2000,
+      "seed": 20260917,
+      "caveat": "7 resampling units — the interval is coarse and indicative, not exact"
+    },
+    "selectionRule": "Pick the method with the lowest pooled WAPE over the 7 expanding-window dev folds. Accept it only if its paired per-SKU-day absolute error minus M1 seasonal naive has a 95% block-bootstrap interval (calendar-day blocks) entirely below 0. Otherwise record 'no reliable improvement' and keep FORECAST_ENGINE = velocity. No preset, window or parameter is changed after these numbers are seen.",
+    "engineChangeRule": "An engine change additionally requires the winner to be an implemented engine (velocity | holt_winters) AND to reliably beat the engine shipping today."
   },
 
-  "holdOut": {
-    "evaluated": false,
-    "evaluatedAt": null,
-    "scoredMethods": ["M1_seasonal_naive", "M3_velocity14", "M4_hw_grid", "M6_weekday_profile"],
-    "results": null
+  "devResults": {
+    "noiseFloor": { "meanUnitsPerSkuDay": 11.9, "wapeFloorPct": 23.13 },
+    "pooledWapePct": {
+      "M6_weekday_profile": 30.82,
+      "M3_velocity14": 31.48,
+      "M2_ma7": 32.35,
+      "M5_hw_a0.3_g0.5": 42.06,
+      "M4_hw_grid": 44.55,
+      "M1_seasonal_naive": 45.71
+    },
+    "pooledBiasPct": {
+      "M6_weekday_profile": 3.01,
+      "M3_velocity14": 2.71,
+      "M2_ma7": 3.96,
+      "M4_hw_grid": 6.5,
+      "M1_seasonal_naive": 5.84
+    },
+    "bucketWapePct": {
+      "M6_weekday_profile": { "h1-3": 30.18, "h4-7": 32.0 },
+      "M3_velocity14": { "h1-3": 30.95, "h4-7": 32.47 },
+      "M2_ma7": { "h1-3": 31.65, "h4-7": 33.62 },
+      "M4_hw_grid": { "h1-3": 43.52, "h4-7": 46.44 },
+      "M1_seasonal_naive": { "h1-3": 44.49, "h4-7": 47.93 }
+    },
+    "foldWapePct": [
+      { "fold": 1, "trainDays": 21, "M6": 30.24, "M3": 31.04, "M2": 31.93, "M4": 43.9, "M1": 43.98 },
+      { "fold": 2, "trainDays": 22, "M6": 30.45, "M3": 31.06, "M2": 32.09, "M4": 43.37, "M1": 45.07 },
+      { "fold": 3, "trainDays": 23, "M6": 29.83, "M3": 29.98, "M2": 31.37, "M4": 43.31, "M1": 44.52 },
+      { "fold": 4, "trainDays": 24, "M6": 30.49, "M3": 30.77, "M2": 31.54, "M4": 43.56, "M1": 45.96 },
+      { "fold": 5, "trainDays": 25, "M6": 33.06, "M3": 33.71, "M2": 34.0, "M4": 46.4, "M1": 48.18 },
+      { "fold": 6, "trainDays": 26, "M6": 33.59, "M3": 35.34, "M2": 35.13, "M4": 51.59, "M1": 51.83 },
+      { "fold": 7, "trainDays": 27, "M6": 31.56, "M3": 33.66, "M2": 34.86, "M4": 47.48, "M1": 47.58 }
+    ],
+    "weekdayPattern": {
+      "source": "SUM of units per day over the 28 dev days (sealed week excluded before aggregation)",
+      "overallMeanUnitsPerDay": 603.7,
+      "perWeekday": [
+        { "weekday": "Saturday", "meanUnitsPerDay": 653.0, "indexVsOverall": 1.083, "days": 4, "cvPct": 4.3 },
+        { "weekday": "Sunday", "meanUnitsPerDay": 641.8, "indexVsOverall": 1.064, "days": 4, "cvPct": 6.1 },
+        { "weekday": "Wednesday", "meanUnitsPerDay": 596.5, "indexVsOverall": 0.989, "days": 4, "cvPct": 4.4 },
+        { "weekday": "Thursday", "meanUnitsPerDay": 593.5, "indexVsOverall": 0.984, "days": 4, "cvPct": 6.3 },
+        { "weekday": "Friday", "meanUnitsPerDay": 592.5, "indexVsOverall": 0.983, "days": 4, "cvPct": 3.5 },
+        { "weekday": "Monday", "meanUnitsPerDay": 572.3, "indexVsOverall": 0.949, "days": 4, "cvPct": 2.5 },
+        { "weekday": "Tuesday", "meanUnitsPerDay": 571.0, "indexVsOverall": 0.947, "days": 4, "cvPct": 4.4 }
+      ],
+      "caveat": "35 days is 5 observations per weekday (4 in the dev window): wide uncertainty, context only"
+    }
   },
+
 
   "artifacts": [
+    "docs/validation/forecast_results.md",
     "docs/validation/forecast_backtest_metrics.csv",
     "docs/validation/forecast_backtest_by_fold.csv",
     "docs/validation/forecast_backtest_top10_skus.csv",
+    "docs/validation/forecast_backtest_weekday_pattern.csv",
     "docs/validation/forecast_backtest_observations.csv",
     "docs/validation/forecast_backtest_params.csv",
     "docs/validation/forecast_backtest_raw.json",
-    "docs/validation/forecast_results.md"
+    "docs/validation/frozen_config.json"
+  ],
+  "supersededArtifacts": [
+    "docs/validation/forecast_results_synthetic.md",
+    "docs/validation/frozen_config_synthetic_superseded.json",
+    "docs/validation/forecast_backtest_metrics_synthetic.csv",
+    "docs/validation/forecast_backtest_by_fold_synthetic.csv",
+    "docs/validation/forecast_backtest_top10_skus_synthetic.csv",
+    "docs/validation/forecast_backtest_observations_synthetic.csv",
+    "docs/validation/forecast_backtest_params_synthetic.csv",
+    "docs/validation/forecast_backtest_raw_synthetic.json"
   ]
 }

@@ -1,0 +1,8 @@
+weekday,weekday_index,days,mean_units_per_day,index_vs_overall,min_units,max_units,cv_pct
+Sunday,0,4,641.75,1.0644,589,680,6.1
+Monday,1,4,572.25,0.9491,557,590,2.47
+Tuesday,2,4,571,0.947,537,590,4.4
+Wednesday,3,4,596.5,0.9893,560,616,4.43
+Thursday,4,4,593.5,0.9844,541,629,6.28
+Friday,5,4,592.5,0.9827,565,610,3.45
+Saturday,6,4,653,1.083,627,691,4.26
