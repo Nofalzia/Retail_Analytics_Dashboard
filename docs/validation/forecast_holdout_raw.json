@@ -1,0 +1,1082 @@
+{
+  "mode": "holdout",
+  "accuracyEvidence": true,
+  "banner": "REAL point-of-sale data — the sealed week, scored once under the committed frozen config",
+  "frozenConfig": {
+    "path": "docs\\validation\\frozen_config.json",
+    "frozenAt": "2026-11-17",
+    "winnerKey": "M6_weekday_profile",
+    "productionEngine": "FORECAST_ENGINE",
+    "checks": [
+      {
+        "key": "status",
+        "value": "dev-folds-complete-holdout-sealed",
+        "expected": "dev-folds-complete-holdout-sealed",
+        "pass": true
+      },
+      {
+        "key": "protocol.holdOut.sealed",
+        "value": true,
+        "expected": true,
+        "pass": true
+      },
+      {
+        "key": "protocol.holdOut.evaluated",
+        "value": false,
+        "expected": false,
+        "pass": true
+      },
+      {
+        "key": "protocol.holdOut.start",
+        "value": "2026-09-29",
+        "expected": "2026-09-29",
+        "pass": true
+      },
+      {
+        "key": "protocol.holdOut.end",
+        "value": "2026-10-05",
+        "expected": "2026-10-05",
+        "pass": true
+      },
+      {
+        "key": "protocol.foldMode",
+        "value": "expanding",
+        "expected": "expanding",
+        "pass": true
+      },
+      {
+        "key": "protocol.maxHistoryDays",
+        "value": 28,
+        "expected": 28,
+        "pass": true
+      },
+      {
+        "key": "protocol.velocityDays",
+        "value": 14,
+        "expected": 14,
+        "pass": true
+      },
+      {
+        "key": "protocol.horizonDays",
+        "value": 7,
+        "expected": 7,
+        "pass": true
+      },
+      {
+        "key": "protocol.bootstrap.draws",
+        "value": 2000,
+        "expected": 2000,
+        "pass": true
+      },
+      {
+        "key": "protocol.bootstrap.seed",
+        "value": 20260917,
+        "expected": 20260917,
+        "pass": true
+      },
+      {
+        "key": "productionEngine.envVar",
+        "value": "FORECAST_ENGINE",
+        "expected": "FORECAST_ENGINE",
+        "pass": true
+      }
+    ]
+  },
+  "protocol": {
+    "devWindow": {
+      "start": "2026-09-01",
+      "end": "2026-09-28"
+    },
+    "holdOut": {
+      "start": "2026-09-29",
+      "end": "2026-10-05",
+      "sealed": true,
+      "evaluated": false
+    },
+    "foldMode": "expanding",
+    "foldOrigins": [
+      "2026-09-21",
+      "2026-09-22",
+      "2026-09-23",
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27"
+    ],
+    "trainDaysPerFold": [
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27
+    ],
+    "minTrainDays": 21,
+    "maxHistoryDays": 28,
+    "velocityDays": 14,
+    "horizonDays": 7,
+    "scoredDays": 28,
+    "scoredSkuDays": 1400,
+    "methods": [
+      "M1_seasonal_naive",
+      "M2_ma7",
+      "M3_velocity14",
+      "M4_hw_grid",
+      "M5_hw_a0.2_g0.2",
+      "M5_hw_a0.2_g0.3",
+      "M5_hw_a0.2_g0.5",
+      "M5_hw_a0.3_g0.2",
+      "M5_hw_a0.3_g0.3",
+      "M5_hw_a0.3_g0.5",
+      "M5_hw_a0.5_g0.2",
+      "M5_hw_a0.5_g0.3",
+      "M5_hw_a0.5_g0.5",
+      "M6_weekday_profile"
+    ],
+    "horizonBuckets": {
+      "h1-3": [
+        1,
+        3
+      ],
+      "h4-7": [
+        4,
+        7
+      ]
+    },
+    "bootstrap": {
+      "method": "block bootstrap by calendar day: 7 scored days resampled with replacement, observations pooled per draw, estimator matched to the observation-weighted point estimate",
+      "blocks": 7,
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "caveat": "7 resampling units — the interval is coarse and indicative, not exact"
+    },
+    "selectionRule": "Pick the method with the lowest pooled WAPE over the 7 expanding-window dev folds. Accept it only if its paired per-SKU-day absolute error minus M1 seasonal naive has a 95% block-bootstrap interval (calendar-day blocks) entirely below 0. Otherwise record 'no reliable improvement' and keep FORECAST_ENGINE = velocity. No preset, window or parameter is changed after these numbers are seen.",
+    "engineChangeRule": "An engine change additionally requires the winner to be an implemented engine (velocity | holt_winters) AND to reliably beat the engine shipping today."
+  },
+  "dataset": {
+    "rowsInSheet": 13544,
+    "rowsValidInSheet": 13544,
+    "rowsUsedForFitting": 10834,
+    "rowsUsedForScoring": 2710,
+    "rowsOutsideBothWindows": 0,
+    "skusFitted": 50,
+    "skusScored": 50,
+    "holdoutDays": 7,
+    "holdoutRange": {
+      "first": "2026-09-29",
+      "last": "2026-10-05"
+    }
+  },
+  "fold": {
+    "origin": "2026-09-28",
+    "trainDays": 28,
+    "trainingFrom": "2026-09-01",
+    "scoredFrom": "2026-09-29",
+    "scoredTo": "2026-10-05",
+    "scoredDays": 7
+  },
+  "hwFallbacks": 0,
+  "hwUpdateSteps": 21,
+  "methods": [
+    {
+      "key": "M1_seasonal_naive",
+      "label": "M1 seasonal naive (same weekday last week)",
+      "n": 350,
+      "wapePct": 43.217145548751766,
+      "mae": 5.242857142857143,
+      "biasPct": -1.6250588789448892,
+      "meanActual": 12.131428571428572
+    },
+    {
+      "key": "M2_ma7",
+      "label": "M2 7-day moving average (flat)",
+      "n": 350,
+      "wapePct": 33.65520489872823,
+      "mae": 4.0828571428571445,
+      "biasPct": -1.6250588789447609,
+      "meanActual": 12.131428571428572
+    },
+    {
+      "key": "M3_velocity14",
+      "label": "M3 velocity (14-day mean, flat) — production baseline",
+      "n": 350,
+      "wapePct": 33.62828880963594,
+      "mae": 4.079591836734691,
+      "biasPct": 0.047103155911488906,
+      "meanActual": 12.131428571428572
+    },
+    {
+      "key": "M4_hw_grid",
+      "label": "M4 Holt-Winters, in-service grid search",
+      "n": 350,
+      "wapePct": 39.53878952094135,
+      "mae": 4.7966200087404856,
+      "biasPct": 1.2231236889636945,
+      "meanActual": 12.131428571428572
+    },
+    {
+      "key": "M6_weekday_profile",
+      "label": "M6 store weekday profile x SKU level",
+      "n": 350,
+      "wapePct": 32.31513866748348,
+      "mae": 3.9202879652038534,
+      "biasPct": -0.600565237870916,
+      "meanActual": 12.131428571428572
+    }
+  ],
+  "buckets": [
+    {
+      "bucket": "h1-3",
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 150,
+          "wapePct": 46.44744568408691,
+          "mae": 5.273333333333333,
+          "biasPct": 4.873752201996477,
+          "meanActual": 11.353333333333333
+        },
+        {
+          "key": "M2_ma7",
+          "n": 150,
+          "wapePct": 32.91670161899171,
+          "mae": 3.7371428571428584,
+          "biasPct": 5.117020384195834,
+          "meanActual": 11.353333333333333
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 150,
+          "wapePct": 33.44518077342504,
+          "mae": 3.7971428571428554,
+          "biasPct": 6.903783239661148,
+          "meanActual": 11.353333333333333
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 150,
+          "wapePct": 40.97512982801952,
+          "mae": 4.652043073141149,
+          "biasPct": 5.242693518210503,
+          "meanActual": 11.353333333333333
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 150,
+          "wapePct": 31.423685374277316,
+          "mae": 3.5676357461596178,
+          "biasPct": 3.4057545507927456,
+          "meanActual": 11.353333333333333
+        }
+      ]
+    },
+    {
+      "bucket": "h4-7",
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 200,
+          "wapePct": 41.05387337790012,
+          "mae": 5.22,
+          "biasPct": -5.977192292567834,
+          "meanActual": 12.715
+        },
+        {
+          "key": "M2_ma7",
+          "n": 200,
+          "wapePct": 34.14976686702993,
+          "mae": 4.342142857142855,
+          "biasPct": -6.14010448851205,
+          "meanActual": 12.715
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 200,
+          "wapePct": 33.75091287006349,
+          "mae": 4.291428571428572,
+          "biasPct": -4.54468850064599,
+          "meanActual": 12.715
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 200,
+          "wapePct": 38.576899020369545,
+          "mae": 4.905052710439987,
+          "biasPct": -1.4687077774961406,
+          "meanActual": 12.715
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 200,
+          "wapePct": 32.912128426952634,
+          "mae": 4.184777129487028,
+          "biasPct": -3.283523397561917,
+          "meanActual": 12.715
+        }
+      ]
+    }
+  ],
+  "topSkus": [
+    {
+      "sku": "SKU-112",
+      "productName": "Meethi Boondi (250g)",
+      "actualUnits": 121,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 46.28099173553719,
+          "mae": 8,
+          "biasPct": -19.834710743801654,
+          "meanActual": 17.285714285714285
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 34.23848878394333,
+          "mae": 5.918367346938775,
+          "biasPct": -19.83471074380164,
+          "meanActual": 17.285714285714285
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 34.06139315230224,
+          "mae": 5.887755102040815,
+          "biasPct": -19.421487603305785,
+          "meanActual": 17.285714285714285
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 35.93156923016947,
+          "mae": 6.211028395500722,
+          "biasPct": -17.333636440539305,
+          "meanActual": 17.285714285714285
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 36.03615665763623,
+          "mae": 6.229107079391405,
+          "biasPct": -20.454545454545453,
+          "meanActual": 17.285714285714285
+        }
+      ]
+    },
+    {
+      "sku": "SKU-148",
+      "productName": "Kheer Cup",
+      "actualUnits": 114,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 41.228070175438596,
+          "mae": 6.714285714285714,
+          "biasPct": -20.17543859649123,
+          "meanActual": 16.285714285714285
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 30.70175438596491,
+          "mae": 5,
+          "biasPct": -20.17543859649123,
+          "meanActual": 16.285714285714285
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 28.446115288220554,
+          "mae": 4.63265306122449,
+          "biasPct": -14.912280701754375,
+          "meanActual": 16.285714285714285
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 34.07733464692184,
+          "mae": 5.549737356784414,
+          "biasPct": -16.411164556047915,
+          "meanActual": 16.285714285714285
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 30.35416627696477,
+          "mae": 4.94339279367712,
+          "biasPct": -15.570175438596491,
+          "meanActual": 16.285714285714285
+        }
+      ]
+    },
+    {
+      "sku": "SKU-143",
+      "productName": "Samosa Chaat",
+      "actualUnits": 110,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 30.90909090909091,
+          "mae": 4.857142857142857,
+          "biasPct": -21.818181818181817,
+          "meanActual": 15.714285714285714
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 33.246753246753244,
+          "mae": 5.224489795918367,
+          "biasPct": -21.818181818181806,
+          "meanActual": 15.714285714285714
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 29.805194805194805,
+          "mae": 4.683673469387755,
+          "biasPct": -16.818181818181817,
+          "meanActual": 15.714285714285714
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 51.318226150154366,
+          "mae": 8.064292680738543,
+          "biasPct": -42.57463512205864,
+          "meanActual": 15.714285714285714
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 29.45988734639369,
+          "mae": 4.629410868719008,
+          "biasPct": -18.181818181818183,
+          "meanActual": 15.714285714285714
+        }
+      ]
+    },
+    {
+      "sku": "SKU-147",
+      "productName": "Rasmalai (2 pcs)",
+      "actualUnits": 103,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 33.980582524271846,
+          "mae": 5,
+          "biasPct": -6.796116504854369,
+          "meanActual": 14.714285714285714
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 22.60748959778086,
+          "mae": 3.326530612244898,
+          "biasPct": -6.796116504854382,
+          "meanActual": 14.714285714285714
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 21.428571428571427,
+          "mae": 3.1530612244897958,
+          "biasPct": 1.4563106796116505,
+          "meanActual": 14.714285714285714
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 20.5020122485279,
+          "mae": 3.0167246594262487,
+          "biasPct": -3.681062325252968,
+          "meanActual": 14.714285714285714
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 20.748243375204016,
+          "mae": 3.0529558109228767,
+          "biasPct": -2.1844660194174894,
+          "meanActual": 14.714285714285714
+        }
+      ]
+    },
+    {
+      "sku": "SKU-142",
+      "productName": "Chana Chaat",
+      "actualUnits": 102,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 55.88235294117647,
+          "mae": 8.142857142857142,
+          "biasPct": -42.15686274509804,
+          "meanActual": 14.571428571428571
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 44.95798319327731,
+          "mae": 6.551020408163265,
+          "biasPct": -42.15686274509803,
+          "meanActual": 14.571428571428571
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 38.655462184873954,
+          "mae": 5.63265306122449,
+          "biasPct": -33.333333333333336,
+          "meanActual": 14.571428571428571
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 58.185377331945986,
+          "mae": 8.478440696940702,
+          "biasPct": -48.48146327757622,
+          "meanActual": 14.571428571428571
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 35.72130427813821,
+          "mae": 5.205104337671568,
+          "biasPct": -30.637254901960784,
+          "meanActual": 14.571428571428571
+        }
+      ]
+    },
+    {
+      "sku": "SKU-110",
+      "productName": "Jalebi (250g)",
+      "actualUnits": 101,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 39.603960396039604,
+          "mae": 5.714285714285714,
+          "biasPct": 7.920792079207921,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 36.209335219236216,
+          "mae": 5.224489795918368,
+          "biasPct": 7.920792079207921,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 36.77510608203677,
+          "mae": 5.3061224489795915,
+          "biasPct": 11.881188118811867,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 42.94895134664969,
+          "mae": 6.196920122873741,
+          "biasPct": 16.68039943170911,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 33.17512002355312,
+          "mae": 4.786695889112664,
+          "biasPct": 7.425742574257439,
+          "meanActual": 14.428571428571429
+        }
+      ]
+    },
+    {
+      "sku": "SKU-111",
+      "productName": "Sugar-Free Jalebi (250g)",
+      "actualUnits": 101,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 26.73267326732673,
+          "mae": 3.857142857142857,
+          "biasPct": 8.910891089108912,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 45.68599717114568,
+          "mae": 6.591836734693877,
+          "biasPct": 8.910891089108897,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 44.837340876944836,
+          "mae": 6.469387755102041,
+          "biasPct": 6.930693069306931,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 35.96097255229583,
+          "mae": 5.188654611116969,
+          "biasPct": 13.539313941070017,
+          "meanActual": 14.428571428571429
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 46.365805280919034,
+          "mae": 6.689923333389747,
+          "biasPct": 5.6930693069306795,
+          "meanActual": 14.428571428571429
+        }
+      ]
+    },
+    {
+      "sku": "SKU-149",
+      "productName": "Almond Milk",
+      "actualUnits": 100,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 49,
+          "mae": 7,
+          "biasPct": 5,
+          "meanActual": 14.285714285714286
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 35,
+          "mae": 5,
+          "biasPct": 5,
+          "meanActual": 14.285714285714286
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 34.357142857142854,
+          "mae": 4.908163265306122,
+          "biasPct": 3.500000000000014,
+          "meanActual": 14.285714285714286
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 43.57962193726063,
+          "mae": 6.22566027675152,
+          "biasPct": 20.226054500973746,
+          "meanActual": 14.285714285714286
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 29.39515460253525,
+          "mae": 4.199307800362178,
+          "biasPct": -8.749999999999986,
+          "meanActual": 14.285714285714286
+        }
+      ]
+    },
+    {
+      "sku": "SKU-105",
+      "productName": "Puri",
+      "actualUnits": 98,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 38.775510204081634,
+          "mae": 5.428571428571429,
+          "biasPct": -26.53061224489796,
+          "meanActual": 14
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 39.94169096209913,
+          "mae": 5.591836734693878,
+          "biasPct": -26.53061224489796,
+          "meanActual": 14
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 33.16326530612245,
+          "mae": 4.642857142857143,
+          "biasPct": -10.714285714285714,
+          "meanActual": 14
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 31.166611911361482,
+          "mae": 4.363325667590607,
+          "biasPct": -5.79287735875865,
+          "meanActual": 14
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 33.71605187508008,
+          "mae": 4.720247262511212,
+          "biasPct": -13.520408163265307,
+          "meanActual": 14
+        }
+      ]
+    },
+    {
+      "sku": "SKU-115",
+      "productName": "Chicken Cheese Shawarma",
+      "actualUnits": 97,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 7,
+          "wapePct": 36.08247422680412,
+          "mae": 5,
+          "biasPct": 1.0309278350515463,
+          "meanActual": 13.857142857142858
+        },
+        {
+          "key": "M2_ma7",
+          "n": 7,
+          "wapePct": 27.835051546391753,
+          "mae": 3.857142857142857,
+          "biasPct": 1.0309278350515463,
+          "meanActual": 13.857142857142858
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 7,
+          "wapePct": 34.1678939617084,
+          "mae": 4.734693877551021,
+          "biasPct": -18.556701030927822,
+          "meanActual": 13.857142857142858
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 7,
+          "wapePct": 43.567188223932156,
+          "mae": 6.0371675110305985,
+          "biasPct": 34.945288691870466,
+          "meanActual": 13.857142857142858
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 7,
+          "wapePct": 36.370953263220635,
+          "mae": 5.039974952189145,
+          "biasPct": -21.1340206185567,
+          "meanActual": 13.857142857142858
+        }
+      ]
+    }
+  ],
+  "bootstrapVsBaseline": [
+    {
+      "key": "M2_ma7",
+      "meanDiffUnits": -1.1600000000000004,
+      "ci95": [
+        -1.60734693877551,
+        -0.7489795918367348
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 221,
+      "losses": 119,
+      "coarse": true
+    },
+    {
+      "key": "M3_velocity14",
+      "meanDiffUnits": -1.163265306122449,
+      "ci95": [
+        -1.616734693877551,
+        -0.7824489795918368
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 215,
+      "losses": 130,
+      "coarse": true
+    },
+    {
+      "key": "M4_hw_grid",
+      "meanDiffUnits": -0.4462371341166591,
+      "ci95": [
+        -0.7219073192888782,
+        -0.2497238070679502
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 191,
+      "losses": 159,
+      "coarse": true
+    },
+    {
+      "key": "M6_weekday_profile",
+      "meanDiffUnits": -1.3225691776532904,
+      "ci95": [
+        -1.7986778817675633,
+        -0.9418399140250817
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 230,
+      "losses": 120,
+      "coarse": true
+    }
+  ],
+  "bootstrapVsIncumbent": [
+    {
+      "key": "M1_seasonal_naive",
+      "meanDiffUnits": 1.163265306122449,
+      "ci95": [
+        0.7804081632653062,
+        1.616734693877551
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 130,
+      "losses": 215,
+      "coarse": true
+    },
+    {
+      "key": "M2_ma7",
+      "meanDiffUnits": 0.003265306122448973,
+      "ci95": [
+        -0.12204081632653062,
+        0.1416326530612245
+      ],
+      "includesZero": true,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 168,
+      "losses": 182,
+      "coarse": true
+    },
+    {
+      "key": "M4_hw_grid",
+      "meanDiffUnits": 0.71702817200579,
+      "ci95": [
+        0.49237808421015905,
+        0.9312361754993016
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 136,
+      "losses": 214,
+      "coarse": true
+    },
+    {
+      "key": "M6_weekday_profile",
+      "meanDiffUnits": -0.15930387153084208,
+      "ci95": [
+        -0.26234336051681667,
+        -0.05151730257320314
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 197,
+      "losses": 153,
+      "coarse": true
+    }
+  ],
+  "devVsHoldout": [
+    {
+      "key": "M1_seasonal_naive",
+      "devWapePct": 45.71,
+      "holdoutWapePct": 43.2171,
+      "deltaPctPoints": -2.4929
+    },
+    {
+      "key": "M2_ma7",
+      "devWapePct": 32.35,
+      "holdoutWapePct": 33.6552,
+      "deltaPctPoints": 1.3052
+    },
+    {
+      "key": "M3_velocity14",
+      "devWapePct": 31.48,
+      "holdoutWapePct": 33.6283,
+      "deltaPctPoints": 2.1483
+    },
+    {
+      "key": "M4_hw_grid",
+      "devWapePct": 44.55,
+      "holdoutWapePct": 39.5388,
+      "deltaPctPoints": -5.0112
+    },
+    {
+      "key": "M6_weekday_profile",
+      "devWapePct": 30.82,
+      "holdoutWapePct": 32.3151,
+      "deltaPctPoints": 1.4951
+    }
+  ],
+  "holdoutSelection": {
+    "rule": "the frozen rule, applied for reporting only — nothing is selected or changed here",
+    "winnerKey": "M6_weekday_profile",
+    "winnerWapePct": 32.3151,
+    "devWinnerKey": "M6_weekday_profile",
+    "agreesWithDev": true,
+    "winnerVsBaseline": {
+      "key": "M6_weekday_profile",
+      "meanDiffUnits": -1.3225691776532904,
+      "ci95": [
+        -1.7986778817675633,
+        -0.9418399140250817
+      ],
+      "includesZero": false,
+      "observations": 350,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 230,
+      "losses": 120,
+      "coarse": true
+    },
+    "reliable": true,
+    "verdict": "M6_weekday_profile beats M1_seasonal_naive on the hold-out with a 95% interval below zero"
+  },
+  "generatedAt": "2026-11-17T11:52:24.697Z",
+  "input": "C:\\Users\\Nofal Zia\\Desktop\\FYP Test files\\Real London Bakers 5 Week Performance.xlsx"
+}

@@ -1,0 +1,16 @@
+scope,method,label,n,wape_pct,mae,bias_pct,mean_actual
+pooled,M1_seasonal_naive,M1 seasonal naive (same weekday last week),350,43.2171,5.2429,-1.6251,12.1314
+pooled,M2_ma7,M2 7-day moving average (flat),350,33.6552,4.0829,-1.6251,12.1314
+pooled,M3_velocity14,"M3 velocity (14-day mean, flat) — production baseline",350,33.6283,4.0796,0.0471,12.1314
+pooled,M4_hw_grid,"M4 Holt-Winters, in-service grid search",350,39.5388,4.7966,1.2231,12.1314
+pooled,M6_weekday_profile,M6 store weekday profile x SKU level,350,32.3151,3.9203,-0.6006,12.1314
+h1-3,M1_seasonal_naive,M1 seasonal naive (same weekday last week),150,46.4474,5.2733,4.8738,11.3533
+h1-3,M2_ma7,M2 7-day moving average (flat),150,32.9167,3.7371,5.117,11.3533
+h1-3,M3_velocity14,"M3 velocity (14-day mean, flat) — production baseline",150,33.4452,3.7971,6.9038,11.3533
+h1-3,M4_hw_grid,"M4 Holt-Winters, in-service grid search",150,40.9751,4.652,5.2427,11.3533
+h1-3,M6_weekday_profile,M6 store weekday profile x SKU level,150,31.4237,3.5676,3.4058,11.3533
+h4-7,M1_seasonal_naive,M1 seasonal naive (same weekday last week),200,41.0539,5.22,-5.9772,12.715
+h4-7,M2_ma7,M2 7-day moving average (flat),200,34.1498,4.3421,-6.1401,12.715
+h4-7,M3_velocity14,"M3 velocity (14-day mean, flat) — production baseline",200,33.7509,4.2914,-4.5447,12.715
+h4-7,M4_hw_grid,"M4 Holt-Winters, in-service grid search",200,38.5769,4.9051,-1.4687,12.715
+h4-7,M6_weekday_profile,M6 store weekday profile x SKU level,200,32.9121,4.1848,-3.2835,12.715

@@ -6,6 +6,13 @@
 95 % block-bootstrap CI [1.259, 1.756]** — reliably worse. No parameter, window or preset was changed
 after the numbers were seen.
 
+> **Hold-out (scored once, 2026-11-17 — §17).** The sealed week 2026-09-29 … 2026-10-05 was read only
+> after this dev config was committed. M6 again had the lowest WAPE (**32.32 %**), velocity **33.63 %**,
+> Holt-Winters **39.54 %**. M6 beat velocity by **−0.159 units per SKU-day, 95 % CI [−0.262, −0.052]**; HW
+> was reliably worse again (+0.717, CI [0.492, 0.931]). **The decision does not change** — M6 is not a
+> shipped engine and the frozen engine-change rule still applies — but §17 states exactly what the
+> hold-out does and does not license.
+
 > **Data provenance.** This report is computed from
 > `Real London Bakers 5 Week Performance.xlsx`, sheet `POS Sales Log`: **13,544 line items, 35 calendar
 > days (2026-09-01 … 2026-10-05), 50 SKUs, no status column, no date shift.** The sealed week
@@ -301,6 +308,11 @@ Holt-Winters on this evidence: three to four weeks, 50 SKUs, one store, 14–20 
 3. **Nothing was tuned after seeing these numbers.** No preset, window, fold or bucket was changed.
 4. **M7 (ridge regression) was not run**: its precondition was Holt-Winters beating velocity. It does
    not.
+5. **The hold-out was scored once afterwards (§17) and changed nothing.** It produced the same ranking
+   (M6 < velocity < HW) and HW was reliably worse again. M6's edge over velocity became reliable on that
+   single week, but M6 is still not a shipped engine, so the frozen engine-change rule — winner must be an
+   implemented engine *and* reliably beat the incumbent — is not satisfied. `FORECAST_ENGINE` stays
+   `velocity`.
 
 ## 13. Limitations
 
@@ -315,9 +327,10 @@ Holt-Winters on this evidence: three to four weeks, 50 SKUs, one store, 14–20 
 * **No covariates.** No promotions, holidays, price changes, weather or stockouts; a day with no sale is
   zero demand (exactly 1 such cell in the dev window).
 * **Single sample.** One backtest, one seed; no re-runs across other stores or periods.
-* **Seal integrity.** The workbook physically contains the hold-out week; this run proves it excluded it
-  (2,710 rows dropped at read time, all scoring bounded by 2026-09-28, `holdOut.evaluated: false` in
-  `frozen_config.json`).
+* **Seal integrity.** The workbook physically contains the hold-out week; the dev run proved it excluded it
+  (2,710 rows dropped at read time, all scoring bounded by 2026-09-28). The sealed week was then read
+  **once**, on 2026-11-17, under the committed config (§17); `frozen_config.json` now records
+  `holdOut.evaluated: true`, and the script refuses to score it a second time.
 
 ## 14. Reproduce
 
@@ -363,15 +376,198 @@ not part of this task, and needs your go-ahead.
 
 ## 16. Next steps (nothing runs without your go-ahead)
 
-1. **Hold-out** (2026-09-29 … 2026-10-05): score it **once**, frozen methods only (M1, M3, M4, M6), append
-   as §17 and update `frozen_config.json` `holdOut.evaluated` / `evaluatedAt` / `results`. No method,
-   window or preset may change after that point.
+1. **Hold-out** — **DONE, once** (2026-11-17, §17). Frozen methods only (M1, M2, M3, M4, M6), each fitted
+   on all 28 dev days, forecasting 2026-09-29 … 2026-10-05. `frozen_config.json` now carries
+   `holdOut.evaluated: true`, `evaluatedAt` and the results; nothing may be tuned against it from here.
 2. **M6 as an engine** (optional, separate phase): it needs its own validation, and on this evidence it
    needs more data before claiming a reliable edge over velocity.
 3. **`/api/stockout` caching** (optional): its own SQL still costs ~450–500 ms on that tenant; caching it
    changes default-path freshness semantics, so it needs explicit sign-off.
 4. **Re-seed `london-bakers-i10` with the real 35-day workbook** (optional) so the live demo reflects real
    data.
+
+## 17. Hold-out result — 2026-09-29 … 2026-10-05, scored ONCE
+
+Read for the first time on **2026-11-17**, after `frozen_config.json` was committed. This section is
+reported as-is: nothing below was tuned, re-run under different settings, or used to change the config.
+
+### 17.1 The config this run obeyed (verified, not assumed)
+
+`node backend/scripts/validation/forecastBacktest.js --input "…Real London Bakers 5 Week Performance.xlsx" --score-holdout`
+
+The script reads `docs/validation/frozen_config.json` and aborts unless every one of these still holds:
+
+| Check | Committed value | Result |
+|---|---|---|
+| `status` | `dev-folds-complete-holdout-sealed` | PASS |
+| `protocol.holdOut.sealed` / `.evaluated` | `true` / `false` | PASS |
+| `protocol.holdOut.start` … `end` | `2026-09-29` … `2026-10-05` | PASS |
+| `protocol.foldMode` | `expanding` | PASS |
+| `protocol.maxHistoryDays` / `velocityDays` / `horizonDays` | `28` / `14` / `7` | PASS |
+| `protocol.bootstrap.draws` / `.seed` | `2000` / `20260917` | PASS |
+| `productionEngine.envVar` | `FORECAST_ENGINE` | PASS |
+| `protocol.methods` ⊇ scored methods, `protocol.selectionRule` present | yes | PASS |
+
+It also refuses `--dev-start`/`--dev-end` values other than the frozen dev window, and refuses the run
+outright once `holdOut.evaluated` is `true`. The two windows are read separately, so the fit sees only
+2026-09-01 … 2026-09-28.
+
+### 17.2 What was scored
+
+| | |
+|---|---|
+| Fit | **2026-09-01 … 2026-09-28 — all 28 dev days**, one fit per method per SKU |
+| Origin | 2026-09-28 |
+| Scored | **2026-09-29 … 2026-10-05 — 7 days**, h1 … h7, once each |
+| Scored units | **350 SKU-days** (50 SKUs × 7 days), 2,710 source rows |
+| Holt-Winters | 21 update steps after initialisation, 0 fallbacks to velocity |
+| Mean actual | 12.13 units per SKU-day |
+
+### 17.3 Pooled result
+
+| Method | WAPE % | MAE (units) | Bias % | Dev WAPE % | Δ vs dev |
+|---|---|---|---|---|---|
+| **M6 store weekday profile × SKU level** | **32.32** | **3.920** | −0.60 | 30.82 | +1.50 |
+| M3 velocity (14-day mean, flat) — production | 33.63 | 4.080 | +0.05 | 31.48 | +2.15 |
+| M2 7-day moving average (flat) | 33.66 | 4.083 | −1.63 | 32.35 | +1.31 |
+| M4 Holt-Winters, in-service grid search | 39.54 | 4.797 | +1.22 | 44.55 | −5.01 |
+| M1 seasonal naive (same weekday last week) | 43.22 | 5.243 | −1.63 | 45.71 | −2.49 |
+
+Poisson noise floor on this week: **22.9 %** (mean 12.13 units/SKU-day) — the best method is 9.4 points
+above it, a little further than the dev gap (7.7 points).
+
+Arithmetic check worth keeping: M1 and M2 show the *identical* bias (−1.6251 %) by construction. Over a
+full 7-day horizon M1 forecasts the previous week's seven days once each, so its seven forecasts sum to
+exactly 7 × the last-7-day mean — the same total as M2's flat forecast. Same forecast sum ⇒ same bias. The
+numbers reflect the data, not a copy-paste.
+
+### 17.4 Horizon buckets
+
+| Method | h1–3 WAPE % | h4–7 WAPE % |
+|---|---|---|
+| M6 | **31.42** | **32.91** |
+| M2 | 32.92 | 34.15 |
+| M3 | 33.45 | 33.75 |
+| M4 | 40.98 | 38.58 |
+| M1 | 46.45 | 41.05 |
+
+M6 leads both buckets, as it did on dev (30.18 / 32.00). Unlike the dev run, every method is scored at all
+seven horizons, so these two buckets are genuinely different days (days 1–3 vs days 4–7 of one fit) rather
+than different fold geometries. Bias drifts from **+3.41 %** (h1–3) to **−3.28 %** (h4–7): the weekday
+profile over-shoots the first days of the week and under-shoots the later ones.
+
+### 17.5 Paired comparisons (same block bootstrap, same seed)
+
+Per-SKU-day absolute-error difference (method − reference), averaged; negative = the method is closer.
+The resampling unit is still the calendar day, but the hold-out contains **7 days**, so there are **7
+blocks** — the script flags these intervals `coarse: true`. Read them as indicative.
+
+**vs M1 seasonal naive**
+
+| Method | Mean diff (units) | 95 % CI | Reading |
+|---|---|---|---|
+| M6 | **−1.323** | [−1.799, −0.942] | better |
+| M3 | −1.163 | [−1.617, −0.782] | better |
+| M2 | −1.160 | [−1.607, −0.749] | better |
+| M4 | −0.446 | [−0.722, −0.250] | better |
+
+**vs velocity (the shipping engine)**
+
+| Method | Mean diff (units) | 95 % CI | Reading |
+|---|---|---|---|
+| M6 | **−0.159** | [−0.262, −0.052] | better |
+| M2 | +0.003 | [−0.122, +0.142] | no difference |
+| M4 | +0.717 | [+0.492, +0.931] | **worse** |
+| M1 | +1.163 | [+0.780, +1.617] | worse |
+
+Two things are worth stating plainly:
+
+* **Holt-Winters lost again, and reliably.** +0.717 units/SKU-day worse than velocity, CI entirely above
+  zero. This is the second independent window in which it is worse; the dev verdict was not an artefact of
+  the fold geometry.
+* **M6's edge over velocity flipped from "not reliable" to "reliable".** Dev: −0.079 [−0.222, +0.046].
+  Hold-out: −0.159 [−0.262, −0.052]. The upper bound is **−0.05 units** — thin, and it rests on resampling
+  just seven days. It is a real observation about this week, not a licence to switch engines (see 17.7).
+
+### 17.6 Per-SKU — top 10 by actual units in the hold-out week
+
+| SKU | Product | Actual units | M1 | M2 | M3 | M4 | M6 |
+|---|---|---|---|---|---|---|---|
+| SKU-112 | Meethi Boondi (250g) | 121 | 46.28 | 34.24 | **34.06** | 35.93 | 36.04 |
+| SKU-148 | Kheer Cup | 114 | 41.23 | 30.70 | **28.45** | 34.08 | 30.35 |
+| SKU-143 | Samosa Chaat | 110 | 30.91 | 33.25 | 29.81 | 51.32 | **29.46** |
+| SKU-147 | Rasmalai (2 pcs) | 103 | 33.98 | 22.61 | 21.43 | **20.50** | 20.75 |
+| SKU-142 | Chana Chaat | 102 | 55.88 | 44.96 | 38.66 | 58.19 | **35.72** |
+| SKU-110 | Jalebi (250g) | 101 | 39.60 | 36.21 | 36.78 | 42.95 | **33.18** |
+| SKU-111 | Sugar-Free Jalebi (250g) | 101 | **26.73** | 45.69 | 44.84 | 35.96 | 46.37 |
+| SKU-149 | Almond Milk | 100 | 49.00 | 35.00 | 34.36 | 43.58 | **29.40** |
+| SKU-105 | Puri | 98 | 38.78 | 39.94 | 33.16 | **31.17** | 33.72 |
+| SKU-115 | Chicken Cheese Shawarma | 97 | 36.08 | **27.84** | 34.17 | 43.57 | 36.37 |
+
+(Full table: `forecast_holdout_top10_skus.csv`.)
+
+M6 has the lowest WAPE on **4 of these 10** SKUs, M3 on 2, M4 on 2, M1 on 1, M2 on 1. The pooled win comes
+from a broad, small improvement plus one large miss recovered (SKU-142, 38.66 → 35.72), not from dominating
+every product. SKU-111 is the clearest counter-example: M6 is the *worst* method there (46.37) because the
+store weekday index applied to its own level over-predicts it.
+
+### 17.7 Does the hold-out agree with dev?
+
+| Question | Dev (folds) | Hold-out | Agree? |
+|---|---|---|---|
+| Lowest pooled WAPE | M6 (30.82) | M6 (32.32) | **yes** |
+| Velocity vs HW | HW +1.554 worse | HW +0.717 worse | **yes** |
+| M6 vs velocity | −0.079, not reliable | −0.159, reliable | **direction agrees, reliability differs** |
+| M6 vs M1 | −1.771, reliable | −1.323, reliable | **yes** |
+| Absolute error level | 30.82 best | 32.32 best | no — 1.5 points higher |
+
+Applying the **frozen** selection rule to this table: the winner is M6, and M6 beats M1 with an interval
+below zero. But the frozen `engineChangeRule` also requires the winner to be an **implemented engine**
+(`velocity | holt_winters`) and to reliably beat the incumbent. M6 is neither implemented in `src/` nor
+allowed by that rule, so:
+
+> **`FORECAST_ENGINE` stays `velocity`. M6 stays a Phase 5 candidate.** The hold-out strengthens the case
+> for implementing and testing M6 properly (a broader window, more stores, a real 8-week production
+> history), but it does not satisfy the rule that was fixed before the week was read, and no rule is being
+> rewritten after seeing it.
+
+The honest summary of M6 is therefore: **best method on both windows, reliably better than seasonal naive on
+both, and better than velocity on the one week that was never used to choose it — by an amount (0.16 units,
+~1.3 % of the mean) that a single week can plausibly produce by chance.** The next step for M6, if you want
+one, is more data, not a config change.
+
+### 17.8 What the hold-out cannot tell you
+
+* **One week, one fit, 350 SKU-days.** No folds, no replication. A single week contains one month-end
+  boundary (2026-09-30 / 10-01); a promotion, a closure or a stockout on one day would move these numbers.
+* **7-block bootstrap.** The CIs resample 7 calendar days with replacement. They capture day-level shock,
+  not sampling variation across weeks; the M6-vs-velocity upper bound (−0.052) would not survive a
+  materially different week.
+* **No covariates.** Promotions, paydays, weather and stock availability are unmodelled, in every method
+  equally.
+* **HW was fitted with 21 update steps** (28 training days, 7 initialisation days) — still short of a long
+  series. This is a verdict on HW *on five weeks*, not on HW.
+* **The week is spent.** It cannot be used to choose a method, a window, a preset or a threshold later. Any
+  future decision that needs a clean test needs a *new* sealed window.
+
+### 17.9 Reproduce (and why you cannot re-score it)
+
+```
+node backend/scripts/validation/forecastBacktest.js --input "C:\Users\Nofal Zia\Desktop\FYP Test files\Real London Bakers 5 Week Performance.xlsx" --score-holdout
+```
+
+This writes `forecast_holdout_metrics.csv`, `forecast_holdout_top10_skus.csv`,
+`forecast_holdout_observations.csv`, `forecast_holdout_raw.json`. Running it again now **aborts**:
+
+```
+refusing to score the hold-out — the frozen config is not the committed one:
+  - status: expected "dev-folds-complete-holdout-sealed", found "holdout-evaluated"
+  - protocol.holdOut.evaluated: expected false, found true
+```
+
+That is the intended behaviour: the numbers in this section exist once, and the tool refuses to manufacture
+a second look. The dev run (`--score-holdout` absent) is unchanged and still regenerates its seven artifacts
+byte-identically.
 
 
 

@@ -1,9 +1,9 @@
 {
-  "_what": "Frozen Phase 2 decision and protocol, computed from the REAL London Bakers workbook. Committed BEFORE the sealed hold-out is read, so the hold-out is a single confirmatory run and not another round of selection. Nothing here may be edited after 2026-09-29..2026-10-05 is scored.",
+  "_what": "Frozen Phase 2 decision and protocol, computed from the REAL London Bakers workbook. Committed BEFORE the sealed hold-out was read, so the hold-out is a single confirmatory run and not another round of selection. The sealed week was scored ONCE on 2026-11-17; the only fields edited afterwards are protocol.holdOut.evaluated/evaluatedAt and the holdOutResults block. No protocol, method, parameter or selection-rule field was changed.",
   "phase": 2,
   "frozenAt": "2026-11-17",
   "branch": "feature/hisaabiq-ml",
-  "status": "dev-folds-complete-holdout-sealed",
+  "status": "holdout-evaluated",
 
   "dataProvenance": {
     "workbook": "Real London Bakers 5 Week Performance.xlsx",
@@ -78,7 +78,7 @@
 
   "protocol": {
     "devWindow": { "start": "2026-09-01", "end": "2026-09-28" },
-    "holdOut": { "start": "2026-09-29", "end": "2026-10-05", "sealed": true, "evaluated": false },
+    "holdOut": { "start": "2026-09-29", "end": "2026-10-05", "sealed": true, "evaluated": true, "evaluatedAt": "2026-11-17", "scoredOnce": true, "rerunPolicy": "spent — scripts/validation/forecastBacktest.js --score-holdout refuses to run while evaluated is true; any future clean test needs a NEW sealed window" },
     "foldMode": "expanding",
     "foldOrigins": ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26", "2026-09-27"],
     "trainDaysPerFold": [21, 22, 23, 24, 25, 26, 27],
@@ -152,6 +152,71 @@
   },
 
 
+  "holdOutResults": {
+    "_note": "Scored ONCE on 2026-11-17 by `node backend/scripts/validation/forecastBacktest.js --score-holdout`, after this file was committed. Recorded here as-is: no parameter, method list or selection rule was changed before or after the run. Method list scored: M1, M2, M3, M4, M6 (the frozen engines plus the frozen winner).",
+    "report": "docs/validation/forecast_results.md §17",
+    "scoredAt": "2026-11-17",
+    "window": { "start": "2026-09-29", "end": "2026-10-05" },
+    "fit": { "from": "2026-09-01", "to": "2026-09-28", "trainDays": 28, "origin": "2026-09-28" },
+    "scoredDays": 7,
+    "scoredSkuDays": 350,
+    "rowsScored": 2710,
+    "meanUnitsPerSkuDay": 12.13,
+    "noiseFloorWapePct": 22.91,
+    "hwUpdateSteps": 21,
+    "hwFallbacks": 0,
+    "pooledWapePct": {
+      "M6_weekday_profile": 32.32,
+      "M3_velocity14": 33.63,
+      "M2_ma7": 33.66,
+      "M4_hw_grid": 39.54,
+      "M1_seasonal_naive": 43.22
+    },
+    "pooledMaeUnits": {
+      "M6_weekday_profile": 3.92,
+      "M3_velocity14": 4.08,
+      "M2_ma7": 4.08,
+      "M4_hw_grid": 4.8,
+      "M1_seasonal_naive": 5.24
+    },
+    "pooledBiasPct": {
+      "M6_weekday_profile": -0.6,
+      "M3_velocity14": 0.05,
+      "M2_ma7": -1.63,
+      "M4_hw_grid": 1.22,
+      "M1_seasonal_naive": -1.63
+    },
+    "bucketWapePct": {
+      "M6_weekday_profile": { "h1-3": 31.42, "h4-7": 32.91 },
+      "M3_velocity14": { "h1-3": 33.45, "h4-7": 33.75 },
+      "M2_ma7": { "h1-3": 32.92, "h4-7": 34.15 },
+      "M4_hw_grid": { "h1-3": 40.98, "h4-7": 38.58 },
+      "M1_seasonal_naive": { "h1-3": 46.45, "h4-7": 41.05 }
+    },
+    "pairedVsSeasonalNaive": {
+      "bootstrap": "block bootstrap by calendar day, 7 blocks of 50 observations, 2000 draws, seed 20260917, coarse",
+      "M6_weekday_profile": { "meanDiffUnits": -1.3226, "ci95": [-1.7987, -0.9418], "wins": 230, "losses": 120, "reliable": true },
+      "M3_velocity14": { "meanDiffUnits": -1.1633, "ci95": [-1.6167, -0.7824], "reliable": true },
+      "M2_ma7": { "meanDiffUnits": -1.16, "ci95": [-1.6073, -0.749], "reliable": true },
+      "M4_hw_grid": { "meanDiffUnits": -0.4462, "ci95": [-0.7219, -0.2497], "reliable": true }
+    },
+    "pairedVsVelocity": {
+      "M6_weekday_profile": { "meanDiffUnits": -0.1593, "ci95": [-0.2623, -0.0515], "wins": 197, "losses": 153, "reliable": true, "direction": "better" },
+      "M2_ma7": { "meanDiffUnits": 0.0033, "ci95": [-0.122, 0.1416], "reliable": false },
+      "M4_hw_grid": { "meanDiffUnits": 0.717, "ci95": [0.4924, 0.9312], "reliable": true, "direction": "worse" },
+      "M1_seasonal_naive": { "meanDiffUnits": 1.1633, "ci95": [0.7804, 1.6167], "reliable": true, "direction": "worse" }
+    },
+    "agreesWithDev": {
+      "lowestPooledWape": true,
+      "holtWintersWorseThanVelocity": true,
+      "m6BeatsSeasonalNaiveReliably": true,
+      "m6BeatsVelocity": "direction agrees; reliability differs (dev: not reliable, hold-out: reliable but thin, upper bound -0.05 units on 7 day-blocks)",
+      "absoluteErrorLevel": false
+    },
+    "decision": "unchanged: FORECAST_ENGINE stays velocity; M6 remains a Phase 5 candidate only. The frozen engineChangeRule requires the winner to be an implemented engine (velocity | holt_winters), which M6 is not, so the reliable hold-out edge does not switch anything on.",
+    "honestCaveat": "One week, one fit, 350 SKU-days, 7 bootstrap blocks. The hold-out is spent; it may not be used to choose a method, window, preset or threshold later."
+  },
+
   "artifacts": [
     "docs/validation/forecast_results.md",
     "docs/validation/forecast_backtest_metrics.csv",
@@ -161,6 +226,10 @@
     "docs/validation/forecast_backtest_observations.csv",
     "docs/validation/forecast_backtest_params.csv",
     "docs/validation/forecast_backtest_raw.json",
+    "docs/validation/forecast_holdout_metrics.csv",
+    "docs/validation/forecast_holdout_top10_skus.csv",
+    "docs/validation/forecast_holdout_observations.csv",
+    "docs/validation/forecast_holdout_raw.json",
     "docs/validation/frozen_config.json"
   ],
   "supersededArtifacts": [

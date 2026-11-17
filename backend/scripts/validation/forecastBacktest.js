@@ -74,7 +74,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import XLSX from 'xlsx';
@@ -1297,6 +1297,412 @@ function runBacktest({ parsed, dataKind, devStart, devEnd, startDate, endDate, s
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Hold-out — scored ONCE, under the committed frozen config
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The config this mode obeys. Nothing in it may be changed by this script. */
+const FROZEN_CONFIG_PATH = path.join(REPO_ROOT, 'docs/validation/frozen_config.json');
+
+/** The methods the task freezes; the M5 presets are not scored here. */
+const HOLDOUT_METHOD_KEYS = Object.freeze([
+  'M1_seasonal_naive',
+  'M2_ma7',
+  'M3_velocity14',
+  'M4_hw_grid',
+  'M6_weekday_profile',
+]);
+
+/** The knobs that must equal the committed values, or the run is refused. */
+const FROZEN_PROTOCOL_CHECKS = Object.freeze([
+  ['status', (config) => config.status, 'dev-folds-complete-holdout-sealed'],
+  ['protocol.holdOut.sealed', (config) => config.protocol?.holdOut?.sealed, true],
+  ['protocol.holdOut.evaluated', (config) => config.protocol?.holdOut?.evaluated, false],
+  ['protocol.holdOut.start', (config) => config.protocol?.holdOut?.start, HOLD_OUT_START],
+  ['protocol.holdOut.end', (config) => config.protocol?.holdOut?.end, HOLD_OUT_END],
+  ['protocol.foldMode', (config) => config.protocol?.foldMode, 'expanding'],
+  ['protocol.maxHistoryDays', (config) => config.protocol?.maxHistoryDays, MAX_HISTORY_DAYS],
+  ['protocol.velocityDays', (config) => config.protocol?.velocityDays, VELOCITY_DAYS],
+  ['protocol.horizonDays', (config) => config.protocol?.horizonDays, HORIZON_DAYS],
+  ['protocol.bootstrap.draws', (config) => config.protocol?.bootstrap?.draws, BOOTSTRAP_DRAWS],
+  ['protocol.bootstrap.seed', (config) => config.protocol?.bootstrap?.seed, BOOTSTRAP_SEED],
+  ['productionEngine.envVar', (config) => config.productionEngine?.envVar, 'FORECAST_ENGINE'],
+]);
+
+/**
+ * Reads the committed frozen config.
+ * @returns {object} Parsed config.
+ * @throws {Error} When the file is missing or not JSON.
+ */
+function readFrozenConfig() {
+  let raw;
+  try {
+    raw = readFileSync(FROZEN_CONFIG_PATH, 'utf8');
+  } catch (error) {
+    throw new Error(`cannot read ${path.relative(REPO_ROOT, FROZEN_CONFIG_PATH)}: ${error.message}`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`frozen_config.json is not valid JSON: ${error.message}`);
+  }
+}
+
+/**
+ * Refuses to score the hold-out unless the config is still the one that was
+ * committed before the sealed week was read.
+ *
+ * This is the point of the hold-out: its numbers are evidence only if nothing was
+ * chosen after seeing them. The check is mechanical, so "we did not tune anything"
+ * is a verifiable fact rather than a promise.
+ *
+ * @param {object} config Parsed frozen_config.json.
+ * @returns {{checked: Array<{key: string, value: unknown, pass: boolean}>, winnerKey: string,
+ *   scoredMethods: string[]}} What was verified.
+ * @throws {Error} Listing every mismatch.
+ */
+function assertFrozenProtocol(config) {
+  const checks = FROZEN_PROTOCOL_CHECKS.map(([key, read, expected]) => {
+    const value = read(config);
+    return { key, value, expected, pass: value === expected };
+  });
+
+  const problems = checks
+    .filter((check) => !check.pass)
+    .map((check) => (
+      `  - ${check.key}: expected ${JSON.stringify(check.expected)}, found ${JSON.stringify(check.value)}`
+    ));
+
+  const frozenWinner = config.winner?.method;
+  if (!HOLDOUT_METHOD_KEYS.includes(frozenWinner)) {
+    problems.push(`  - winner.method: ${JSON.stringify(frozenWinner)} is not one of the scored methods`);
+  }
+  const devMethods = new Set(config.protocol?.methods ?? []);
+  for (const key of HOLDOUT_METHOD_KEYS) {
+    if (!devMethods.has(key)) problems.push(`  - protocol.methods: ${key} is missing from the frozen list`);
+  }
+  if (!config.protocol?.selectionRule) problems.push('  - protocol.selectionRule: missing');
+
+  if (problems.length > 0) {
+    throw new Error(
+      'refusing to score the hold-out — the frozen config is not the committed one:\n'
+      + `${problems.join('\n')}\n`
+      + 'The hold-out is a one-shot confirmatory run. Restore the committed '
+      + 'docs/validation/frozen_config.json (git show HEAD:docs/validation/frozen_config.json) '
+      + 'or stop and investigate.',
+    );
+  }
+
+  return { checked: checks, winnerKey: frozenWinner, scoredMethods: HOLDOUT_METHOD_KEYS };
+}
+
+/**
+ * Merges the dev-window read and the hold-out read into one parsed shape.
+ *
+ * Only the hold-out grid needs both halves (fit on the first 28 days, score the
+ * last 7), and the fold machinery slices the arrays itself, so nothing downstream
+ * can look forward: runFolds receives `values.subarray(trainingFrom, originIndex + 1)`.
+ *
+ * @param {ReturnType<typeof readPosSheet>} parsedFit Dev-window read.
+ * @param {ReturnType<typeof readPosSheet>} parsedHoldout Hold-out-window read.
+ * @returns {ReturnType<typeof readPosSheet>} Union of the two.
+ */
+function mergeParsedWindows(parsedFit, parsedHoldout) {
+  const units = new Map();
+  for (const parsed of [parsedFit, parsedHoldout]) {
+    for (const [sku, byDate] of parsed.units) {
+      const target = units.get(sku) ?? new Map();
+      for (const [date, quantity] of byDate) target.set(date, (target.get(date) ?? 0) + quantity);
+      units.set(sku, target);
+    }
+  }
+  let pairCount = 0;
+  for (const byDate of units.values()) pairCount += byDate.size;
+
+  return {
+    ...parsedFit,
+    units,
+    productNames: new Map([...parsedFit.productNames, ...parsedHoldout.productNames]),
+    categories: new Map([...parsedFit.categories, ...parsedHoldout.categories]),
+    pairCount,
+    windowFacts: {
+      firstDate: [parsedFit.windowFacts.firstDate, parsedHoldout.windowFacts.firstDate]
+        .filter(Boolean).sort()[0] ?? null,
+      lastDate: [parsedFit.windowFacts.lastDate, parsedHoldout.windowFacts.lastDate]
+        .filter(Boolean).sort().slice(-1)[0] ?? null,
+      distinctDays: parsedFit.windowFacts.distinctDays + parsedHoldout.windowFacts.distinctDays,
+    },
+  };
+}
+
+/**
+ * The single hold-out fold: all 28 dev days are training, the origin is the last
+ * dev day, and the scored days are the sealed week.
+ * @param {ReturnType<typeof buildGrid>} grid Grid spanning dev window + hold-out.
+ * @returns {{fold: number, origin: string, trainDays: number, trainingFrom: string,
+ *   scoredDates: string[]}}
+ */
+function buildHoldoutFold(grid) {
+  const origin = shiftIsoDate(HOLD_OUT_START, -1);
+  const trainingFrom = grid.dates[0];
+  const trainDays = daysBetween(trainingFrom, origin) + 1;
+  if (trainDays !== MAX_HISTORY_DAYS) {
+    throw new Error(
+      `the hold-out fold would train on ${trainDays} days, `
+      + `but the frozen protocol says ${MAX_HISTORY_DAYS}`,
+    );
+  }
+  const scoredDates = isoDatesBetween(HOLD_OUT_START, HOLD_OUT_END);
+  for (const date of scoredDates) {
+    if (!grid.indexByDate.has(date)) {
+      throw new Error(`hold-out date ${date} is not on the grid — the workbook does not cover the sealed week`);
+    }
+  }
+  return { fold: 1, origin, trainDays, trainingFrom, scoredDates };
+}
+
+/**
+ * Scores the frozen methods on the sealed week.
+ *
+ * Nothing is selected here: the method list, the windows and the selection rule
+ * come from the committed config, and the only new information is how the frozen
+ * methods performed on seven days none of them was fitted on.
+ *
+ * @param {{parsed: ReturnType<typeof readPosSheet>, config: object, frozen: object}} input
+ * @returns {object} Hold-out report.
+ */
+function runHoldout({ parsed, config, frozen }) {
+  const grid = buildGrid(parsed, {
+    startDate: config.protocol.devWindow.start,
+    endDate: HOLD_OUT_END,
+    shiftDays: 0,
+  });
+  const storeDaily = new Float64Array(grid.calendarDays);
+  for (const sku of grid.skus) {
+    const series = grid.values.get(sku);
+    for (let index = 0; index < series.length; index += 1) storeDaily[index] += series[index];
+  }
+
+  const fold = buildHoldoutFold(grid);
+  console.log('\n── Hold-out ───────────────────────────────────────────────────');
+  console.log(`  fit           : ${fold.trainingFrom} .. ${fold.origin} (${fold.trainDays} days, all of them)`);
+  console.log(
+    `  scored        : ${fold.scoredDates[0]} .. ${fold.scoredDates[fold.scoredDates.length - 1]} ` +
+    `(${fold.scoredDates.length} days, h1..h${fold.scoredDates.length})`,
+  );
+  const { observations, params, hwFallbacks } = runFolds(grid, storeDaily, [fold]);
+  console.log(`  scored SKU-days: ${observations.length}`);
+  console.log(`  HW update steps after initialisation: ${fold.trainDays - SEASON_LENGTH}`);
+
+  const methods = HOLDOUT_METHOD_KEYS.map((key) => ({
+    key, label: METHOD_LABELS[key], ...metricsFor(observations, key),
+  }));
+  const buckets = BUCKETS.map((bucket) => ({
+    bucket: bucket.label,
+    rows: HOLDOUT_METHOD_KEYS.map((key) => ({
+      key,
+      ...metricsFor(
+        observations.filter((o) => o.horizon >= bucket.from && o.horizon <= bucket.to),
+        key,
+      ),
+    })),
+  }));
+
+  const skuTotals = new Map(grid.skus.map((sku) => [sku, 0]));
+  for (const observation of observations) {
+    skuTotals.set(observation.sku, skuTotals.get(observation.sku) + observation.actual);
+  }
+  const topSkus = [...skuTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, TOP_SKU_COUNT)
+    .map(([sku, actualUnits]) => ({
+      sku,
+      productName: parsed.productNames.get(sku) ?? '',
+      actualUnits,
+      rows: HOLDOUT_METHOD_KEYS.map((key) => ({
+        key, ...metricsFor(observations.filter((o) => o.sku === sku), key),
+      })),
+    }));
+
+  const vsBaseline = HOLDOUT_METHOD_KEYS
+    .filter((key) => key !== BASELINE_KEY)
+    .map((key) => ({ key, ...pairedBlockBootstrap(observations, key, BASELINE_KEY) }));
+  const vsIncumbent = HOLDOUT_METHOD_KEYS
+    .filter((key) => key !== INCUMBENT_KEY)
+    .map((key) => ({ key, ...pairedBlockBootstrap(observations, key, INCUMBENT_KEY) }));
+
+  const ranked = [...methods].sort((a, b) => (a.wapePct ?? Infinity) - (b.wapePct ?? Infinity));
+  const winner = ranked[0];
+  const winnerPaired = winner.key === BASELINE_KEY
+    ? null
+    : vsBaseline.find((entry) => entry.key === winner.key);
+  const reliable = Boolean(winnerPaired && winnerPaired.ci95[1] < 0);
+
+  // Does the sealed week agree with the dev window? Reported, never acted on.
+  const devWape = config.devResults?.pooledWapePct ?? {};
+  const devVsHoldout = methods.map((method) => ({
+    key: method.key,
+    devWapePct: round(devWape[method.key] ?? null),
+    holdoutWapePct: round(method.wapePct),
+    deltaPctPoints: devWape[method.key] === undefined || method.wapePct === null
+      ? null
+      : round(method.wapePct - devWape[method.key]),
+  }));
+
+  return {
+    mode: 'holdout',
+    accuracyEvidence: true,
+    banner: 'REAL point-of-sale data — the sealed week, scored once under the committed frozen config',
+    frozenConfig: {
+      path: path.relative(REPO_ROOT, FROZEN_CONFIG_PATH),
+      frozenAt: config.frozenAt,
+      winnerKey: frozen.winnerKey,
+      productionEngine: config.productionEngine?.envVar,
+      checks: frozen.checked,
+    },
+    protocol: config.protocol,
+    dataset: parsed.holdoutFacts,
+    fold: {
+      origin: fold.origin,
+      trainDays: fold.trainDays,
+      trainingFrom: fold.trainingFrom,
+      scoredFrom: fold.scoredDates[0],
+      scoredTo: fold.scoredDates[fold.scoredDates.length - 1],
+      scoredDays: fold.scoredDates.length,
+    },
+    hwFallbacks,
+    hwUpdateSteps: fold.trainDays - SEASON_LENGTH,
+    methods,
+    buckets,
+    topSkus,
+    bootstrapVsBaseline: vsBaseline,
+    bootstrapVsIncumbent: vsIncumbent,
+    devVsHoldout,
+    holdoutSelection: {
+      rule: 'the frozen rule, applied for reporting only — nothing is selected or changed here',
+      winnerKey: winner.key,
+      winnerWapePct: round(winner.wapePct),
+      devWinnerKey: frozen.winnerKey,
+      agreesWithDev: winner.key === frozen.winnerKey,
+      winnerVsBaseline: winnerPaired,
+      reliable,
+      verdict: reliable
+        ? `${winner.key} beats ${BASELINE_KEY} on the hold-out with a 95% interval below zero`
+        : `no reliable improvement over ${BASELINE_KEY} on the hold-out`,
+    },
+    observations,
+    params,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Writes the hold-out artifacts. Deliberately separate filenames: the dev outputs
+ * stay byte-identical, and a `_holdout` file can never be mistaken for dev evidence.
+ * @param {{report: object, inputPath: string, outDir: string}} input
+ * @returns {string[]} Absolute paths written.
+ */
+function writeHoldoutReports({ report, inputPath, outDir }) {
+  mkdirSync(outDir, { recursive: true });
+  const written = [];
+  const write = (name, contents) => {
+    const target = path.join(outDir, name);
+    writeFileSync(target, contents, 'utf8');
+    written.push(target);
+  };
+
+  const metricRows = [];
+  for (const method of report.methods) {
+    metricRows.push(['pooled', method.key, method.label, method.n, round(method.wapePct),
+      round(method.mae), round(method.biasPct), round(method.meanActual)]);
+  }
+  for (const bucket of report.buckets) {
+    for (const row of bucket.rows) {
+      metricRows.push([bucket.bucket, row.key, METHOD_LABELS[row.key], row.n, round(row.wapePct),
+        round(row.mae), round(row.biasPct), round(row.meanActual)]);
+    }
+  }
+  write(
+    'forecast_holdout_metrics.csv',
+    toCsv(['scope', 'method', 'label', 'n', 'wape_pct', 'mae', 'bias_pct', 'mean_actual'], metricRows),
+  );
+
+  const skuRows = [];
+  for (const sku of report.topSkus) {
+    for (const row of sku.rows) {
+      skuRows.push([sku.sku, sku.productName, round(sku.actualUnits), row.key, row.n,
+        round(row.wapePct), round(row.mae), round(row.biasPct)]);
+    }
+  }
+  write(
+    'forecast_holdout_top10_skus.csv',
+    toCsv(['sku', 'product_name', 'actual_units', 'method', 'n', 'wape_pct', 'mae', 'bias_pct'], skuRows),
+  );
+
+  const observationRows = report.observations.map((observation) => [
+    observation.fold, observation.sku, observation.date, observation.horizon,
+    observation.actual, ...HOLDOUT_METHOD_KEYS.map((key) => round(observation.predictions[key], 3)),
+  ]);
+  write(
+    'forecast_holdout_observations.csv',
+    toCsv(['fold', 'sku', 'date', 'horizon', 'actual', ...HOLDOUT_METHOD_KEYS], observationRows),
+  );
+
+  const summary = { ...report };
+  delete summary.observations;
+  delete summary.params;
+  write('forecast_holdout_raw.json', JSON.stringify({ ...summary, input: inputPath }, null, 2));
+
+  console.log('\n── Written ────────────────────────────────────────────────────');
+  for (const file of written) console.log(`  ${path.relative(REPO_ROOT, file)}`);
+  return written;
+}
+
+/**
+ * Prints the hold-out comparison: per-method error, then the two paired tests the
+ * frozen protocol asks for.
+ * @param {object} report Hold-out report from runHoldout().
+ * @returns {void}
+ */
+function printHoldoutSummary(report) {
+  console.log('\n── Hold-out results ───────────────────────────────────────────');
+  console.log(`  ${cell('method', 24)}${cell('WAPE%', 9)}${cell('MAE', 8)}${cell('bias%', 8)}n`);
+  for (const method of report.methods) {
+    console.log(
+      `  ${cell(method.key, 24)}${cell(num(method.wapePct), 9)}${cell(num(method.mae), 8)}`
+      + `${cell(num(method.biasPct), 8)}${method.n}`,
+    );
+  }
+  console.log(`\n  ${cell('method', 24)}${cell('vs M1: diff', 14)}${cell('95% CI', 22)}verdict`);
+  for (const entry of report.bootstrapVsBaseline) {
+    console.log(
+      `  ${cell(entry.key, 24)}${cell(num(entry.meanDiffUnits, 4), 14)}`
+      + `${cell(`[${num(entry.ci95[0], 4)}, ${num(entry.ci95[1], 4)}]`, 22)}`
+      + `${entry.ci95[1] < 0 ? 'better' : entry.ci95[0] > 0 ? 'worse' : 'no difference'}`,
+    );
+  }
+  console.log(`\n  ${cell('method', 24)}${cell('vs velocity: diff', 20)}${cell('95% CI', 22)}verdict`);
+  for (const entry of report.bootstrapVsIncumbent) {
+    console.log(
+      `  ${cell(entry.key, 24)}${cell(num(entry.meanDiffUnits, 4), 20)}`
+      + `${cell(`[${num(entry.ci95[0], 4)}, ${num(entry.ci95[1], 4)}]`, 22)}`
+      + `${entry.ci95[1] < 0 ? 'better' : entry.ci95[0] > 0 ? 'worse' : 'no difference'}`,
+    );
+  }
+  console.log(`\n  dev winner  : ${report.holdoutSelection.devWinnerKey}`);
+  console.log(
+    `  hold-out    : ${report.holdoutSelection.winnerKey} `
+    + `(WAPE ${num(report.holdoutSelection.winnerWapePct)}%)`,
+  );
+  console.log(
+    `  agrees      : ${report.holdoutSelection.agreesWithDev
+      ? 'yes'
+      : 'NO — reported as-is, nothing is retuned'}`,
+  );
+  console.log(`  verdict     : ${report.holdoutSelection.verdict}`);
+  console.log('\n  The hold-out is now SPENT. No parameter, window or method may be changed against it.\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Output
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1521,6 +1927,83 @@ function printSummary(report) {
 }
 
 
+/**
+ * Runs the one-shot hold-out: read the config, verify it is still the committed
+ * one, read the dev window for fitting and the sealed week for scoring, and stop.
+ * @param {{inputPath: string, outDir: string, devStart: string, devEnd: string}} input
+ * @returns {Promise<void>}
+ */
+async function runHoldoutMode({ inputPath, outDir, devStart, devEnd }) {
+  const config = readFrozenConfig();
+  const frozen = assertFrozenProtocol(config);
+  const frozenDev = config.protocol.devWindow;
+  if (devStart !== frozenDev.start || devEnd !== frozenDev.end) {
+    throw new Error(
+      `refusing to score the hold-out: the frozen config fits on ${frozenDev.start}..${frozenDev.end}, `
+      + `but --dev-start/--dev-end say ${devStart}..${devEnd}`,
+    );
+  }
+
+  console.log('\n── Hold-out scoring (one shot) ────────────────────────────────');
+  console.log('  question      : how did the FROZEN methods do on a week they never saw?');
+  console.log(`  frozen config : ${path.relative(REPO_ROOT, FROZEN_CONFIG_PATH)} (${config.frozenAt})`);
+  console.log(`  dev winner    : ${frozen.winnerKey}; FORECAST_ENGINE stays ${config.productionEngine?.default}`);
+  for (const check of frozen.checked) console.log(`  config ${check.pass ? 'PASS' : 'FAIL'}   : ${check.key} = ${JSON.stringify(check.value)}`);
+
+  // ── Read the two windows separately so the fit can never see the hold-out ──
+  const parsedFit = readPosSheet(inputPath, { windowStart: devStart, windowEnd: devEnd });
+  const checks = realDataChecks({ parsed: parsedFit, devStart, devEnd });
+  printDataBanner({ parsed: parsedFit, dataKind: 'real', inputPath, devStart, devEnd, checks });
+  assertRealData(checks);
+
+  const parsedHoldout = readPosSheet(inputPath, { windowStart: HOLD_OUT_START, windowEnd: HOLD_OUT_END });
+  const problems = [];
+  if (parsedHoldout.rowsAggregated === 0) {
+    problems.push(`no sale rows inside ${HOLD_OUT_START}..${HOLD_OUT_END}`);
+  }
+  if (parsedHoldout.windowFacts.distinctDays !== daysBetween(HOLD_OUT_START, HOLD_OUT_END) + 1) {
+    problems.push(
+      `the sealed week has ${parsedHoldout.windowFacts.distinctDays} distinct days, expected 7`,
+    );
+  }
+  if (parsedHoldout.windowFacts.firstDate !== HOLD_OUT_START
+    || parsedHoldout.windowFacts.lastDate !== HOLD_OUT_END) {
+    problems.push(
+      `the sealed week spans ${parsedHoldout.windowFacts.firstDate}..${parsedHoldout.windowFacts.lastDate}, `
+      + `expected ${HOLD_OUT_START}..${HOLD_OUT_END}`,
+    );
+  }
+  if (problems.length > 0) {
+    throw new Error(`refusing to score the hold-out:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+  }
+  console.log(
+    `\n  hold-out rows : ${grouped(parsedHoldout.rowsAggregated)} inside ` +
+    `${parsedHoldout.windowFacts.firstDate}..${parsedHoldout.windowFacts.lastDate} ` +
+    `(${parsedHoldout.units.size} SKUs, ${parsedHoldout.windowFacts.distinctDays} days)`,
+  );
+
+  const parsed = mergeParsedWindows(parsedFit, parsedHoldout);
+  parsed.holdoutFacts = {
+    rowsInSheet: parsedFit.rowsInSheet,
+    rowsValidInSheet: parsedFit.rowsValid,
+    rowsUsedForFitting: parsedFit.rowsAggregated,
+    rowsUsedForScoring: parsedHoldout.rowsAggregated,
+    rowsOutsideBothWindows: parsedFit.outsideWindow - parsedHoldout.rowsAggregated,
+    skusFitted: parsedFit.units.size,
+    skusScored: parsedHoldout.units.size,
+    holdoutDays: parsedHoldout.windowFacts.distinctDays,
+    holdoutRange: {
+      first: parsedHoldout.windowFacts.firstDate,
+      last: parsedHoldout.windowFacts.lastDate,
+    },
+  };
+
+  const report = runHoldout({ parsed, config, frozen });
+  report.dataset = parsed.holdoutFacts;
+  writeHoldoutReports({ report, inputPath, outDir });
+  printHoldoutSummary(report);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // main
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1555,6 +2038,15 @@ async function main() {
     : requireIsoDate('end-date', args['end-date'] ?? SYNTHETIC_END_DATE);
   const outDir = path.resolve(REPO_ROOT, String(args.out ?? 'docs/validation'));
   const suffix = isReal ? '' : '_synthetic';
+
+  // ── One-shot hold-out mode: score the sealed week, then stop ──────────────
+  if (args['score-holdout'] === true) {
+    if (!isReal) {
+      throw new Error('--score-holdout applies to the real workbook only (--data-kind real)');
+    }
+    await runHoldoutMode({ inputPath, outDir, devStart, devEnd });
+    return;
+  }
 
   // ── The protocol bounds are not configurable in a way that matters ────────
   if (devEnd < devStart) {
