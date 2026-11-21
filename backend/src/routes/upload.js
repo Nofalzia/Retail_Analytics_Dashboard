@@ -76,7 +76,7 @@ import csvParser          from 'csv-parser';
 import XLSX               from 'xlsx';
 import { requireAuth }    from '../middleware/auth.js';
 import { resolveTenant }  from '../middleware/tenant.js';
-import { query, getClient } from '../db/pool.js';
+import { query } from '../db/pool.js';
 import {
   buildColumnMap,
   buildInventoryColumnMap,
@@ -193,7 +193,7 @@ router.post(
     let fileHash;
     try {
       fileHash = await computeFileHash(file.path);
-    } catch (err) {
+    } catch {
       fs.unlinkSync(file.path);
       return res.status(500).json({ error: 'HASH_FAILED', message: 'Could not read the uploaded file.' });
     }
@@ -435,7 +435,7 @@ router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
   const cleanup = () => {
-    try { fs.unlinkSync(file.path); } catch (_) { /* already deleted */ }
+    try { fs.unlinkSync(file.path); } catch { /* already deleted */ }
   };
 
   try {

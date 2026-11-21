@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+/* oxlint-disable react/only-export-components */
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AdminRestrictedAccess,
   EmptyState,
@@ -373,7 +375,7 @@ const AllClearState = () => {
 };
 
 const RunDetectionButton = ({ storeId, onComplete }) => {
-  const { ACCENTS, PALETTE, PANEL_SURFACE } = useDesignTokens();
+  const { ACCENTS, PALETTE } = useDesignTokens();
   const [status, setStatus] = useState('idle');
   const [runSummary, setRunSummary] = useState(null);
 
@@ -909,7 +911,7 @@ const StoreManagerDashboard = ({
   const [alertsLoaded, setAlertsLoaded] = useState(!isLive);
   const [retryTick, setRetryTick] = useState(0);
 
-  const fetchAlerts = () => {
+  const fetchAlerts = useCallback(() => {
     if (dataMode !== 'live') {
       setAlerts(dataMode === 'struggling' ? STRUGGLING_ALERTS : INITIAL_ALERTS);
       setAlertsError(false);
@@ -945,11 +947,11 @@ const StoreManagerDashboard = ({
       })
       .catch(() => setAlertsError(true))
       .finally(() => setAlertsLoaded(true));
-  };
+  }, [dataMode, storeId]);
 
   useEffect(() => {
     fetchAlerts();
-  }, [dataMode, retryTick, storeId]);
+  }, [fetchAlerts, retryTick]);
 
   // T12d: an import now runs detection itself and announces it on
   // 'rad:data-refreshed'. Bump the retry counter so the alerts list refetches

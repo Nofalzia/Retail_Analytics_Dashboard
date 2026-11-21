@@ -1,3 +1,5 @@
+/* oxlint-disable react/only-export-components */
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme, useDesignTokens } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';

@@ -1,3 +1,5 @@
+/* oxlint-disable react/only-export-components */
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   EmptyState,
