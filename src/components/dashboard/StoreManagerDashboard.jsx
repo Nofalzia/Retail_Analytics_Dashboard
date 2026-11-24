@@ -910,6 +910,24 @@ const StoreManagerDashboard = ({
   const [alertsError, setAlertsError] = useState(false);
   const [alertsLoaded, setAlertsLoaded] = useState(!isLive);
   const [retryTick, setRetryTick] = useState(0);
+  const [salesDataState, setSalesDataState] = useState({ loading: isLive, hasData: false, error: false });
+
+  useEffect(() => {
+    if (!isLive) {
+      setSalesDataState({ loading: false, hasData: true, error: false });
+      return undefined;
+    }
+    if (!storeId) return undefined;
+    setSalesDataState((state) => ({ ...state, loading: true, error: false }));
+    api.getOverview({ storeId })
+      .then((data) => setSalesDataState({
+        loading: false,
+        hasData: (Number(data?.kpi?.total_transactions) || 0) > 0,
+        error: false,
+      }))
+      .catch(() => setSalesDataState({ loading: false, hasData: false, error: true }));
+    return undefined;
+  }, [dataMode, isLive, retryTick, storeId]);
 
   const fetchAlerts = useCallback(() => {
     if (dataMode !== 'live') {
@@ -973,6 +991,23 @@ const StoreManagerDashboard = ({
       <EmptyState
         title="No analytics to show yet"
         description="Anomaly detection and scenario simulations need at least a few days of sales history to work with — check back once data starts flowing in."
+        actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+        onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
+      />
+    );
+  }
+
+  if (isLive && salesDataState.loading) {
+    return <LoadingState label="Loading store data…" />;
+  }
+  if (isLive && salesDataState.error) {
+    return <ApiErrorNotice onRetry={() => setRetryTick((tick) => tick + 1)} />;
+  }
+  if (isLive && !salesDataState.hasData) {
+    return (
+      <EmptyState
+        title="No analytics to show yet"
+        description="Import data to see store trends, threshold alerts and recommendations based on your activity."
         actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
         onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
       />

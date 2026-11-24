@@ -10,16 +10,13 @@
  *
  *   total_rows     — every data row the parser saw, INCLUDING rows the import
  *                    deliberately did not write
- *   rows_processed — rows actually inserted
+ *   rows_processed — rows inserted or changed by an UPSERT
  *   rows_failed    — rows rejected with an error (surfaced in error_log)
  *
- * Rows skipped by the status filter (cancelled / refunded, T12a) are counted in
- * neither `rows_processed` nor `rows_failed`; they live in
- * `column_map._skippedByStatus`. Dividing `rows_processed` by `total_rows` alone
- * therefore under-reports a finished import: the messy demo file (3,599 rows,
- * 1,123 skipped, 5 rejected, 2,471 written) reported 69 % on a job that had
- * completed. The percentage must count every row the job is done with.
+ * Rows skipped by validation status and rows unchanged by an UPSERT are counted
+ * in `rows_skipped`; adding all skipped rows keeps progress truthful.
  * ────────────────────────────────────────────────────────────────────────────
+ */
 
 /** Status value that means "the import ran to the end of the file". */
 const COMPLETED_STATUS = 'completed';
@@ -55,7 +52,8 @@ function toCount(value) {
  * @param {number|null} [counters.totalRows] `ingestion_jobs.total_rows`.
  * @param {number|null} [counters.rowsProcessed] `ingestion_jobs.rows_processed`.
  * @param {number|null} [counters.rowsFailed] `ingestion_jobs.rows_failed`.
- * @param {number|null} [counters.skippedByStatus] `column_map._skippedByStatus`.
+ * @param {number|null} [counters.rowsSkipped] `ingestion_jobs.rows_skipped`.
+ * @param {number|null} [counters.skippedByStatus] Legacy skipped status count.
  * @returns {number|null} Integer 0–100, or `null` when nothing has been counted.
  */
 export function computeProgressPct({
@@ -63,6 +61,7 @@ export function computeProgressPct({
   totalRows = null,
   rowsProcessed = null,
   rowsFailed = null,
+  rowsSkipped = null,
   skippedByStatus = null,
 } = {}) {
   if (status === COMPLETED_STATUS) return 100;
@@ -70,7 +69,8 @@ export function computeProgressPct({
   const total = toCount(totalRows);
   if (total === 0) return null;
 
-  const settledRows = toCount(rowsProcessed) + toCount(rowsFailed) + toCount(skippedByStatus);
+  const settledRows = toCount(rowsProcessed) + toCount(rowsFailed)
+    + toCount(rowsSkipped ?? skippedByStatus);
   const percentage = Math.round((settledRows / total) * 100);
 
   return Math.max(0, Math.min(percentage, 99));

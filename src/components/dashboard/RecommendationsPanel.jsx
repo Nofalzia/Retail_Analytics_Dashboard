@@ -335,6 +335,7 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live', onOpenView = 
   const [loading, setLoading] = useState(isLive);
   const [loadError, setLoadError] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
+  const [hasSalesData, setHasSalesData] = useState(false);
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [actionErrors, setActionErrors] = useState(() => new Map());
 
@@ -347,9 +348,10 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live', onOpenView = 
     if (!storeId) { setLoading(false); return undefined; }
     setLoading(true);
     setLoadError(false);
-    api.getRecommendations({ storeId })
-      .then(({ recommendations: apiRecs }) => {
-        setItems(Array.isArray(apiRecs) ? apiRecs : []);
+    Promise.all([api.getRecommendations({ storeId }), api.getOverview({ storeId })])
+      .then(([recommendationData, overviewData]) => {
+        setItems(Array.isArray(recommendationData?.recommendations) ? recommendationData.recommendations : []);
+        setHasSalesData((Number(overviewData?.kpi?.total_transactions) || 0) > 0);
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
@@ -448,6 +450,16 @@ const RecommendationsPanel = ({ hasData = true, dataMode = 'live', onOpenView = 
     }
     if (loading) {
       return <LoadingState label="Loading recommendations…" />;
+    }
+    if (!hasSalesData) {
+      return (
+        <EmptyState
+          title="No recommendations yet"
+          description="Import data first. Recommendations will be generated from this tenant's sales and stock levels."
+          actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+          onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
+        />
+      );
     }
     if (items.length === 0) {
       return (

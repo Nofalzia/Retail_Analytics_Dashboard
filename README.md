@@ -36,7 +36,7 @@ naive in-memory read peaks at ~484 MB (XLSX/XLS workbooks *are* read into memory
 - [Demo accounts](#demo-accounts)
   - [Demo Kiryana Store](#demo-kiryana-store)
   - [London Bakers I-10](#london-bakers-i-10)
-  - [New Store (Demo)](#new-store-demo)
+  - [New Tenant (No Data)](#new-tenant-no-data)
 - [Upload templates](./docs/data/upload_templates.md)
 - [npm scripts](#npm-scripts)
 - [Validation & published evidence](#validation--published-evidence)
@@ -58,12 +58,11 @@ naive in-memory read peaks at ~484 MB (XLSX/XLS workbooks *are* read into memory
   `src/api/client.js` attaches as a Bearer token. Any `401` dispatches `rad:unauthorized` and the
   app returns to the login screen.
 - **Five views** — Overview, Deep Analytics, Stockout Watch, Recommendations, Data Ingestion.
-- **Preview switchers** — a role switcher (Owner / Manager) and a data-mode switcher
-  (*Healthy Store* / *Struggling Store* / *New Tenant (No Data)*), so empty and edge states can be
-  demonstrated without touching the database. The mocked preview states describe `demo-kiryana`
-  only; every other tenant always shows live data.
-- **Three demo stores** offered as sign-in chips — a seeded store, a two-year real export and a
-  deliberately blank one for the onboarding walkthrough (see [Demo accounts](#demo-accounts)).
+- **Real tenant switcher** — the header signs in to the populated demo tenant, London Bakers, or the
+  deliberately empty onboarding tenant. Dashboard and upload requests always use the authenticated
+  tenant; no upload is simulated.
+- **Demo accounts** — the login screen offers a seeded store, a two-year real export and a blank
+  onboarding store (see [Demo accounts](#demo-accounts)).
 - **Light / dark theme** on a warm earth palette, inline SVG icons only (no icon package).
 
 ### Owner
@@ -78,16 +77,15 @@ indicator.
   price adjustment). The simulator starts from the tenant's own **last 30 days** of uploaded sales —
   revenue and COGS % from `GET /api/overview/baseline`, anchored to the as-of date — and says so
   plainly when that window holds fewer than 7 days with sales, or when unit cost had to be estimated
-  because an import carried no cost column. The fixed sample baselines are used only by the mocked
-  preview states.
+  because an import carried no cost column.
 - **Stockout Watch** — days-of-cover against recent velocity, ranked by urgency.
 - **Recommendations** — generated from active alerts, with suggested quantity and revenue at risk;
   an acknowledge / complete flow.
 
 ### Data Ingestion
 
-- **Live pipeline** — real `POST /api/upload` (CSV, XLSX, XLS), per-job progress polling, rows
-  processed / rows failed and the server-side error log. The kind of file is decided from its header
+- **Live pipeline** — real `POST /api/upload` (CSV, XLSX, XLS), per-job progress polling, inserted /
+  updated / skipped / rejected counts and row-level server errors. The kind of file is decided from its header
   row, never from its name: a **sales export** writes `sale_transactions`, a **stock count** writes
   `inventory_logs`.
 - **Flexible column mapping** (`backend/src/utils/validators.js`) — headers are normalised first
@@ -118,13 +116,17 @@ indicator.
   runs for that store. The counts are stored on the job (`column_map._analysis`), returned by
   `GET /api/upload/:jobId/summary` and shown on the success banner. An analysis failure is recorded,
   never fatal — the rows are already in.
+- **Re-import upsert** — product/date or transaction identifiers update changed rows; for sales
+  without transaction IDs, the same source filename and row also identifies a row when its date is
+  edited. Identical rows are skipped, and each committed 1,000-row chunk is transactional.
 - **Stock-count upload** — `sku` + `quantity_on_hand`, plus optional `count_date` (defaults to today)
   and `product_name`. A count never creates products: an unknown SKU is a row error, because a typo
-  in a count must not conjure a product nobody sells. Counts use the same chunked pipeline, file-hash
-  dedup and automatic analysis as sales files.
+  in a count must not conjure a product nobody sells. Counts use the same chunked pipeline and
+  automatic analysis as sales files.
 - **Per-row validation** — invalid rows are logged with their row number and the raw value, not fatal.
-- **File-level dedup** — a SHA-256 hash of the file stops the same file from being imported twice
-  for one store (`uq_ingestion_file_per_store`, a partial index that ignores failed jobs).
+- **Tenant switcher** — the header signs into real demo tenants (the populated tenant, the empty
+  onboarding tenant, and London Bakers when provisioned); uploads always write to the authenticated
+  tenant and are never simulated.
 - **Honest empty state** — a job that finishes having imported 0 rows is reported as
   *"Nothing imported"* on the ochre warning surface instead of a green success banner.
 - **Templates** — the browser downloads a sales template and a stock-count template whose headers
@@ -136,8 +138,9 @@ indicator.
 
 ### Platform (not part of the storefront preview)
 
-- Tenant identity is **always** taken from the JWT (`req.tenantId` via `middleware/tenant.js`),
-  never from the request body or query string.
+- The client sends its active tenant ID with every API request. `middleware/tenant.js` validates it
+  against the JWT tenant for regular users (or an active-tenant lookup for system administrators)
+  before assigning `req.tenantId`; tenant identity is never trusted from the body or query string.
 - `system_admin` exists in the `users` role enum for platform operations. It deliberately has no
   entry in the dashboard's role switcher and holds no financial view.
 
@@ -170,12 +173,11 @@ PostgreSQL — 10 tables + 4 read views, every query scoped by tenant_id
 ```
 POST /api/upload
   -> multer writes to UPLOAD_TEMP_DIR (cap: MAX_FILE_SIZE_MB, default 60)
-  -> SHA-256 hash -> ingestion_jobs row (status = processing)     duplicate file -> 409
+  -> SHA-256 hash + ingestion_jobs row (status = queued)
   -> header row -> detectFileKind(): 'sales' or 'inventory', + column map and assumptions
   -> background: csv-parser stream (CSV only; XLSX/XLS are read into memory by SheetJS)
-       -> 1,000-row batches -> sales: products upsert + sale_transactions insert
-                               stock count: SKU lookup + inventory_logs insert
-       -> rows_processed / rows_failed / error_log refreshed every 5 chunks
+       -> 1,000-row transactions -> products + sale/inventory UPSERT
+       -> inserted / updated / skipped / rejected counts and row errors
   -> analysis: detect + recommend (a failure is recorded on the job, never fatal)
   -> client polls GET /api/upload/:jobId/status until completed / failed
 ```
@@ -337,14 +339,14 @@ legacy default in `src/components/auth/LoginScreen.jsx`.
 | London Bakers I-10 | `london-bakers-i10` | Owner | `owner@londonbakers.demo` |
 | London Bakers I-10 | `london-bakers-i10` | Manager | `manager@londonbakers.demo` |
 | London Bakers I-10 | `london-bakers-i10` | Cashier | `cashier@londonbakers.demo` |
-| New Store (Demo) | `demo-onboarding` | Owner | `owner@onboarding.demo` |
-| New Store (Demo) | `demo-onboarding` | Manager | `manager@onboarding.demo` |
+| New Tenant (No Data) | `demo-onboarding` | Owner | `owner@onboarding.demo` |
+| New Tenant (No Data) | `demo-onboarding` | Manager | `manager@onboarding.demo` |
 
 ### Demo Kiryana Store
 
 `npm run seed:reset` recreates this tenant, its 4 categories, 12 products, both users and 90 days of
-transactions, so the charts have something real to draw. It is also the tenant the mocked preview
-states (*Healthy Store* / *Struggling Store* / *New Tenant*) describe.
+transactions, so the charts have something real to draw. It appears as *Healthy Store* in the tenant
+switcher.
 
 ### London Bakers I-10
 
@@ -374,17 +376,18 @@ npm run demo:inventory -- --slug london-bakers-i10
 See [`docs/data/london_bakers_provenance.md`](docs/data/london_bakers_provenance.md) for the exact
 columns, filters, date shift, revenue conservation check and full limitations.
 
-### New Store (Demo)
+### New Tenant (No Data)
 
 The live walkthrough is "onboard a new store in two minutes": sign in to an empty store, drag a
-sales file onto Data Ingestion, watch the analysis appear. This tenant deliberately holds no
+sales file onto Data Ingestion, watch the analysis appear. After the existing schema and migrations,
+run `006_tenant_import_upsert.sql` in the Neon SQL Editor; it idempotently creates the tenant and its store. This tenant holds no
 categories, products, sales or inventory, so an upload cannot double-count anything that is
 already there — unlike `london-bakers-i10`, which keeps its history.
 
 ```cmd
-:: run from backend/ — create (or re-blank) the tenant, its one store and its two users
+:: run from backend/ — create or preserve the tenant, its one store and its two users
 npm run demo:onboarding:seed
-:: empty only this tenant's imported data again (nothing else is touched)
+:: optional, destructive reset of only this tenant's imported data
 npm run demo:reset -- --slug demo-onboarding
 ```
 
@@ -430,7 +433,7 @@ and `data/processed/` is gitignored, so nothing generated here can dirty the com
 | `backend/` | `npm run bakery:prepare -- --input <pos.csv> --daily <daily.csv>` | build the London Bakers upload CSVs from the raw POS export |
 | `backend/` | `npm run bakery:seed` | reset + seed the `london-bakers-i10` tenant from those CSVs |
 | `backend/` | `npm run demo:generate -- --days 90 --skus 40 --seed <n>` | write seeded, upload-ready synthetic sales + stock-count CSVs to `data/processed/synthetic/` (no database) |
-| `backend/` | `npm run demo:onboarding:seed` | create or re-blank the blank onboarding demo tenant (`demo-onboarding`) |
+| `backend/` | `npm run demo:onboarding:seed` | create or preserve the onboarding demo tenant (`demo-onboarding`) |
 | `backend/` | `npm run demo:reset -- --slug demo-onboarding` | delete that tenant's imported data; other tenants are verified unchanged |
 | `backend/` | `npm run demo:inventory -- --slug london-bakers-i10` | write a synthetic stock-count CSV from that tenant's own sales history (default `data/processed/<slug>/inventory_snapshot.csv`) |
 | `backend/` | `npm run db:migrate` | `psql $DATABASE_URL -f db/schema.sql` |
@@ -577,8 +580,8 @@ Retail_Analytics_Dashboard/
 |  |  +- cashier/               CashierWorkspace (upload-only screen for data_entry_clerk)
 |  |  +- dashboard/              BusinessOwnerDashboard, StoreManagerDashboard,
 |  |  |                          StockoutPrediction, RecommendationsPanel
-|  |  +- ingestion/              DataIngestionHub (live pipeline + preview states)
-|  |  +- layout/DashboardShell.jsx   sidebar, header, role + data-mode switchers
+|  |  +- ingestion/              DataIngestionHub (live upload pipeline)
+|  |  +- layout/DashboardShell.jsx   sidebar, header, role + tenant switchers
 |  +- config/demoTenants.js      the three demo tenants the switcher offers
 |  +- context/                   AuthContext, ThemeContext (useDesignTokens)
 |  +- utils/salesUpload.js       file contract, downloadable templates, upload wording
@@ -591,7 +594,7 @@ Retail_Analytics_Dashboard/
 |  |  +- utils/validators.js     column aliases, flexible dates, sales + stock-count row validation
 |  |  +- utils/asOfDate.js       the latest-sale-date anchor every analysis window uses
 |  |  +- seed.js                 demo-tenant reset + reseed
-|  +- db/                        schema.sql + migrations/ (002-005, idempotent)
+|  +- db/                        schema.sql + migrations/ (002-006, idempotent)
 |  +- scripts/                   benchmark/ and validation/ harnesses, smoke tests;
 |  |                             bakery/ (prepareData.js, seedTenant.js) — the London Bakers pipeline;
 |  |                             demo/ (seedEmptyTenant.js, resetTenantData.js, generateInventoryFromSales.js)

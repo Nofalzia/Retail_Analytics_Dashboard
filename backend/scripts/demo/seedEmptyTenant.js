@@ -1,26 +1,21 @@
 /**
  * backend/scripts/demo/seedEmptyTenant.js
  * ──────────────────────────────────────────────────────────────────────────────
- * T12g — create the BLANK onboarding demo tenant ("New Store (Demo)").
+ * Ensure the onboarding demo tenant and its users exist.
  *
  * Why a third tenant: the live demo is "onboard a new store in two minutes" —
  * sign in to an empty store, drag a sales file onto Data Ingestion, watch the
  * analysis appear. london-bakers-i10 already holds its history, so uploading the
  * same data there would double-count every row. This tenant exists to be empty.
  *
- * Idempotent, and blanking for THIS tenant only:
+ * Idempotent and non-destructive:
  *   1. find or create the tenant by slug, then RE-READ its slug and ABORT unless
- *      it is exactly the expected one — this happens BEFORE any DELETE;
- *   2. inside one transaction, delete ONLY that tenant's recommendations,
- *      anomaly_alerts, sale_transactions, inventory_logs, ingestion_jobs,
- *      products and categories — so a re-run also returns a store that was
- *      already demonstrated on to a blank slate;
- *   3. upsert one active store ("Main Branch") and two users (owner + manager),
+ *      it is exactly the expected one;
+ *   2. upsert one active store ("Main Branch") and two users (owner + manager),
  *      hashing Demo@1234 with bcryptjs exactly as src/seed.js does;
- *   4. print the tenant id, the store id, the table counts and the credentials.
+ *   3. print the tenant id, the store id, the table counts and the credentials.
  *
- * Nothing else is created: no categories, no products, no sale rows, no inventory.
- * Users and stores are upserted, never deleted, so no duplicate rows appear.
+ * It never deletes business data; use resetTenantData.js for an intentional reset.
  *
  * Run from backend/:
  *   npm run demo:onboarding:seed
@@ -35,7 +30,7 @@ import pool, { getClient, query } from '../../src/db/pool.js';
 
 // Tenant identity — slug/name/currency/locale are configuration DATA, not schema.
 const TENANT_SLUG     = 'demo-onboarding';
-const TENANT_NAME     = 'New Store (Demo)';
+const TENANT_NAME     = 'New Tenant (No Data)';
 const TENANT_CURRENCY = 'PKR';
 const TENANT_LOCALE   = 'en-PK';
 const STORE_NAME      = 'Main Branch';
@@ -44,20 +39,6 @@ const OWNER_EMAIL   = 'owner@onboarding.demo';
 const MANAGER_EMAIL = 'manager@onboarding.demo';
 const PASSWORD      = 'Demo@1234';
 const BCRYPT_ROUNDS = 10;
-
-// Deleted on every run, in this order: recommendations → anomaly_alerts →
-// sale_transactions → inventory_logs → ingestion_jobs → products → categories.
-// Sale and inventory rows both RESTRICT the product FK, so they must go first;
-// ingestion_jobs is referenced by both of them, and products by categories.
-const RESET_TABLES = [
-  'recommendations',
-  'anomaly_alerts',
-  'sale_transactions',
-  'inventory_logs',
-  'ingestion_jobs',
-  'products',
-  'categories',
-];
 
 // Every table holding tenant-scoped rows that the report prints. Users and stores
 // are the only two that are expected to be non-zero after the seed.
@@ -97,21 +78,11 @@ async function countTenantRows(exec, tenantId) {
   return rows[0];
 }
 
-/**
- * Formats a snapshot as one line: "table=count, table=count, ...".
- * @param {Object<string, number>|null} counts Snapshot.
- * @returns {string} Human-readable snapshot.
- */
-function formatCounts(counts) {
-  if (!counts) return '(tenant not found)';
-  return REPORT_TABLES.map((table) => `${table}=${formatInt(counts[table] ?? 0)}`).join(', ');
-}
-
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-/** Creates or re-blanks the demo-onboarding tenant. @returns {Promise<void>} */
+/** Ensures the demo-onboarding tenant is provisioned. @returns {Promise<void>} */
 async function main() {
-  console.log('── New Store (Demo) · blank onboarding tenant ─────────────');
+  console.log('── New Tenant (No Data) · onboarding account ──────────────');
   console.log(`  slug : ${TENANT_SLUG}`);
 
   const client = await getClient();
@@ -121,7 +92,7 @@ async function main() {
   try {
     await client.query('BEGIN');
 
-    // ── 1. Tenant, then guard. No DELETE may run before this check passes ─────
+    // ── 1. Tenant, then guard ────────────────────────────────────────────────
     const { rows: [upserted] } = await client.query(
       `INSERT INTO tenants (name, slug, currency_code, locale)
        VALUES ($1, $2, $3, $4)
@@ -134,8 +105,7 @@ async function main() {
       [TENANT_NAME, TENANT_SLUG, TENANT_CURRENCY, TENANT_LOCALE],
     );
 
-    // Re-read the slug from the database itself (not from the RETURNING clause) so
-    // a poisoned or mis-addressed row can never reach the DELETE statements below.
+    // Re-read and validate the database identity before writing seed accounts.
     const { rows: [tenant] } = await client.query(
       'SELECT id, slug, name FROM tenants WHERE id = $1',
       [upserted.id],
@@ -146,13 +116,7 @@ async function main() {
     tenantId = tenant.id;
     console.log(`  tenant : ${tenant.name} (${tenant.slug}) — ${tenantId}`);
 
-    // ── 2. Blank ONLY this tenant's data ──────────────────────────────────────
-    for (const table of RESET_TABLES) {
-      const { rowCount } = await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-      console.log(`  reset  ${table.padEnd(18)} ${formatInt(rowCount)} row(s) deleted`);
-    }
-
-    // ── 3. Store — users reference it, so it is upserted before them ──────────
+    // ── 2. Store — users reference it, so it is upserted before them ──────────
     // No UNIQUE (tenant_id, name) on stores, so this is select-then-insert.
     // location stays NULL: nothing is invented.
     const { rows: storeRows } = await client.query(
@@ -170,7 +134,7 @@ async function main() {
       storeId = store.id;
     }
 
-    // ── 4. Users — owner + manager, same hashing and upsert shape as seed.js ──
+    // ── 3. Users — owner + manager, same hashing and upsert shape as seed.js ──
     const passwordHash = await bcrypt.hash(PASSWORD, BCRYPT_ROUNDS);
     for (const [email, role] of [
       [OWNER_EMAIL, 'owner'],
@@ -196,7 +160,7 @@ async function main() {
     client.release();
   }
 
-  // ── 5. Report what is actually in the database now ────────────────────────
+  // ── 4. Report what is actually in the database now ────────────────────────
   const counts = await countTenantRows(query, tenantId);
   const notEmpty = DATA_TABLES.filter((table) => Number(counts[table] ?? 0) !== 0);
 
@@ -212,20 +176,16 @@ async function main() {
   console.log(`  sale rows  : ${formatInt(counts.sale_transactions)}`);
   console.log(`  inventory  : ${formatInt(counts.inventory_logs)}`);
   console.log(`  jobs       : ${formatInt(counts.ingestion_jobs)}`);
-  console.log('  state      : BLANK — ready for a file upload demo');
+  console.log(`  state      : ${notEmpty.length === 0 ? 'BLANK — ready for a file upload demo' : 'HAS DATA — preserved'}`);
   console.log('\n  Credentials:');
   console.log(`    ${OWNER_EMAIL.padEnd(28)} / ${PASSWORD}   (owner)`);
   console.log(`    ${MANAGER_EMAIL.padEnd(28)} / ${PASSWORD}   (manager)`);
 
   if (notEmpty.length > 0) {
-    console.log(`\n  ❌ expected an empty tenant, but these tables have rows: ${notEmpty.join(', ')}`);
-    console.log(`  counts: ${formatCounts(counts)}`);
-    process.exitCode = 1;
-    return;
+    console.log(`\n✅ Tenant users ready. Existing business data was preserved: ${notEmpty.join(', ')}.`);
+  } else {
+    console.log('\n✅ Empty tenant ready. Sign in and upload a data file.');
   }
-
-  console.log('\n✅ Blank tenant ready. Sign in and upload a sales file — nothing here');
-  console.log('   can be double-counted, because there is nothing here yet.');
 }
 
 main()

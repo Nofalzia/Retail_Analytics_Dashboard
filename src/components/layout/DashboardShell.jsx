@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme, useDesignTokens } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { DEMO_TENANTS, PRIMARY_DEMO_SLUG } from '../../config/demoTenants';
+import { DEMO_TENANTS, findDemoTenantBySlug } from '../../config/demoTenants';
 
 /**
  * ============================================================================
@@ -102,24 +102,6 @@ const readableInkOn = (accent, PALETTE) => {
   const onCharcoal  = contrastRatio(accentLuminance, relativeLuminance(PALETTE.charcoal));
   return onCream >= onCharcoal ? PALETTE.cream : PALETTE.charcoal;
 };
-
-/**
- * The mocked preview states (Healthy / Struggling / No data) were written
- * against the seeded demo store only, so every other tenant is always live.
- * @param {{slug?: string}|null} tenant Signed-in tenant.
- * @returns {boolean}
- */
-const isPrimaryDemoTenant = (tenant) => !tenant || tenant.slug === PRIMARY_DEMO_SLUG;
-
-/**
- * True for the seeded demo stores only. The "Switch store" list is demo
- * tooling, so a real tenant must never see the other tenants' names (or be
- * offered a route into them).
- * @param {{slug?: string}|null} tenant Signed-in tenant.
- * @returns {boolean}
- */
-const isDemoTenant = (tenant) =>
-  Boolean(tenant?.slug) && DEMO_TENANTS.some((entry) => entry.slug === tenant.slug);
 
 // ----------------------------------------------------------------------------
 // View routing — the active view also lives in the URL hash, so a refresh or a
@@ -525,35 +507,20 @@ const RoleSwitcher = ({ activeRole, onSelect }) => {
 };
 
 // ----------------------------------------------------------------------------
-// Data mode switcher — dev/demo preview toggle for empty-state QA.
-// Phase 3 removes this once `hasData` is derived from real API responses.
+// Tenant switcher — choices are real tenant accounts, never fixture datasets.
 // ----------------------------------------------------------------------------
 
-const DATA_MODES = [
-  { id: 'live', label: 'Healthy Store', shortLabel: 'Healthy' },
-  { id: 'struggling', label: 'Struggling Store', shortLabel: 'Struggling' },
-  { id: 'empty', label: 'New Tenant (No Data)', shortLabel: 'No data' },
-];
-
-const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = () => {} }) => {
+const DataModeSwitcher = ({ tenant = null, onSwitchTenant = () => {} }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
   const { theme } = useTheme();
-  const { CARD_SURFACE, PALETTE, EARTH } = useDesignTokens();
+  const { CARD_SURFACE, PALETTE } = useDesignTokens();
 
-  // The mocked preview states were written against the seeded demo store only.
-  // For every other tenant the switcher reports the live source instead of
-  // offering fakes, and still lets you switch back to another store.
-  const isPrimaryDemo = isPrimaryDemoTenant(tenant);
-  const otherTenants  = isDemoTenant(tenant)
+  const activeTenant = findDemoTenantBySlug(tenant?.slug);
+  const otherTenants = activeTenant
     ? DEMO_TENANTS.filter((entry) => entry.slug !== tenant?.slug)
     : [];
-  const activeMode    = DATA_MODES.find((mode) => mode.id === dataMode);
-  const activeLabel   = isPrimaryDemo ? (activeMode?.label ?? 'Healthy Store') : 'Live data';
-  // Below sm the full label does not fit next to the greeting, and the trigger
-  // used to collapse to a bare dot — so the data state was unknowable on a
-  // phone. A short label keeps the state readable at every width.
-  const shortLabel    = isPrimaryDemo ? (activeMode?.shortLabel ?? 'Healthy') : 'Live';
+  const activeLabel = activeTenant?.label ?? tenant?.name ?? 'Active tenant';
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -588,19 +555,8 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
           backgroundColor: isOpen ? PALETTE.sand : theme.surface,
         }}
       >
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{
-            backgroundColor:
-              dataMode === 'empty'
-                ? PALETTE.charcoalMuted
-                : dataMode === 'struggling'
-                  ? EARTH.terracotta
-                  : PALETTE.bottleGreen,
-          }}
-        />
-        <span className="truncate text-xs sm:hidden">{shortLabel}</span>
-        <span className="hidden truncate sm:inline">{activeLabel}</span>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: PALETTE.bottleGreen }} />
+        <span className="max-w-28 truncate text-xs sm:max-w-40">{activeLabel}</span>
         <ChevronDownIcon
           className={`h-3.5 w-3.5 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
           style={{ color: PALETTE.charcoalMuted }}
@@ -619,50 +575,17 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
             className="border-b px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide"
             style={{ borderColor: theme.sandBorder, color: PALETTE.charcoalMuted }}
           >
-            {isPrimaryDemo ? 'Preview data state' : 'Data source'}
+            Active tenant
           </p>
-          {!isPrimaryDemo && (
-            /* Non-interactive by design: this store only ever has live data. */
-            <div
-              className="flex items-center justify-between px-4 py-2.5 text-sm"
-              style={{ backgroundColor: PALETTE.bottleGreenSoft, color: PALETTE.charcoalMuted }}
-            >
-              Live data
-              <CheckIcon className="h-4 w-4" style={{ color: PALETTE.bottleGreen }} />
-            </div>
-          )}
-          {isPrimaryDemo && DATA_MODES.map((mode) => {
-            const isSelected = mode.id === dataMode;
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                aria-pressed={isSelected}
-                onClick={() => {
-                  onSelect(mode.id);
-                  setIsOpen(false);
-                }}
-                className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors"
-                style={{
-                  color: PALETTE.charcoal,
-                  backgroundColor: isSelected ? PALETTE.bottleGreenSoft : 'transparent',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) e.currentTarget.style.backgroundColor = PALETTE.sand;
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                {mode.label}
-                {isSelected && (
-                  <CheckIcon className="h-4 w-4" style={{ color: PALETTE.bottleGreen }} />
-                )}
-              </button>
-            );
-          })}
+          <div
+            className="flex items-center justify-between px-4 py-2.5 text-sm"
+            style={{ backgroundColor: PALETTE.bottleGreenSoft, color: PALETTE.charcoal }}
+          >
+            {activeLabel}
+            <CheckIcon className="h-4 w-4" style={{ color: PALETTE.bottleGreen }} />
+          </div>
 
-          {/* Switch store — every demo tenant except the one already signed in. */}
+          {/* Switching tenants signs in with that tenant's own account. */}
           {otherTenants.length > 0 && (
             <>
               <div className="h-px" style={{ backgroundColor: theme.sandBorder }} />
@@ -670,7 +593,7 @@ const DataModeSwitcher = ({ dataMode, onSelect, tenant = null, onSwitchTenant = 
                 className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide"
                 style={{ color: PALETTE.charcoalMuted }}
               >
-                Switch store
+                Switch tenant
               </p>
               {otherTenants.map((entry) => (
                 <button
@@ -717,8 +640,6 @@ const getGreeting = (activeRole) => `Welcome back, ${activeRole}.`;
 const TopHeader = ({
   activeRole,
   onRoleSelect,
-  dataMode,
-  onDataModeSelect,
   tenant,
   onSwitchTenant,
 }) => {
@@ -772,8 +693,6 @@ const TopHeader = ({
           )}
         </button>
         <DataModeSwitcher
-          dataMode={dataMode}
-          onSelect={onDataModeSelect}
           tenant={tenant}
           onSwitchTenant={onSwitchTenant}
         />
@@ -791,10 +710,8 @@ const DashboardShell = ({
   children,
   initialView = 'overview',
   initialRole = 'Owner',
-  initialDataMode = 'live',
   onNavigate = () => {},
   onRoleChange = () => {},
-  onDataModeChange = () => {},
 }) => {
   const { theme } = useTheme();
   const { tenant, switchTenant } = useAuth();
@@ -802,11 +719,7 @@ const DashboardShell = ({
   // keeps the view the user was on.
   const [activeView, setActiveView] = useState(() => readViewFromHash() ?? initialView);
   const [activeRole, setActiveRole] = useState(initialRole);
-  const [dataMode, setDataMode] = useState(initialDataMode);
-
-  // Mock preview data only exists for the seeded demo store, so every other
-  // tenant is pinned to live mode whatever the switcher was left on.
-  const effectiveDataMode = isPrimaryDemoTenant(tenant) ? dataMode : 'live';
+  const effectiveDataMode = 'live';
 
   // Back/forward (and a hand-edited hash) re-sync the active view.
   useEffect(() => {
@@ -834,11 +747,6 @@ const DashboardShell = ({
     onRoleChange(role);
   };
 
-  const handleDataModeChange = (mode) => {
-    setDataMode(mode);
-    onDataModeChange(mode);
-  };
-
   // The render prop receives handleNavigate as its fourth argument (T12d) so a
   // view can send the user to another one — e.g. the ingestion hub offering
   // "Open Recommendations" once an import's analysis has landed. It is the same
@@ -857,8 +765,6 @@ const DashboardShell = ({
         <TopHeader
           activeRole={activeRole}
           onRoleSelect={handleRoleChange}
-          dataMode={effectiveDataMode}
-          onDataModeSelect={handleDataModeChange}
           tenant={tenant}
           onSwitchTenant={switchTenant}
         />
@@ -895,9 +801,8 @@ const InboxIcon = ({ className }) => (
  * @param {React.ReactNode} [props.icon] Illustration for the empty card.
  * @param {string} [props.title]
  * @param {string} [props.description]
- * @param {string|null} [props.hint] Optional footnote that explains *why* the
- *   view is empty. Used by the preview data states, where an intentionally
- *   blank view would otherwise look like a broken import.
+ * @param {string|null} [props.hint] Optional footnote that explains why the
+ *   underlying tenant data does not yet support this view.
  * @param {string} [props.actionLabel]
  * @param {() => void} [props.onAction]
  */

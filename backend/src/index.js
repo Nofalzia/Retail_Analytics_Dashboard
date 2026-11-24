@@ -194,7 +194,14 @@ app.use((err, _req, res, _next) => {
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({
       error: 'FILE_TOO_LARGE',
-      message: `File exceeds the ${process.env.MAX_FILE_SIZE_MB || 25}MB limit.`,
+      message: `File exceeds the ${process.env.MAX_FILE_SIZE_MB || 60}MB limit.`,
+    });
+  }
+
+  if (err.message && err.message.startsWith('Unsupported file type:')) {
+    return res.status(400).json({
+      error: 'FILE_TYPE_NOT_ALLOWED',
+      message: err.message,
     });
   }
 

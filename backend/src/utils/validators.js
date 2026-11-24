@@ -87,6 +87,7 @@ export const COLUMN_ALIASES = {
   total_revenue:  ['total price', 'total', 'line total', 'revenue', 'sales', 'amount', 'net amount', 'net sales', 'total sales'],
   unit_cost:      ['unit cost', 'cost price', 'cost', 'cogs', 'unit cogs', 'purchase price', 'realized cost'],
   category:       ['category', 'product category', 'department', 'type'],
+  transaction_id: ['transaction id', 'transaction identifier', 'order id', 'invoice id', 'receipt id', 'reference id'],
   status:         ['status', 'order status', 'transaction status', 'payment status'],
   store_id:       ['store', 'store id', 'branch', 'location'],
 };
@@ -151,7 +152,7 @@ export const PRICE_COLUMNS = ['unit_price', 'total_revenue'];
 export const IDENTITY_COLUMNS = ['sku', 'product_name'];
 
 /** Canonical columns that are parsed when present and never required. */
-export const OPTIONAL_COLUMNS = ['sku', 'product_name', 'unit_cost', 'category', 'status', 'store_id'];
+export const OPTIONAL_COLUMNS = ['sku', 'product_name', 'unit_cost', 'category', 'transaction_id', 'status', 'store_id'];
 
 /** Reported when the file has no SKU column and product names become the codes. */
 export const NO_SKU_ASSUMPTION = 'No SKU column: product names are used as product codes.';
@@ -182,6 +183,7 @@ const MATCH_ORDER = [
   'total_revenue',
   'unit_cost',
   'category',
+  'transaction_id',
   'status',
   'store_id',
 ];
@@ -658,9 +660,13 @@ export function validateRow(rawRow, columnMap, rowIndex) {
   const sku = get('sku');
   const productName = get('product_name') || sku;
   const resolvedSku = sku || productName;
+  const sourceTransactionId = get('transaction_id') || null;
   if (!sku && productName) assumptions.push(NO_SKU_ASSUMPTION);
   if (!resolvedSku) {
     errors.push(`row ${rowIndex}: missing SKU and product name`);
+  }
+  if (sourceTransactionId && sourceTransactionId.length > 255) {
+    errors.push(`row ${rowIndex}: transaction identifier exceeds 255 characters`);
   }
 
   if (errors.length > 0) {
@@ -676,6 +682,7 @@ export function validateRow(rawRow, columnMap, rowIndex) {
       quantity_sold: quantitySold,
       unit_price:    unitPrice,
       unit_cost:     unitCost,
+      source_transaction_id: sourceTransactionId,
     },
     error: null,
     skipped: null,

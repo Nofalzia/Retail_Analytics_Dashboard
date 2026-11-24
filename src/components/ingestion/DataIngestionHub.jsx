@@ -20,18 +20,6 @@ import {
 import ApiErrorNotice from '../ApiErrorNotice';
 import { SectionHeading } from '../layout/DashboardShell';
 
-// Demo-mode simulation banner (only reachable when dataMode !== 'live').
-const SUCCESS_BANNER_MESSAGE =
-  'Successfully parsed 4,120 SKU records with 0 structural anomalies. The system runway has updated.';
-
-const MOCK_MALFORMED_FILENAME = 'invoice_malformed.csv';
-
-const STAGE_DEFINITIONS = [
-  { key: 'schema', label: 'Structural Schema Parsing' },
-  { key: 'depletion', label: 'Depletion Curve Calculation' },
-  { key: 'checksum', label: 'Integrity Checksum Verification' },
-];
-
 // ----------------------------------------------------------------------------
 // Live ingestion contract + cadence.
 // The file contract itself — required headers, size cap, example-file download,
@@ -112,28 +100,6 @@ const formatFileSize = (bytes) => {
 
 const formatTimestamp = (date) =>
   date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-
-let jobIdCounter = 0;
-const nextJobId = () => {
-  jobIdCounter += 1;
-  return `job-${jobIdCounter}`;
-};
-
-const createMockMalformedFile = () => {
-  const blob = new Blob(['tenant_id,units,cost\n'], { type: 'text/csv' });
-  return new File([blob], MOCK_MALFORMED_FILENAME, { type: 'text/csv', lastModified: Date.now() });
-};
-
-const createJob = (file) => ({
-  id: nextJobId(),
-  fileName: file.name,
-  fileSize: file.size,
-  startedAt: new Date(),
-  stages: STAGE_DEFINITIONS.map((stage) => ({ ...stage, progress: 0 })),
-  isMockMalformed: file.name === MOCK_MALFORMED_FILENAME,
-  hasError: false,
-  errorMessage: null,
-});
 
 // ----------------------------------------------------------------------------
 // SuccessFeedbackBanner — dismissible inline notice after graduation
@@ -275,8 +241,6 @@ const UploadDropzone = ({
   onReject,
   onDownloadTemplate,
   onDownloadInventoryTemplate = downloadInventoryTemplate,
-  showLoadSample = false,
-  onLoadSample,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
@@ -307,9 +271,12 @@ const UploadDropzone = ({
   );
 
   const handleBrowseChange = (event) => {
-    const files = Array.from(event.target.files || []);
-    if (files.length) acceptFiles(files);
-    event.target.value = '';
+    try {
+      const files = Array.from(event.target.files || []);
+      if (files.length) acceptFiles(files);
+    } finally {
+      event.target.value = '';
+    }
   };
 
   return (
@@ -443,33 +410,6 @@ const UploadDropzone = ({
           </span>
         </button>
 
-        {showLoadSample && (
-          <button
-            type="button"
-            onClick={onLoadSample}
-            className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-xs transition-colors"
-            style={{ ...CARD_SURFACE, color: PALETTE.charcoal, backgroundColor: theme.surface }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = PALETTE.sand;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = theme.surface;
-            }}
-          >
-            <span className="flex items-center gap-2.5">
-              <DocumentIcon className="h-4 w-4" style={{ color: theme.error }} />
-              <span>
-                <span className="font-medium">{MOCK_MALFORMED_FILENAME}</span>
-                <span className="ml-2 text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
-                  — validation error simulation
-                </span>
-              </span>
-            </span>
-            <span className="text-xs font-medium" style={{ color: PALETTE.bottleGreen }}>
-              Load sample
-            </span>
-          </button>
-        )}
       </div>
     </div>
   );
@@ -549,59 +489,9 @@ const EmptyQueueState = ({ isLive = true }) => {
       <p className="mt-1 text-center text-[11px]" style={{ color: PALETTE.charcoalMuted }}>
         {isLive
           ? 'Upload a CSV or XLSX file to import real sales rows.'
-          : 'Upload a file to see the simulated pipeline progress.'}
+          : 'Upload a CSV or XLSX file to import real sales rows.'}
       </p>
       <ColumnChecklist state="pending" />
-    </div>
-  );
-};
-
-const MockProcessingJobCard = ({ job }) => {
-  const { theme } = useTheme();
-  const { CARD_SURFACE, PALETTE } = useDesignTokens();
-
-  return (
-    <div className="rounded-xl p-4" style={{ ...CARD_SURFACE, backgroundColor: theme.surface }}>
-      <div className="flex items-center gap-2">
-        <DocumentIcon className="h-4 w-4" style={{ color: PALETTE.charcoalMuted }} />
-        <p className="truncate text-sm font-medium" style={{ color: PALETTE.charcoal }}>
-          {job.fileName}
-        </p>
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        {job.stages.map((stage, index) => {
-          const isSchemaStage = index === 0;
-          const showError = job.hasError && isSchemaStage;
-
-          return (
-            <div key={stage.key} className="flex flex-col items-center gap-2">
-              <ProgressRing
-                percent={stage.progress}
-                color={stage.progress >= 100 ? theme.success : PALETTE.bottleGreen}
-                isError={showError}
-              />
-              <p className="text-center text-[10px] leading-tight" style={{ color: PALETTE.charcoalMuted }}>
-                {stage.label}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      {job.hasError && job.errorMessage && (
-        <div
-          className="mt-4 rounded-lg px-3 py-2.5 text-xs font-medium"
-          style={{
-            backgroundColor: theme.errorSoft,
-            color: theme.error,
-            border: `1px solid ${theme.error}`,
-          }}
-          role="alert"
-        >
-          {job.errorMessage}
-        </div>
-      )}
     </div>
   );
 };
@@ -628,7 +518,7 @@ const describeErrors = (errorLog) => {
       lines.push(entry.message);
     }
   }
-  return lines.slice(0, 5);
+  return lines;
 };
 
 // Three honest stages, all derived from real job fields — status, total_rows,
@@ -654,21 +544,21 @@ const deriveRealStages = (upload) => {
   return [
     {
       key: 'schema',
-      label: 'Schema',
-      percent: isSchemaError ? 100 : (upload.status === 'validating' ? null : 100),
+      label: upload.status === 'queued' ? 'Queued' : 'Parsing',
+      percent: isSchemaError ? 100 : (upload.status === 'queued' || upload.status === 'parsing' ? null : 100),
       isError: isSchemaError,
     },
     {
       key: 'rows',
       label: upload.totalRows ? `${upload.rowsProcessed}/${upload.totalRows}` : 'Rows',
       percent: upload.status === 'completed' ? 100
-        : (upload.status === 'processing' ? rowsPct
+        : (upload.status === 'importing' ? rowsPct
         : (isFailed ? 0 : null)),
       isError: false,
     },
     {
       key: 'finalize',
-      label: 'Finalize',
+      label: 'Import',
       percent: upload.status === 'completed' ? 100 : 0,
       isError: isFailed && !isSchemaError,
     },
@@ -776,9 +666,7 @@ const ProcessingQueuePanel = ({ jobs, isLive = true }) => {
         {jobs.length === 0
           ? <EmptyQueueState isLive={isLive} />
           : jobs.map((entry) =>
-              isLive
-                ? <RealProcessingJobCard key={entry.id} upload={entry} />
-                : <MockProcessingJobCard key={entry.id} job={entry} />
+              <RealProcessingJobCard key={entry.id} upload={entry} />
             )}
       </div>
     </div>
@@ -803,15 +691,18 @@ const StatusTag = ({ status }) => {
   } else if (status === 'failed' || status === 'Failed') {
     style = { backgroundColor: theme.errorSoft, color: theme.error };
     label = 'Failed';
-  } else if (status === 'processing') {
+  } else if (status === 'importing') {
     style = { backgroundColor: theme.warningSoft, color: theme.warning };
-    label = 'Processing';
+    label = 'Importing';
+    busy = true;
+  } else if (status === 'parsing') {
+    style = { backgroundColor: theme.warningSoft, color: theme.warning };
+    label = 'Parsing';
     busy = true;
   } else {
-    // 'validating' | 'pending' | legacy mock 'Processing'
     style = { backgroundColor: theme.warningSoft, color: theme.warning };
-    label = status === 'Processing' ? 'Processing' : 'Validating';
-    busy = status !== 'Processing';
+    label = status === 'queued' ? 'Queued' : 'Parsing';
+    busy = true;
   }
 
   return (
@@ -848,7 +739,7 @@ const ResultsPanel = ({ upload }) => {
   const { CARD_SURFACE, PALETTE, ALERT_SURFACE } = useDesignTokens();
   if (!upload) return null;
   const isFailed = upload.status === 'failed';
-  const surface = isFailed ? ALERT_SURFACE.warning : null;
+  const surface = ALERT_SURFACE.warning;
   const errors = describeErrors(upload.errorLog);
   const missingEntry = missingColumnsEntryFromLog(upload.errorLog);
   const missing = missingEntry?.columns ?? [];
@@ -878,31 +769,27 @@ const ResultsPanel = ({ upload }) => {
         </p>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <ResultStat label="Rows processed" value={upload.rowsProcessed} />
-        <ResultStat label="Rows failed" value={upload.rowsFailed} />
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <ResultStat label="Inserted" value={upload.rowsInserted} />
+        <ResultStat label="Updated" value={upload.rowsUpdated} />
+        <ResultStat label="Skipped" value={upload.rowsSkipped} />
+        <ResultStat label="Rejected" value={upload.rowsRejected ?? upload.rowsFailed} />
         <ResultStat label="Total rows" value={totalRows} />
       </div>
 
-      {isFailed && (
+      {errors.length > 0 && (
         <div
           className="mt-4 rounded-lg px-3 py-2.5 text-xs"
           style={{ backgroundColor: surface.backgroundColor, border: `1px solid ${surface.borderColor}` }}
         >
           <p className="font-medium" style={{ color: PALETTE.charcoal }}>
-            What to fix:
+            Rows needing attention:
           </p>
-          {errors.length > 0 ? (
-            <ul className="mt-1.5 list-disc space-y-1 pl-4" style={{ color: PALETTE.charcoalMuted }}>
-              {errors.map((error, index) => (
-                <li key={index}>{error}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1.5" style={{ color: PALETTE.charcoalMuted }}>
-              The server didn't return a detailed reason — check your file structure and try again.
-            </p>
-          )}
+          <ul className="mt-1.5 list-disc space-y-1 pl-4" style={{ color: PALETTE.charcoalMuted }}>
+            {errors.map((error, index) => (
+              <li key={index}>{error}</li>
+            ))}
+          </ul>
           {detectedHeaders.length > 0 && (
             <p className="mt-2 text-[11px] leading-relaxed" style={{ color: PALETTE.charcoalMuted }}>
               Headers we found:{' '}
@@ -912,6 +799,11 @@ const ResultsPanel = ({ upload }) => {
             </p>
           )}
         </div>
+      )}
+      {isFailed && errors.length === 0 && (
+        <p className="mt-4 text-xs" style={{ color: PALETTE.charcoalMuted }}>
+          The server didn't return a detailed reason — check your file structure and try again.
+        </p>
       )}
 
       {notices.length > 0 && (
@@ -1026,8 +918,6 @@ const RecentUploadsTable = ({ uploads }) => {
 // DataIngestionHub — top-level export
 // ----------------------------------------------------------------------------
 
-const MALFORMED_ERROR_MESSAGE = '[Row 142]: Missing mandatory primary timestamp alignment value.';
-
 /**
  * T12d: an import now runs detection and recommendations server-side before it
  * is allowed to finish, so whatever a dashboard fetched before it is stale.
@@ -1134,6 +1024,10 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
                 totalRows: job.total_rows,
                 rowsProcessed: job.rows_processed || 0,
                 rowsFailed: job.rows_failed || 0,
+                rowsInserted: job.rows_inserted || 0,
+                rowsUpdated: job.rows_updated || 0,
+                rowsSkipped: job.rows_skipped || 0,
+                rowsRejected: job.rows_rejected || 0,
                 errorLog: Array.isArray(job.error_log) ? job.error_log : [],
                 // T12a: what the import estimated, and how many rows its status
                 // filter ignored. Both come from the job itself — nothing inferred.
@@ -1149,11 +1043,18 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
             progressTrack.delete(jobId);
             setActiveJobIds((ids) => ids.filter((id) => id !== jobId));
             setLastResultJobId(jobId);
+            if (job.status === 'failed') {
+              const details = describeErrors(job.error_log);
+              setNotice({
+                tone: 'error',
+                message: details[0] || 'Import failed. Review the row errors below and correct the file.',
+              });
+            }
             if (job.status === 'completed') {
               // T9 edge case: a job can legitimately finish having imported
               // NOTHING (a header-only file, or every row rejected). That is not
               // a success — it goes out on the calm ochre warning surface.
-              if ((job.rows_processed || 0) === 0) {
+              if ((job.rows_processed || 0) === 0 && (job.rows_skipped || 0) === 0) {
                 setNotice({
                   tone: 'warning',
                   message: job.rows_failed
@@ -1169,7 +1070,7 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
                 const bannerId = `${jobId}:${Date.now()}`;
                 setSuccessBanner({
                   id: bannerId,
-                  message: `Import complete — ${job.rows_processed} rows imported${job.rows_failed ? `, ${job.rows_failed} failed validation` : ''}.`,
+                  message: `Import complete — ${job.rows_inserted || 0} inserted, ${job.rows_updated || 0} updated, ${job.rows_skipped || 0} skipped, ${job.rows_rejected || 0} rejected.`,
                   analysisLine: null,
                   actions: [],
                 });
@@ -1239,46 +1140,45 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
       if (timer) clearTimeout(timer);
     };
   }, [activeKey]);
-          const handleFilesAccepted = (files) => {
+  const handleFilesAccepted = (files) => {
     files.forEach((file) => {
+      const localId = `queued-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setUploads((prev) => [...prev, {
+        id: localId,
+        jobId: null,
+        fileName: file.name,
+        fileSize: file.size,
+        timestamp: new Date(),
+        status: 'queued',
+        progressPct: null,
+        totalRows: null,
+        rowsProcessed: 0,
+        rowsFailed: 0,
+        rowsInserted: 0,
+        rowsUpdated: 0,
+        rowsSkipped: 0,
+        rowsRejected: 0,
+        errorLog: [],
+        assumptions: [],
+        skippedByStatus: 0,
+        kind: null,
+      }]);
       api.uploadFile(storeId, file)
         .then(({ jobId }) => {
-          setUploads((prev) => [...prev, {
-            id: jobId,
-            jobId,
-            fileName: file.name,
-            fileSize: file.size,
-            timestamp: new Date(),
-            status: 'validating',
-            progressPct: null,
-            totalRows: null,
-            rowsProcessed: 0,
-            rowsFailed: 0,
-            errorLog: [],
-            assumptions: [],
-            skippedByStatus: 0,
-            // T12e: filled in from the job's column_map once polling responds.
-            kind: null,
-          }]);
+          setUploads((prev) => prev.map((upload) => upload.id === localId
+            ? { ...upload, id: jobId, jobId, status: 'parsing' }
+            : upload));
           setActiveJobIds((ids) => [...ids, jobId]);
         })
         .catch((err) => {
-          // 409 DUPLICATE_FILE — the exact same file was already imported for this
-          // store. Shown as the calm ochre NoticeBanner (warning surface), not a
-          // red error, because nothing is broken — the data is simply already in.
-          if (err.status === 409 || err.code === 'DUPLICATE_FILE') {
-            setNotice({
-              tone: 'warning',
-              message: `${err.data?.message || 'This file was already imported.'} Upload a different file.`,
-            });
-            return;
-          }
-          setNotice({
-            tone: 'error',
-            message: err.status === 413
-              ? `"${file.name}" is larger than the ${MAX_FILE_SIZE_MB}MB upload limit.`
-              : (err.data?.message || 'Upload failed — please try again.'),
-          });
+          const message = err.status === 413
+            ? `"${file.name}" is larger than the ${MAX_FILE_SIZE_MB}MB upload limit.`
+            : (err.data?.message || 'Upload failed — please try again.');
+          setUploads((prev) => prev.map((upload) => upload.id === localId
+            ? { ...upload, status: 'failed', errorLog: [{ message }] }
+            : upload));
+          setLastResultJobId(localId);
+          setNotice({ tone: 'error', message });
         });
     });
   };
@@ -1357,202 +1257,11 @@ const LiveDataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = ()
 };
 
   // ----------------------------------------------------------------------------
-// MockDataIngestionHub — demo preview (dataMode !== 'live')
-// The original simulated pipeline, reachable ONLY through the non-live
-// preview modes on the DataModeSwitcher.
-// ----------------------------------------------------------------------------
+  // DataIngestionHub — the real tenant upload pipeline.
+  // ----------------------------------------------------------------------------
 
-const MockDataIngestionHub = ({ onProceedToAnalytics = () => {} }) => {
-  const [activeJobs, setActiveJobs] = useState([]);
-  const [recentUploads, setRecentUploads] = useState([]);
-  const [successBanner, setSuccessBanner] = useState(null);
-  const { PALETTE } = useDesignTokens();
-
-  useEffect(() => {
-    if (activeJobs.length === 0) return undefined;
-
-    const interval = setInterval(() => {
-      setActiveJobs((prevJobs) => {
-        const stillActive = [];
-        const justCompleted = [];
-        const justErrored = [];
-
-        prevJobs.forEach((job) => {
-          if (job.hasError) {
-            stillActive.push(job);
-            return;
-          }
-
-          if (job.isMockMalformed) {
-            const schemaStage = job.stages[0];
-            if (schemaStage.progress >= 40) {
-              const haltedJob = {
-                ...job,
-                hasError: true,
-                errorMessage: MALFORMED_ERROR_MESSAGE,
-                stages: job.stages.map((stage, index) =>
-                  index === 0 ? { ...stage, progress: 40 } : { ...stage, progress: 0 }
-                ),
-              };
-              stillActive.push(haltedJob);
-              justErrored.push(haltedJob);
-            } else {
-              stillActive.push({
-                ...job,
-                stages: job.stages.map((stage, index) =>
-                  index === 0
-                    ? { ...stage, progress: Math.min(40, stage.progress + 8 + Math.random() * 10) }
-                    : stage
-                ),
-              });
-            }
-            return;
-          }
-
-          const updatedStages = job.stages.map((stage) =>
-            stage.progress >= 100
-              ? stage
-              : { ...stage, progress: Math.min(100, stage.progress + (8 + Math.random() * 14)) }
-          );
-          const isComplete = updatedStages.every((stage) => stage.progress >= 100);
-          const updatedJob = { ...job, stages: updatedStages };
-
-          if (isComplete) {
-            justCompleted.push(updatedJob);
-          } else {
-            stillActive.push(updatedJob);
-          }
-        });
-
-        if (justCompleted.length) {
-          setRecentUploads((prevUploads) =>
-            prevUploads.map((upload) =>
-              justCompleted.some((job) => job.id === upload.id)
-                ? { ...upload, status: 'Success' }
-                : upload
-            )
-          );
-          setSuccessBanner({
-            id: Date.now(),
-            message: SUCCESS_BANNER_MESSAGE,
-          });
-        }
-
-        if (justErrored.length) {
-          setRecentUploads((prevUploads) =>
-            prevUploads.map((upload) =>
-              justErrored.some((job) => job.id === upload.id)
-                ? { ...upload, status: 'Failed' }
-                : upload
-            )
-          );
-        }
-
-        return stillActive;
-      });
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [activeJobs.length]);
-
-  const handleFilesAdded = (files) => {
-    const newJobs = files.map(createJob);
-
-    setActiveJobs((prev) => [...prev, ...newJobs]);
-    setRecentUploads((prev) => [
-      ...newJobs.map((job) => ({
-        id: job.id,
-        fileName: job.fileName,
-        fileSize: job.fileSize,
-        timestamp: job.startedAt,
-        status: 'Processing',
-      })),
-      ...prev,
-    ]);
-  };
-
-  const handleLoadMockMalformed = () => {
-    handleFilesAdded([createMockMalformedFile()]);
-  };
-
-  const hasCompletedUpload = recentUploads.some((upload) => upload.status === 'Success');
-
-  return (
-    <div className="space-y-6">
-      {successBanner && (
-        <SuccessFeedbackBanner
-          message={successBanner.message}
-          onDismiss={() => setSuccessBanner(null)}
-        />
-      )}
-
-      <div>
-        <h2 className="text-xl font-semibold" style={{ color: PALETTE.charcoal }}>
-          Data Ingestion Hub
-        </h2>
-        <p className="mt-1 text-sm" style={{ color: PALETTE.charcoalMuted }}>
-          Upload and monitor store data files. This preview shows the simulated
-          pipeline — switch back to Healthy Store for real imports.
-        </p>
-      </div>
-
-      <UploadDropzone
-        onFiles={handleFilesAdded}
-        onDownloadTemplate={downloadTemplate}
-        showLoadSample
-        onLoadSample={handleLoadMockMalformed}
-      />
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-        <ProcessingQueuePanel jobs={activeJobs} isLive={false} />
-        <RecentUploadsTable uploads={recentUploads} />
-      </div>
-
-      <div className="flex flex-col items-end gap-1.5">
-        {/* A simulated upload writes nothing, so "Proceed to Analytics" lands on
-            whatever data state the header switcher holds. Say that before the
-            click, not after the user has concluded the import failed. */}
-        <p
-          className="max-w-md text-right text-xs leading-relaxed"
-          style={{ color: PALETTE.charcoalMuted }}
-        >
-          {hasCompletedUpload
-            ? "Preview mode: this upload was simulated and wrote nothing to your store. Set the header data state to 'Healthy Store' to import real files and see live analytics."
-            : 'Available once a file has finished importing.'}
-        </p>
-        <button
-          type="button"
-          onClick={onProceedToAnalytics}
-          disabled={!hasCompletedUpload}
-          className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-          style={{ backgroundColor: PALETTE.bottleGreen, color: PALETTE.cream }}
-          onMouseEnter={(e) => {
-            if (hasCompletedUpload) e.currentTarget.style.backgroundColor = PALETTE.bottleGreenHover;
-          }}
-          onMouseLeave={(e) => {
-            if (hasCompletedUpload) e.currentTarget.style.backgroundColor = PALETTE.bottleGreen;
-          }}
-        >
-          Proceed to Analytics
-          <ArrowRightIcon className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
+  const DataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = () => {} }) => (
+    <LiveDataIngestionHub onProceedToAnalytics={onProceedToAnalytics} onOpenView={onOpenView} />
   );
-};
-
-// ----------------------------------------------------------------------------
-// DataIngestionHub — dispatcher
-// Live mode (the default) uses the real upload pipeline. Non-live preview
-// modes keep the original mocked simulation reachable.
-// T12d: onOpenView lets the live hub send the user to the view that shows the
-// analysis its import just ran; the mock never needs it.
-// ----------------------------------------------------------------------------
-
-const DataIngestionHub = ({ onProceedToAnalytics = () => {}, onOpenView = () => {}, dataMode = 'live' }) => {
-  return dataMode === 'live'
-    ? <LiveDataIngestionHub onProceedToAnalytics={onProceedToAnalytics} onOpenView={onOpenView} />
-    : <MockDataIngestionHub onProceedToAnalytics={onProceedToAnalytics} />;
-};
 
 export default DataIngestionHub;

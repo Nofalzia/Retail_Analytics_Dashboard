@@ -129,7 +129,21 @@ console.log('validators self-test');
     detectedHeaders.join('|') === 'Date|SKU|Qty');
 }
 
-// ── 6. Flexible dates: ISO, Excel serials, day-first, month names ────────────
+// ── 6. Transaction identifiers ──────────────────────────────────────────────
+{
+  const { map } = buildColumnMap(['date', 'sku', 'qty', 'price', 'Order ID']);
+  const result = validateRow(
+    { date: '2025-11-02', sku: 'SKU-6', qty: '2', price: '8.5', 'Order ID': 'ORDER-42' },
+    map,
+    6,
+  );
+  check('transaction identifier aliases provide a stable re-import identity',
+    map.transaction_id === 'Order ID'
+    && result.error === null
+    && result.data?.source_transaction_id === 'ORDER-42');
+}
+
+// ── 7. Flexible dates: ISO, Excel serials, day-first, month names ────────────
 {
   check('ISO date parses', parseFlexibleDate('2025-10-12') === '2025-10-12');
   check('ISO datetime keeps its calendar day',
