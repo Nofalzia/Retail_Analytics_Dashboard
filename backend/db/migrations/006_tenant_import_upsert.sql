@@ -26,7 +26,10 @@ UPDATE ingestion_jobs
 
 ALTER TABLE ingestion_jobs
   ADD CONSTRAINT ingestion_jobs_status_check
-  CHECK (status IN ('queued', 'parsing', 'importing', 'completed', 'failed'));
+  CHECK (status IN (
+    'queued', 'parsing', 'importing', 'completed', 'failed',
+    'pending', 'validating', 'processing'
+  ));
 
 ALTER TABLE sale_transactions
   ADD COLUMN IF NOT EXISTS source_transaction_id VARCHAR(255),

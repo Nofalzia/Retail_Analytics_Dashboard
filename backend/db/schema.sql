@@ -206,7 +206,10 @@ CREATE TABLE ingestion_jobs (
   file_type       VARCHAR(10)   NOT NULL              -- 'csv' | 'xlsx'
                   CHECK (file_type IN ('csv', 'xlsx')),
   status          VARCHAR(30)   NOT NULL DEFAULT 'queued'
-                  CHECK (status IN ('queued', 'parsing', 'importing', 'completed', 'failed')),
+                  CHECK (status IN (
+                    'queued', 'parsing', 'importing', 'completed', 'failed',
+                    'pending', 'validating', 'processing'
+                  )),
   total_rows      INTEGER       NULL,                 -- populated after initial scan
   rows_processed  INTEGER       NOT NULL DEFAULT 0,
   rows_failed     INTEGER       NOT NULL DEFAULT 0,

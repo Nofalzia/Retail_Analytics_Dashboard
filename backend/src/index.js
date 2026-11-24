@@ -36,6 +36,11 @@ const PORT = process.env.PORT || 3001;
 // ── Security middleware ────────────────────────────────────────────────────────
 app.use(helmet());
 
+// Hosted deployments commonly terminate TLS at a reverse proxy and forward
+// the original client IP. Trust the first proxy hop so express-rate-limit
+// can key limits by X-Forwarded-For instead of rejecting the header.
+app.set('trust proxy', 1);
+
 // CORS — accepts a comma-separated list of allowed frontend origins so local dev
 // (http://localhost:5173) and the deployed Vercel app can both be listed, e.g.
 //   CORS_ORIGIN=http://localhost:5173,https://retail-analytics-saas.vercel.app
