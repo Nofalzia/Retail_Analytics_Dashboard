@@ -62,7 +62,7 @@ import {
 } from './sandboxDb.js';
 import { confusionCounts, classificationMetrics, recallByDimension } from './metrics.js';
 import { evaluateBaselines } from './baselines.js';
-import { DEFAULT_PARAMS, scoreSeries, severityFor } from '../../src/services/rollingZScore.js';
+import { DEFAULT_PARAMS, scoreSeries } from '../../src/services/rollingZScore.js';
 import { runZScoreDetection } from '../../src/services/detectionEngine.js';
 
 // ── Configuration ────────────────────────────────────────────────────────────
@@ -73,8 +73,6 @@ const COST_PRICE = 60;
 const EVAL_DAYS = 14;          // must match EVAL_DAYS in detectionEngine.js
 const ENGINE_WINDOW_DAYS = 14; // must match ROLLING_WINDOW_DAYS in detectionEngine.js
 const V1_Z_INFO = 1.5;         // v1's actionable floor (|z| > 1.5)
-const V1_Z_WARNING = 2.0;
-const V1_Z_CRITICAL = 2.5;
 const Z_TOLERANCE = 0.001;     // |z| is persisted to 4 decimals
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));

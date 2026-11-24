@@ -1,0 +1,51 @@
+sku,product_name,actual_units,method,n,wape_pct,mae,bias_pct
+SKU-112,Meethi Boondi (250g),121,M1_seasonal_naive,7,46.281,8,-19.8347
+SKU-112,Meethi Boondi (250g),121,M2_ma7,7,34.2385,5.9184,-19.8347
+SKU-112,Meethi Boondi (250g),121,M3_velocity14,7,34.0614,5.8878,-19.4215
+SKU-112,Meethi Boondi (250g),121,M4_hw_grid,7,35.9316,6.211,-17.3336
+SKU-112,Meethi Boondi (250g),121,M6_weekday_profile,7,36.0362,6.2291,-20.4545
+SKU-148,Kheer Cup,114,M1_seasonal_naive,7,41.2281,6.7143,-20.1754
+SKU-148,Kheer Cup,114,M2_ma7,7,30.7018,5,-20.1754
+SKU-148,Kheer Cup,114,M3_velocity14,7,28.4461,4.6327,-14.9123
+SKU-148,Kheer Cup,114,M4_hw_grid,7,34.0773,5.5497,-16.4112
+SKU-148,Kheer Cup,114,M6_weekday_profile,7,30.3542,4.9434,-15.5702
+SKU-143,Samosa Chaat,110,M1_seasonal_naive,7,30.9091,4.8571,-21.8182
+SKU-143,Samosa Chaat,110,M2_ma7,7,33.2468,5.2245,-21.8182
+SKU-143,Samosa Chaat,110,M3_velocity14,7,29.8052,4.6837,-16.8182
+SKU-143,Samosa Chaat,110,M4_hw_grid,7,51.3182,8.0643,-42.5746
+SKU-143,Samosa Chaat,110,M6_weekday_profile,7,29.4599,4.6294,-18.1818
+SKU-147,Rasmalai (2 pcs),103,M1_seasonal_naive,7,33.9806,5,-6.7961
+SKU-147,Rasmalai (2 pcs),103,M2_ma7,7,22.6075,3.3265,-6.7961
+SKU-147,Rasmalai (2 pcs),103,M3_velocity14,7,21.4286,3.1531,1.4563
+SKU-147,Rasmalai (2 pcs),103,M4_hw_grid,7,20.502,3.0167,-3.6811
+SKU-147,Rasmalai (2 pcs),103,M6_weekday_profile,7,20.7482,3.053,-2.1845
+SKU-142,Chana Chaat,102,M1_seasonal_naive,7,55.8824,8.1429,-42.1569
+SKU-142,Chana Chaat,102,M2_ma7,7,44.958,6.551,-42.1569
+SKU-142,Chana Chaat,102,M3_velocity14,7,38.6555,5.6327,-33.3333
+SKU-142,Chana Chaat,102,M4_hw_grid,7,58.1854,8.4784,-48.4815
+SKU-142,Chana Chaat,102,M6_weekday_profile,7,35.7213,5.2051,-30.6373
+SKU-110,Jalebi (250g),101,M1_seasonal_naive,7,39.604,5.7143,7.9208
+SKU-110,Jalebi (250g),101,M2_ma7,7,36.2093,5.2245,7.9208
+SKU-110,Jalebi (250g),101,M3_velocity14,7,36.7751,5.3061,11.8812
+SKU-110,Jalebi (250g),101,M4_hw_grid,7,42.949,6.1969,16.6804
+SKU-110,Jalebi (250g),101,M6_weekday_profile,7,33.1751,4.7867,7.4257
+SKU-111,Sugar-Free Jalebi (250g),101,M1_seasonal_naive,7,26.7327,3.8571,8.9109
+SKU-111,Sugar-Free Jalebi (250g),101,M2_ma7,7,45.686,6.5918,8.9109
+SKU-111,Sugar-Free Jalebi (250g),101,M3_velocity14,7,44.8373,6.4694,6.9307
+SKU-111,Sugar-Free Jalebi (250g),101,M4_hw_grid,7,35.961,5.1887,13.5393
+SKU-111,Sugar-Free Jalebi (250g),101,M6_weekday_profile,7,46.3658,6.6899,5.6931
+SKU-149,Almond Milk,100,M1_seasonal_naive,7,49,7,5
+SKU-149,Almond Milk,100,M2_ma7,7,35,5,5
+SKU-149,Almond Milk,100,M3_velocity14,7,34.3571,4.9082,3.5
+SKU-149,Almond Milk,100,M4_hw_grid,7,43.5796,6.2257,20.2261
+SKU-149,Almond Milk,100,M6_weekday_profile,7,29.3952,4.1993,-8.75
+SKU-105,Puri,98,M1_seasonal_naive,7,38.7755,5.4286,-26.5306
+SKU-105,Puri,98,M2_ma7,7,39.9417,5.5918,-26.5306
+SKU-105,Puri,98,M3_velocity14,7,33.1633,4.6429,-10.7143
+SKU-105,Puri,98,M4_hw_grid,7,31.1666,4.3633,-5.7929
+SKU-105,Puri,98,M6_weekday_profile,7,33.7161,4.7202,-13.5204
+SKU-115,Chicken Cheese Shawarma,97,M1_seasonal_naive,7,36.0825,5,1.0309
+SKU-115,Chicken Cheese Shawarma,97,M2_ma7,7,27.8351,3.8571,1.0309
+SKU-115,Chicken Cheese Shawarma,97,M3_velocity14,7,34.1679,4.7347,-18.5567
+SKU-115,Chicken Cheese Shawarma,97,M4_hw_grid,7,43.5672,6.0372,34.9453
+SKU-115,Chicken Cheese Shawarma,97,M6_weekday_profile,7,36.371,5.04,-21.134

@@ -1,0 +1,3622 @@
+{
+  "dataKind": "real",
+  "accuracyEvidence": true,
+  "banner": "REAL point-of-sale data — accuracy evidence for the dev window only",
+  "config": {
+    "workbookSheet": "POS Sales Log",
+    "dataKind": "real",
+    "dateShiftDays": 0,
+    "endpointDate": "2026-09-28",
+    "devWindow": {
+      "start": "2026-09-01",
+      "end": "2026-09-28"
+    },
+    "holdOut": {
+      "start": "2026-09-29",
+      "end": "2026-10-05",
+      "sealed": true,
+      "evaluated": false
+    },
+    "folds": {
+      "count": 7,
+      "mode": "expanding",
+      "origins": [
+        "2026-09-21",
+        "2026-09-22",
+        "2026-09-23",
+        "2026-09-24",
+        "2026-09-25",
+        "2026-09-26",
+        "2026-09-27"
+      ],
+      "trainDays": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      "minTrainDays": 21,
+      "maxHistoryDays": 28,
+      "horizonDays": 7,
+      "scoredDays": 28
+    },
+    "historyDays": 28,
+    "velocityDays": 14,
+    "m5Presets": [
+      {
+        "alpha": 0.2,
+        "beta": 0,
+        "gamma": 0.2
+      },
+      {
+        "alpha": 0.2,
+        "beta": 0,
+        "gamma": 0.3
+      },
+      {
+        "alpha": 0.2,
+        "beta": 0,
+        "gamma": 0.5
+      },
+      {
+        "alpha": 0.3,
+        "beta": 0,
+        "gamma": 0.2
+      },
+      {
+        "alpha": 0.3,
+        "beta": 0,
+        "gamma": 0.3
+      },
+      {
+        "alpha": 0.3,
+        "beta": 0,
+        "gamma": 0.5
+      },
+      {
+        "alpha": 0.5,
+        "beta": 0,
+        "gamma": 0.2
+      },
+      {
+        "alpha": 0.5,
+        "beta": 0,
+        "gamma": 0.3
+      },
+      {
+        "alpha": 0.5,
+        "beta": 0,
+        "gamma": 0.5
+      }
+    ],
+    "bootstrap": {
+      "method": "block bootstrap by calendar day (blocks resampled with replacement, observations pooled per draw)",
+      "draws": 2000,
+      "seed": 20260917,
+      "baseline": "M1_seasonal_naive",
+      "incumbent": "M3_velocity14"
+    },
+    "generatedAt": "2026-11-17T11:46:15.450Z"
+  },
+  "dataset": {
+    "rowsInSheet": 13544,
+    "rowsValid": 13544,
+    "rowsAggregated": 10834,
+    "rowsOutsideWindow": 2710,
+    "excluded": {
+      "status_not_completed": 0,
+      "quantity_not_positive": 0,
+      "bad_date": 0,
+      "missing_sku": 0
+    },
+    "hasStatusColumn": false,
+    "pairCount": 1399,
+    "skus": 50,
+    "calendarDays": 28,
+    "fileRange": {
+      "firstDate": "2026-09-01",
+      "lastDate": "2026-10-05",
+      "distinctDays": 35
+    },
+    "usedRange": {
+      "firstDate": "2026-09-01",
+      "lastDate": "2026-09-28",
+      "distinctDays": 28
+    },
+    "shiftDays": 0,
+    "cellsWithUnits": 1399,
+    "zeroCells": 1
+  },
+  "weekdayPattern": {
+    "days": 28,
+    "overallMeanUnitsPerDay": 602.9285714285714,
+    "perWeekday": [
+      {
+        "weekday": "Sunday",
+        "weekdayIndex": 0,
+        "days": 4,
+        "meanUnitsPerDay": 641.75,
+        "indexVsOverall": 1.0643881056746831,
+        "minUnits": 589,
+        "maxUnits": 680,
+        "cvPct": 6.096911600674583
+      },
+      {
+        "weekday": "Monday",
+        "weekdayIndex": 1,
+        "days": 4,
+        "meanUnitsPerDay": 572.25,
+        "indexVsOverall": 0.9491174031512853,
+        "minUnits": 557,
+        "maxUnits": 590,
+        "cvPct": 2.4728653032913774
+      },
+      {
+        "weekday": "Tuesday",
+        "weekdayIndex": 2,
+        "days": 4,
+        "meanUnitsPerDay": 571,
+        "indexVsOverall": 0.9470441890771235,
+        "minUnits": 537,
+        "maxUnits": 590,
+        "cvPct": 4.400411102169937
+      },
+      {
+        "weekday": "Wednesday",
+        "weekdayIndex": 3,
+        "days": 4,
+        "meanUnitsPerDay": 596.5,
+        "indexVsOverall": 0.9893377561900248,
+        "minUnits": 560,
+        "maxUnits": 616,
+        "cvPct": 4.434402842020838
+      },
+      {
+        "weekday": "Thursday",
+        "weekdayIndex": 4,
+        "days": 4,
+        "meanUnitsPerDay": 593.5,
+        "indexVsOverall": 0.9843620424120365,
+        "minUnits": 541,
+        "maxUnits": 629,
+        "cvPct": 6.276562457295755
+      },
+      {
+        "weekday": "Friday",
+        "weekdayIndex": 5,
+        "days": 4,
+        "meanUnitsPerDay": 592.5,
+        "indexVsOverall": 0.982703471152707,
+        "minUnits": 565,
+        "maxUnits": 610,
+        "cvPct": 3.4547661587272103
+      },
+      {
+        "weekday": "Saturday",
+        "weekdayIndex": 6,
+        "days": 4,
+        "meanUnitsPerDay": 653,
+        "indexVsOverall": 1.0830470323421395,
+        "minUnits": 627,
+        "maxUnits": 691,
+        "cvPct": 4.258632693132049
+      }
+    ],
+    "strongest": "Saturday",
+    "weakest": "Tuesday"
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "origin": "2026-09-21",
+      "trainDays": 21,
+      "scoredFrom": "2026-09-22",
+      "scoredTo": "2026-09-28",
+      "scoredDays": 7,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 350,
+          "wapePct": 43.9789322480249,
+          "mae": 5.248571428571428,
+          "biasPct": 3.184103423509696,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M2_ma7",
+          "n": 350,
+          "wapePct": 31.93337665446832,
+          "mae": 3.811020408163262,
+          "biasPct": 3.1841034235097614,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 350,
+          "wapePct": 31.04415335681796,
+          "mae": 3.704897959183675,
+          "biasPct": 2.202537706487997,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 350,
+          "wapePct": 43.897540060593165,
+          "mae": 5.238857852374219,
+          "biasPct": 3.848212040534289,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 350,
+          "wapePct": 43.23378434407455,
+          "mae": 5.159643348719983,
+          "biasPct": 6.2568923275649215,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 350,
+          "wapePct": 42.01691851557292,
+          "mae": 5.014419103987088,
+          "biasPct": 6.295419896963398,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 350,
+          "wapePct": 41.15741016785808,
+          "mae": 4.911842922032663,
+          "biasPct": 6.40767138402088,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 350,
+          "wapePct": 43.157977749606985,
+          "mae": 5.150596373145953,
+          "biasPct": 6.50523726602056,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 350,
+          "wapePct": 42.125990360244565,
+          "mae": 5.027436049564044,
+          "biasPct": 6.602758048264462,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 350,
+          "wapePct": 41.44228425993298,
+          "mae": 4.94584061010686,
+          "biasPct": 6.845204591582902,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 350,
+          "wapePct": 44.557139400791115,
+          "mae": 5.317576322202985,
+          "biasPct": 6.225578064804883,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 350,
+          "wapePct": 43.79082296702963,
+          "mae": 5.226121929522365,
+          "biasPct": 6.395551192242752,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 350,
+          "wapePct": 43.19156932393285,
+          "mae": 5.154605287601929,
+          "biasPct": 6.76986091135404,
+          "meanActual": 11.934285714285714
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 350,
+          "wapePct": 30.238304243571157,
+          "mae": 3.6087256235827634,
+          "biasPct": 1.388556380177117,
+          "meanActual": 11.934285714285714
+        }
+      ]
+    },
+    {
+      "fold": 2,
+      "origin": "2026-09-22",
+      "trainDays": 22,
+      "scoredFrom": "2026-09-23",
+      "scoredTo": "2026-09-28",
+      "scoredDays": 6,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 300,
+          "wapePct": 45.069252077562325,
+          "mae": 5.423333333333333,
+          "biasPct": 4.515235457063712,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M2_ma7",
+          "n": 300,
+          "wapePct": 32.09339137316977,
+          "mae": 3.861904761904763,
+          "biasPct": 3.047091412742445,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 300,
+          "wapePct": 31.05658884052235,
+          "mae": 3.737142857142856,
+          "biasPct": 1.527502967946149,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 300,
+          "wapePct": 43.37287211270479,
+          "mae": 5.219202277562144,
+          "biasPct": 5.623236924522185,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 300,
+          "wapePct": 43.27563781464616,
+          "mae": 5.207501750362421,
+          "biasPct": 4.430952200603862,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 300,
+          "wapePct": 42.283601126798544,
+          "mae": 5.088126668924757,
+          "biasPct": 4.838206882259278,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 300,
+          "wapePct": 41.83873428259938,
+          "mae": 5.034594358672792,
+          "biasPct": 5.696760314217336,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 300,
+          "wapePct": 42.83312571182704,
+          "mae": 5.154252793989854,
+          "biasPct": 3.695754789324506,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 300,
+          "wapePct": 42.00684682295245,
+          "mae": 5.054823901028611,
+          "biasPct": 4.1939736410635575,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 300,
+          "wapePct": 41.37797902280464,
+          "mae": 4.979150142410824,
+          "biasPct": 5.201101976458593,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 300,
+          "wapePct": 44.26106396205579,
+          "mae": 5.326081363434047,
+          "biasPct": 1.4968468000946626,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 300,
+          "wapePct": 43.08040770932303,
+          "mae": 5.184009061021872,
+          "biasPct": 1.9721887177357025,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 300,
+          "wapePct": 42.00874526583325,
+          "mae": 5.055052346988601,
+          "biasPct": 2.9362705775669626,
+          "meanActual": 12.033333333333333
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 300,
+          "wapePct": 30.448193267980084,
+          "mae": 3.6639325899136037,
+          "biasPct": 1.4589104339796946,
+          "meanActual": 12.033333333333333
+        }
+      ]
+    },
+    {
+      "fold": 3,
+      "origin": "2026-09-23",
+      "trainDays": 23,
+      "scoredFrom": "2026-09-24",
+      "scoredTo": "2026-09-28",
+      "scoredDays": 5,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 250,
+          "wapePct": 44.52237808951236,
+          "mae": 5.332,
+          "biasPct": 6.179024716098865,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M2_ma7",
+          "n": 250,
+          "wapePct": 31.367496898559033,
+          "mae": 3.7565714285714296,
+          "biasPct": 4.065273403950776,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 250,
+          "wapePct": 29.97661990647963,
+          "mae": 3.5900000000000003,
+          "biasPct": 1.7391926710565613,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 250,
+          "wapePct": 43.30925158291181,
+          "mae": 5.186715969569519,
+          "biasPct": 8.348870724038587,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 250,
+          "wapePct": 41.18775517272892,
+          "mae": 4.932645559486016,
+          "biasPct": 4.346940097346037,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 250,
+          "wapePct": 40.267656865432286,
+          "mae": 4.82245458620417,
+          "biasPct": 5.130034861286575,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 250,
+          "wapePct": 40.23486104282494,
+          "mae": 4.8185269584887145,
+          "biasPct": 6.540988264071502,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 250,
+          "wapePct": 41.174964205576984,
+          "mae": 4.9311137132599,
+          "biasPct": 3.3532873825790896,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 250,
+          "wapePct": 40.14375191667238,
+          "mae": 4.807615729540684,
+          "biasPct": 4.1496058980610195,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 250,
+          "wapePct": 39.91834697887397,
+          "mae": 4.7806212341899466,
+          "biasPct": 5.6127533435940435,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 250,
+          "wapePct": 43.703588144697264,
+          "mae": 5.233941716208945,
+          "biasPct": 1.1790736815992928,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 250,
+          "wapePct": 42.564614715103986,
+          "mae": 5.097538258280854,
+          "biasPct": 1.7786818276253986,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 250,
+          "wapePct": 41.514601204378486,
+          "mae": 4.971788640236367,
+          "biasPct": 2.8942638549747026,
+          "meanActual": 11.976
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 250,
+          "wapePct": 29.82672494246044,
+          "mae": 3.572048579109062,
+          "biasPct": 2.627477176575383,
+          "meanActual": 11.976
+        }
+      ]
+    },
+    {
+      "fold": 4,
+      "origin": "2026-09-24",
+      "trainDays": 24,
+      "scoredFrom": "2026-09-25",
+      "scoredTo": "2026-09-28",
+      "scoredDays": 4,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 200,
+          "wapePct": 45.964031785863654,
+          "mae": 5.495,
+          "biasPct": 6.6499372647427855,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M2_ma7",
+          "n": 200,
+          "wapePct": 31.540897412917506,
+          "mae": 3.7707142857142877,
+          "biasPct": 3.626695345641377,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 200,
+          "wapePct": 30.770149967138646,
+          "mae": 3.6785714285714253,
+          "biasPct": 2.587082511800233,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 200,
+          "wapePct": 43.564471318482646,
+          "mae": 5.2081325461246,
+          "biasPct": 6.192502237150766,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 200,
+          "wapePct": 41.49698813674132,
+          "mae": 4.960964931747425,
+          "biasPct": 6.479395454401664,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 200,
+          "wapePct": 40.778314912412824,
+          "mae": 4.875047547778953,
+          "biasPct": 6.584698477752584,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 200,
+          "wapePct": 40.84621249552505,
+          "mae": 4.88316470384002,
+          "biasPct": 6.863940172690296,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 200,
+          "wapePct": 42.195474799399854,
+          "mae": 5.0444690122682525,
+          "biasPct": 5.984530184223605,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 200,
+          "wapePct": 41.35396495567508,
+          "mae": 4.943866510450957,
+          "biasPct": 5.884042035167532,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 200,
+          "wapePct": 40.96786229465856,
+          "mae": 4.897707937326431,
+          "biasPct": 5.815440083027819,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 200,
+          "wapePct": 45.96991767095676,
+          "mae": 5.495703657562881,
+          "biasPct": 5.730794709481681,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 200,
+          "wapePct": 44.635914993588926,
+          "mae": 5.336223637483556,
+          "biasPct": 5.177556823486155,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 200,
+          "wapePct": 43.55571544530879,
+          "mae": 5.207085781486666,
+          "biasPct": 4.237370893184563,
+          "meanActual": 11.955
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 200,
+          "wapePct": 30.492095147862546,
+          "mae": 3.6453299749269674,
+          "biasPct": 3.819880105952866,
+          "meanActual": 11.955
+        }
+      ]
+    },
+    {
+      "fold": 5,
+      "origin": "2026-09-25",
+      "trainDays": 25,
+      "scoredFrom": "2026-09-26",
+      "scoredTo": "2026-09-28",
+      "scoredDays": 3,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 150,
+          "wapePct": 48.17927170868347,
+          "mae": 5.733333333333333,
+          "biasPct": 9.859943977591037,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M2_ma7",
+          "n": 150,
+          "wapePct": 33.99759903961585,
+          "mae": 4.045714285714286,
+          "biasPct": 4.513805522208889,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 150,
+          "wapePct": 33.713485394157665,
+          "mae": 4.011904761904762,
+          "biasPct": 3.0852340936374985,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 150,
+          "wapePct": 46.399913046842,
+          "mae": 5.521589652574198,
+          "biasPct": 10.089014194836508,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 150,
+          "wapePct": 46.4166037055096,
+          "mae": 5.523575840955643,
+          "biasPct": 9.138106706615417,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 150,
+          "wapePct": 45.56287592047961,
+          "mae": 5.421982234537074,
+          "biasPct": 9.12491758072927,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 150,
+          "wapePct": 45.19260237295673,
+          "mae": 5.377919682381851,
+          "biasPct": 9.282843363618785,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 150,
+          "wapePct": 46.555878588121956,
+          "mae": 5.540149551986513,
+          "biasPct": 8.873300534673893,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 150,
+          "wapePct": 45.46982885138226,
+          "mae": 5.410909633314489,
+          "biasPct": 8.666545861742264,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 150,
+          "wapePct": 44.6132755175082,
+          "mae": 5.308979786583476,
+          "biasPct": 8.462490454937774,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 150,
+          "wapePct": 48.872619348206655,
+          "mae": 5.815841702436591,
+          "biasPct": 9.190322036494573,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 150,
+          "wapePct": 47.577611836273284,
+          "mae": 5.661735808516521,
+          "biasPct": 8.766536862547731,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 150,
+          "wapePct": 45.960761628346944,
+          "mae": 5.469330633773286,
+          "biasPct": 8.04812719678414,
+          "meanActual": 11.9
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 150,
+          "wapePct": 33.05680842472335,
+          "mae": 3.9337602025420786,
+          "biasPct": 6.125116713352029,
+          "meanActual": 11.9
+        }
+      ]
+    },
+    {
+      "fold": 6,
+      "origin": "2026-09-26",
+      "trainDays": 26,
+      "scoredFrom": "2026-09-27",
+      "scoredTo": "2026-09-28",
+      "scoredDays": 2,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 100,
+          "wapePct": 51.832460732984295,
+          "mae": 5.94,
+          "biasPct": 10.820244328097731,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M2_ma7",
+          "n": 100,
+          "wapePct": 35.12839690850163,
+          "mae": 4.025714285714287,
+          "biasPct": 7.23011717776114,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 100,
+          "wapePct": 35.340314136125656,
+          "mae": 4.05,
+          "biasPct": 6.993268511593096,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 100,
+          "wapePct": 51.58680739008373,
+          "mae": 5.911848126903595,
+          "biasPct": 10.593529838886388,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 100,
+          "wapePct": 49.995341000391484,
+          "mae": 5.729466078644864,
+          "biasPct": 10.642302859818011,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 100,
+          "wapePct": 49.141502798509514,
+          "mae": 5.631616220709191,
+          "biasPct": 10.21335970496539,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 100,
+          "wapePct": 48.9630486990371,
+          "mae": 5.611165380909651,
+          "biasPct": 9.589722418583104,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 100,
+          "wapePct": 50.0749373014213,
+          "mae": 5.738587814742881,
+          "biasPct": 10.027169647218313,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 100,
+          "wapePct": 49.310778857514165,
+          "mae": 5.651015257071123,
+          "biasPct": 9.424718289296797,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 100,
+          "wapePct": 49.073850096982724,
+          "mae": 5.62386322111422,
+          "biasPct": 8.425497724605751,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 100,
+          "wapePct": 52.07487860118944,
+          "mae": 5.96778108769631,
+          "biasPct": 9.602854315973124,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 100,
+          "wapePct": 50.97260432979228,
+          "mae": 5.841460456194196,
+          "biasPct": 8.961768127402292,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 100,
+          "wapePct": 50.05983354087721,
+          "mae": 5.736856923784528,
+          "biasPct": 7.742208859967808,
+          "meanActual": 11.46
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 100,
+          "wapePct": 33.58726136576372,
+          "mae": 3.849100152516523,
+          "biasPct": 7.911576497963879,
+          "meanActual": 11.46
+        }
+      ]
+    },
+    {
+      "fold": 7,
+      "origin": "2026-09-27",
+      "trainDays": 27,
+      "scoredFrom": "2026-09-28",
+      "scoredTo": "2026-09-28",
+      "scoredDays": 1,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 50,
+          "wapePct": 47.576301615798926,
+          "mae": 5.3,
+          "biasPct": 5.9245960502693,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M2_ma7",
+          "n": 50,
+          "wapePct": 34.855091048986935,
+          "mae": 3.882857142857144,
+          "biasPct": 7.976404206206723,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 50,
+          "wapePct": 33.66247755834829,
+          "mae": 3.75,
+          "biasPct": 9.861502949474207,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 50,
+          "wapePct": 47.479948731598284,
+          "mae": 5.289266288700048,
+          "biasPct": 3.570119557261737,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 50,
+          "wapePct": 48.01718801030232,
+          "mae": 5.349114744347678,
+          "biasPct": 4.682667892499197,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 50,
+          "wapePct": 46.14558596885824,
+          "mae": 5.140618276930809,
+          "biasPct": 3.8759059379661944,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 50,
+          "wapePct": 44.99959170113314,
+          "mae": 5.012954515506232,
+          "biasPct": 2.5874578385334743,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 50,
+          "wapePct": 48.3509265998606,
+          "mae": 5.386293223224471,
+          "biasPct": 2.961102752535427,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 50,
+          "wapePct": 46.76580770717305,
+          "mae": 5.2097109785790785,
+          "biasPct": 2.08881715334477,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 50,
+          "wapePct": 44.74348171691013,
+          "mae": 4.984423863263788,
+          "biasPct": 0.5860487727013148,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 50,
+          "wapePct": 50.89546964889491,
+          "mae": 5.669755318886892,
+          "biasPct": 0.43735574887145234,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 50,
+          "wapePct": 49.792011943894416,
+          "mae": 5.546830130549838,
+          "biasPct": -0.22789301533488554,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 50,
+          "wapePct": 48.2592179121559,
+          "mae": 5.376076875414167,
+          "biasPct": -1.4901158258712517,
+          "meanActual": 11.14
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 50,
+          "wapePct": 31.55869104799191,
+          "mae": 3.515638182746299,
+          "biasPct": 3.6505086774386664,
+          "meanActual": 11.14
+        }
+      ]
+    }
+  ],
+  "scoredObservations": 1400,
+  "hwFallbacks": 0,
+  "noiseFloor": {
+    "meanUnitsPerSkuDay": 11.9,
+    "wapeFloorPct": 23.12951790738881
+  },
+  "methods": [
+    {
+      "key": "M1_seasonal_naive",
+      "label": "M1 seasonal naive (same weekday last week)",
+      "n": 1400,
+      "wapePct": 45.70828331332533,
+      "mae": 5.439285714285714,
+      "biasPct": 5.840336134453781,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M2_ma7",
+      "label": "M2 7-day moving average (flat)",
+      "n": 1400,
+      "wapePct": 32.34865374721309,
+      "mae": 3.849489795918358,
+      "biasPct": 3.9572972045959025,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M3_velocity14",
+      "label": "M3 velocity (14-day mean, flat) — production baseline",
+      "n": 1400,
+      "wapePct": 31.484736751843617,
+      "mae": 3.7466836734693905,
+      "biasPct": 2.7083690619108745,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M4_hw_grid",
+      "label": "M4 Holt-Winters, in-service grid search",
+      "n": 1400,
+      "wapePct": 44.54713690413212,
+      "mae": 5.301109291591723,
+      "biasPct": 6.501458038065958,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.2_g0.2",
+      "label": "M5 Holt-Winters fixed a=0.2 b=0 g=0.2",
+      "n": 1400,
+      "wapePct": 43.591949547460544,
+      "mae": 5.187441996147805,
+      "biasPct": 6.107658790163759,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.2_g0.3",
+      "label": "M5 Holt-Winters fixed a=0.2 b=0 g=0.3",
+      "n": 1400,
+      "wapePct": 42.59062253468045,
+      "mae": 5.068284081626974,
+      "biasPct": 6.3035175210390415,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.2_g0.5",
+      "label": "M5 Holt-Winters fixed a=0.2 b=0 g=0.5",
+      "n": 1400,
+      "wapePct": 42.192318288877615,
+      "mae": 5.020885876376436,
+      "biasPct": 6.742284467750908,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.3_g0.2",
+      "label": "M5 Holt-Winters fixed a=0.3 b=0 g=0.2",
+      "n": 1400,
+      "wapePct": 43.60655867347033,
+      "mae": 5.189180482142969,
+      "biasPct": 5.632780134863092,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.3_g0.3",
+      "label": "M5 Holt-Winters fixed a=0.3 b=0 g=0.3",
+      "n": 1400,
+      "wapePct": 42.640759554409385,
+      "mae": 5.074250386974716,
+      "biasPct": 5.801117194110279,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.3_g0.5",
+      "label": "M5 Holt-Winters fixed a=0.3 b=0 g=0.5",
+      "n": 1400,
+      "wapePct": 42.06146840057351,
+      "mae": 5.005314739668248,
+      "biasPct": 6.192394566876136,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.5_g0.2",
+      "label": "M5 Holt-Winters fixed a=0.5 b=0 g=0.2",
+      "n": 1400,
+      "wapePct": 45.73375997866471,
+      "mae": 5.442317437461099,
+      "biasPct": 4.579443956271465,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.5_g0.3",
+      "label": "M5 Holt-Winters fixed a=0.5 b=0 g=0.3",
+      "n": 1400,
+      "wapePct": 44.63819093115664,
+      "mae": 5.311944720807641,
+      "biasPct": 4.641671579951957,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M5_hw_a0.5_g0.5",
+      "label": "M5 Holt-Winters fixed a=0.5 b=0 g=0.5",
+      "n": 1400,
+      "wapePct": 43.624735908336305,
+      "mae": 5.191343573092021,
+      "biasPct": 4.806909332767821,
+      "meanActual": 11.9
+    },
+    {
+      "key": "M6_weekday_profile",
+      "label": "M6 store weekday profile x SKU level",
+      "n": 1400,
+      "wapePct": 30.82273613301916,
+      "mae": 3.6679055998292798,
+      "biasPct": 3.007202881152592,
+      "meanActual": 11.9
+    }
+  ],
+  "buckets": [
+    {
+      "bucket": "h1-3",
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 900,
+          "wapePct": 44.49494481031444,
+          "mae": 5.33,
+          "biasPct": 4.461552731657545,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M2_ma7",
+          "n": 900,
+          "wapePct": 31.653570434759626,
+          "mae": 3.791746031746039,
+          "biasPct": 3.2438019266697884,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 900,
+          "wapePct": 30.94995163448924,
+          "mae": 3.7074603174603165,
+          "biasPct": 2.101580823406281,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 900,
+          "wapePct": 43.51580507206015,
+          "mae": 5.21270993868756,
+          "biasPct": 4.883854526520841,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 900,
+          "wapePct": 41.87518115873905,
+          "mae": 5.016181423026286,
+          "biasPct": 4.53679137831597,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 900,
+          "wapePct": 40.77281102193524,
+          "mae": 4.884129729194265,
+          "biasPct": 4.787633697169848,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 900,
+          "wapePct": 40.2289437083839,
+          "mae": 4.818980468000965,
+          "biasPct": 5.28115211475215,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 900,
+          "wapePct": 42.279642688085254,
+          "mae": 5.064631420224968,
+          "biasPct": 4.058033763109193,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 900,
+          "wapePct": 41.1911098686929,
+          "mae": 4.934237283270868,
+          "biasPct": 4.267136419117799,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 900,
+          "wapePct": 40.287003887740006,
+          "mae": 4.825935432374722,
+          "biasPct": 4.699952715155185,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 900,
+          "wapePct": 45.07873039355875,
+          "mae": 5.399931026366188,
+          "biasPct": 3.120399461211276,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 900,
+          "wapePct": 43.8161414603833,
+          "mae": 5.248686900937693,
+          "biasPct": 3.2089397819370404,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 900,
+          "wapePct": 42.38593946891381,
+          "mae": 5.077364593492886,
+          "biasPct": 3.4040948442801815,
+          "meanActual": 11.97888888888889
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 900,
+          "wapePct": 30.18041348847141,
+          "mae": 3.615278197991225,
+          "biasPct": 1.7561759886219304,
+          "meanActual": 11.97888888888889
+        }
+      ]
+    },
+    {
+      "bucket": "h4-7",
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 500,
+          "wapePct": 47.93332199353632,
+          "mae": 5.636,
+          "biasPct": 8.368770199013438,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M2_ma7",
+          "n": 500,
+          "wapePct": 33.623308142784246,
+          "mae": 3.9534285714285717,
+          "biasPct": 5.265715743688248,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 500,
+          "wapePct": 32.46543386873376,
+          "mae": 3.817285714285716,
+          "biasPct": 3.821106602191708,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 500,
+          "wapePct": 46.43840897107686,
+          "mae": 5.460228126819217,
+          "biasPct": 9.467844065956104,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 500,
+          "wapePct": 46.7401856418313,
+          "mae": 5.495711027766524,
+          "biasPct": 8.988339444548984,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 500,
+          "wapePct": 45.92415305329002,
+          "mae": 5.399761916005841,
+          "biasPct": 9.083368431930776,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 500,
+          "wapePct": 45.79278458455757,
+          "mae": 5.38431561145228,
+          "biasPct": 9.421731295048263,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 500,
+          "wapePct": 46.03987747572188,
+          "mae": 5.413368793595379,
+          "biasPct": 8.52057408517384,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 500,
+          "wapePct": 45.2991492910497,
+          "mae": 5.326273973641623,
+          "biasPct": 8.614154570397622,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 500,
+          "wapePct": 45.315508528632535,
+          "mae": 5.328197492796613,
+          "biasPct": 8.929257231172697,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 500,
+          "wapePct": 46.93496323721671,
+          "mae": 5.518612977431941,
+          "biasPct": 7.255062037788773,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 500,
+          "wapePct": 46.14567780722538,
+          "mae": 5.425808796573561,
+          "biasPct": 7.26903703570929,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 500,
+          "wapePct": 45.89645974120152,
+          "mae": 5.396505736370474,
+          "biasPct": 7.379411969336404,
+          "meanActual": 11.758
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 500,
+          "wapePct": 32.00063720988063,
+          "mae": 3.7626349231377643,
+          "biasPct": 5.301355105743674,
+          "meanActual": 11.758
+        }
+      ]
+    }
+  ],
+  "topSkus": [
+    {
+      "sku": "SKU-111",
+      "productName": "Sugar-Free Jalebi (250g)",
+      "actualUnits": 461,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 25.162689804772235,
+          "mae": 4.142857142857143,
+          "biasPct": -0.43383947939262474,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 17.136659436008674,
+          "mae": 2.8214285714285707,
+          "biasPct": -4.741245739076524,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 16.640842888131388,
+          "mae": 2.7397959183673466,
+          "biasPct": -4.741245739076537,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 25.869811009727858,
+          "mae": 4.259279598387336,
+          "biasPct": 10.895807416319718,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 34.568198476436464,
+          "mae": 5.691406963441861,
+          "biasPct": 8.164456903457037,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 32.13006800994394,
+          "mae": 5.289986197351484,
+          "biasPct": 9.119475488865415,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 28.219977476361713,
+          "mae": 4.646217720215268,
+          "biasPct": 10.674468935391584,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 36.5956425683401,
+          "mae": 6.0252111514302795,
+          "biasPct": 5.462412388977447,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 34.432178231770614,
+          "mae": 5.669012201730804,
+          "biasPct": 6.609069446796203,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 30.530310438221566,
+          "mae": 5.026597540007193,
+          "biasPct": 8.686648796273232,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 40.10472458461939,
+          "mae": 6.6029564405391215,
+          "biasPct": 1.525420228631459,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 38.77932091659376,
+          "mae": 6.384738193767759,
+          "biasPct": 2.6068421484195667,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 36.11465459843283,
+          "mae": 5.9460199178134046,
+          "biasPct": 4.732964574918623,
+          "meanActual": 16.464285714285715
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 21.264171658744335,
+          "mae": 3.500993976671835,
+          "biasPct": -7.550841436645667,
+          "meanActual": 16.464285714285715
+        }
+      ]
+    },
+    {
+      "sku": "SKU-149",
+      "productName": "Almond Milk",
+      "actualUnits": 445,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 59.325842696629216,
+          "mae": 9.428571428571429,
+          "biasPct": -15.280898876404494,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 40.770465489566625,
+          "mae": 6.479591836734696,
+          "biasPct": -14.382022471910112,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 39.24558587479936,
+          "mae": 6.237244897959184,
+          "biasPct": -14.622792937399689,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 53.531388047870735,
+          "mae": 8.5076670290366,
+          "biasPct": -9.36349411696184,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 52.75808923817791,
+          "mae": 8.384767753924702,
+          "biasPct": -11.033029446072026,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 52.318920953240934,
+          "mae": 8.314971365782934,
+          "biasPct": -11.351951208792476,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 52.54205354951319,
+          "mae": 8.350433510547633,
+          "biasPct": -12.203198156347653,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 54.64353907881851,
+          "mae": 8.684419603597943,
+          "biasPct": -15.426708041778214,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 54.01566573980931,
+          "mae": 8.584632590791122,
+          "biasPct": -15.718325291612956,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 53.92915682137903,
+          "mae": 8.570883851969167,
+          "biasPct": -16.228683947686903,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 57.815202353586166,
+          "mae": 9.18848751690923,
+          "biasPct": -19.94702281326472,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 57.12053905155538,
+          "mae": 9.078085670693623,
+          "biasPct": -20.161240340602184,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 56.62291894399691,
+          "mae": 8.998999617885222,
+          "biasPct": -20.415778926577328,
+          "meanActual": 15.892857142857142
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 35.85906393648585,
+          "mae": 5.699029804191502,
+          "biasPct": -20.609791132688333,
+          "meanActual": 15.892857142857142
+        }
+      ]
+    },
+    {
+      "sku": "SKU-102",
+      "productName": "Multigrain Bread",
+      "actualUnits": 425,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 26.352941176470587,
+          "mae": 4,
+          "biasPct": -15.058823529411764,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 30.924369747899156,
+          "mae": 4.693877551020408,
+          "biasPct": -7.462184873949554,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 34.588235294117645,
+          "mae": 5.25,
+          "biasPct": -21.747899159663884,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 25.166171741732402,
+          "mae": 3.8198653536558105,
+          "biasPct": -14.393437768927216,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 22.359230739618926,
+          "mae": 3.3938118086921585,
+          "biasPct": -9.530345563545739,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 22.349721428652746,
+          "mae": 3.3923684311347913,
+          "biasPct": -9.83508485722117,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 22.766960515169927,
+          "mae": 3.4556993639097207,
+          "biasPct": -9.948025043073827,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 22.482251613243836,
+          "mae": 3.4124846198673677,
+          "biasPct": -4.728363536170103,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 21.45362379995638,
+          "mae": 3.2563536124933785,
+          "biasPct": -5.375671677323546,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 21.895178161557567,
+          "mae": 3.3233752566649883,
+          "biasPct": -6.464217760571755,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 23.52845075499682,
+          "mae": 3.5712827038834463,
+          "biasPct": 1.2736416528891823,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 22.316278835447754,
+          "mae": 3.3872923232376055,
+          "biasPct": 0.5402149032830788,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 20.947546699038508,
+          "mae": 3.1795383382469162,
+          "biasPct": -0.966517797609774,
+          "meanActual": 15.178571428571429
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 31.23261349148883,
+          "mae": 4.740664547815269,
+          "biasPct": -21.35110612101915,
+          "meanActual": 15.178571428571429
+        }
+      ]
+    },
+    {
+      "sku": "SKU-110",
+      "productName": "Jalebi (250g)",
+      "actualUnits": 417,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 32.13429256594724,
+          "mae": 4.785714285714286,
+          "biasPct": 11.031175059952039,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 19.116135662898255,
+          "mae": 2.8469387755102042,
+          "biasPct": 11.099691675231215,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 19.06474820143885,
+          "mae": 2.8392857142857144,
+          "biasPct": 9.643713600548095,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 38.59252351414201,
+          "mae": 5.747529394784721,
+          "biasPct": 28.69992824196168,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 36.760344960335,
+          "mae": 5.4746656601641766,
+          "biasPct": 32.177312861396594,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 36.68666139877216,
+          "mae": 5.4636920726028535,
+          "biasPct": 32.155406821366924,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 37.209616035012445,
+          "mae": 5.541574959500068,
+          "biasPct": 32.57460625656234,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 36.109058943610364,
+          "mae": 5.3776705641019715,
+          "biasPct": 27.80364771468578,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 36.23950833479029,
+          "mae": 5.397098205574125,
+          "biasPct": 28.147319419011477,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 36.78818351571133,
+          "mae": 5.478811616447009,
+          "biasPct": 29.17918710823838,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 37.32969551999355,
+          "mae": 5.559458225656182,
+          "biasPct": 23.04434479940409,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 37.45684680836971,
+          "mae": 5.5783946853893465,
+          "biasPct": 23.353149234650527,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 37.80167619836538,
+          "mae": 5.629749633827986,
+          "biasPct": 24.07380602395124,
+          "meanActual": 14.892857142857142
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 16.51236642395077,
+          "mae": 2.4591631424240967,
+          "biasPct": 6.132686175017928,
+          "meanActual": 14.892857142857142
+        }
+      ]
+    },
+    {
+      "sku": "SKU-115",
+      "productName": "Chicken Cheese Shawarma",
+      "actualUnits": 402,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 40.049751243781095,
+          "mae": 5.75,
+          "biasPct": -37.56218905472637,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 28.642501776830134,
+          "mae": 4.112244897959184,
+          "biasPct": -27.50533049040511,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 38.432835820895534,
+          "mae": 5.517857142857144,
+          "biasPct": -38.432835820895534,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 46.23907244659292,
+          "mae": 6.638609686975127,
+          "biasPct": -33.25408334543174,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 65.18891231002054,
+          "mae": 9.359265267367235,
+          "biasPct": -65.18891231002056,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 63.67579736327555,
+          "mae": 9.142025192870276,
+          "biasPct": -63.67579736327554,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 61.06728879995403,
+          "mae": 8.7675178919934,
+          "biasPct": -61.06728879995403,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 55.96757506081965,
+          "mae": 8.035344705160535,
+          "biasPct": -54.95782843970807,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 54.56769037411115,
+          "mae": 7.834361260854529,
+          "biasPct": -54.05870895302112,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 52.97207942254449,
+          "mae": 7.605277117093887,
+          "biasPct": -52.97207942254449,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 48.842180219540474,
+          "mae": 7.012341588662596,
+          "biasPct": -43.95922837328556,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 47.67734942270157,
+          "mae": 6.845105167116438,
+          "biasPct": -43.49842140262824,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 45.97569416835111,
+          "mae": 6.600796091313266,
+          "biasPct": -42.93768960021453,
+          "meanActual": 14.357142857142858
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 27.96341595733945,
+          "mae": 4.014747576732306,
+          "biasPct": -27.854421651430943,
+          "meanActual": 14.357142857142858
+        }
+      ]
+    },
+    {
+      "sku": "SKU-108",
+      "productName": "Namak Paray (250g)",
+      "actualUnits": 394,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 34.51776649746193,
+          "mae": 4.857142857142857,
+          "biasPct": 16.243654822335024,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 25.380710659898487,
+          "mae": 3.5714285714285725,
+          "biasPct": 11.675126903553286,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 20.03263234227701,
+          "mae": 2.818877551020408,
+          "biasPct": -1.069615663524324,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 32.71215762034054,
+          "mae": 4.603067893719348,
+          "biasPct": 21.85444009436936,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 29.06318914077469,
+          "mae": 4.089605900523296,
+          "biasPct": 18.747569596984235,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 29.42876879416096,
+          "mae": 4.14104818032122,
+          "biasPct": 19.015327659201187,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 30.57458044349275,
+          "mae": 4.302280248120051,
+          "biasPct": 19.96777856420089,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 29.72145675967887,
+          "mae": 4.182233558326241,
+          "biasPct": 19.348461149523263,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 29.622870309964917,
+          "mae": 4.168361036473635,
+          "biasPct": 19.259613969075872,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 29.985130051714965,
+          "mae": 4.219336157277034,
+          "biasPct": 19.382901617825738,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 31.180978418174554,
+          "mae": 4.387609105985991,
+          "biasPct": 19.128962982210954,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 30.219930864573392,
+          "mae": 4.252375985943542,
+          "biasPct": 18.71160334448094,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 29.154057775916534,
+          "mae": 4.102392415611112,
+          "biasPct": 17.963614716229024,
+          "meanActual": 14.071428571428571
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 17.05354152991294,
+          "mae": 2.399676915280607,
+          "biasPct": -5.747976724899607,
+          "meanActual": 14.071428571428571
+        }
+      ]
+    },
+    {
+      "sku": "SKU-123",
+      "productName": "Pizza (Large)",
+      "actualUnits": 392,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 35.714285714285715,
+          "mae": 5,
+          "biasPct": -15.816326530612244,
+          "meanActual": 14
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 33.27259475218659,
+          "mae": 4.658163265306123,
+          "biasPct": -20.00728862973757,
+          "meanActual": 14
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 28.40743440233236,
+          "mae": 3.97704081632653,
+          "biasPct": -8.50947521865893,
+          "meanActual": 14
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 35.51746647485177,
+          "mae": 4.972445306479249,
+          "biasPct": -17.42466630369346,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 26.896036060183707,
+          "mae": 3.765445048425719,
+          "biasPct": -11.91297141000245,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 28.706258531680103,
+          "mae": 4.018876194435214,
+          "biasPct": -13.992159493986959,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 32.23325466767581,
+          "mae": 4.512655653474613,
+          "biasPct": -17.634638874950635,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 28.471448231463633,
+          "mae": 3.986002752404908,
+          "biasPct": -16.567187787667375,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 29.767796344444545,
+          "mae": 4.167491488222236,
+          "biasPct": -18.342340300406306,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 32.6494138612227,
+          "mae": 4.570917940571178,
+          "biasPct": -21.674272739149476,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 28.25289686934642,
+          "mae": 3.9554055617084987,
+          "biasPct": -19.963659474771273,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 28.532879620877363,
+          "mae": 3.994603146922831,
+          "biasPct": -21.235965778012364,
+          "meanActual": 14
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 29.688351594225054,
+          "mae": 4.156369223191507,
+          "biasPct": -23.863497936244023,
+          "meanActual": 14
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 23.00585991977147,
+          "mae": 3.2208203887680056,
+          "biasPct": -5.8007833787958365,
+          "meanActual": 14
+        }
+      ]
+    },
+    {
+      "sku": "SKU-106",
+      "productName": "Halwa",
+      "actualUnits": 389,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 26.73521850899743,
+          "mae": 3.7142857142857144,
+          "biasPct": -18.508997429305914,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 35.549026808666916,
+          "mae": 4.938775510204082,
+          "biasPct": -18.802791039294917,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 32.92324641939038,
+          "mae": 4.573979591836735,
+          "biasPct": -2.7359529930223494,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 31.23024168930858,
+          "mae": 4.338772863264657,
+          "biasPct": -13.000260913157064,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 25.507461940351696,
+          "mae": 3.5437152481417185,
+          "biasPct": -3.1079887438025184,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 25.137305453920323,
+          "mae": 3.4922899362767876,
+          "biasPct": -3.271152386929061,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 25.131029762777203,
+          "mae": 3.491418063471547,
+          "biasPct": -4.18316271839486,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 27.18302750771419,
+          "mae": 3.7764991787502926,
+          "biasPct": -9.577138882826961,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 27.12466971511095,
+          "mae": 3.7683916139922,
+          "biasPct": -9.016418514006038,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 26.634219805860976,
+          "mae": 3.7002541087428287,
+          "biasPct": -8.172118805156007,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 31.949690978941465,
+          "mae": 4.438724925288653,
+          "biasPct": -16.214600057468374,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 30.81143202705878,
+          "mae": 4.280588235187809,
+          "biasPct": -15.318313021254863,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 29.124498349798113,
+          "mae": 4.046224949311237,
+          "biasPct": -13.504754510708121,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 33.561474716480674,
+          "mae": 4.66264773739678,
+          "biasPct": -0.9417278886443967,
+          "meanActual": 13.892857142857142
+        }
+      ]
+    },
+    {
+      "sku": "SKU-131",
+      "productName": "Fried Round Sandwich",
+      "actualUnits": 389,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 30.591259640102827,
+          "mae": 4.25,
+          "biasPct": -3.8560411311053984,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 19.83106867425634,
+          "mae": 2.7551020408163267,
+          "biasPct": -8.81380829966951,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 27.37789203084834,
+          "mae": 3.80357142857143,
+          "biasPct": -24.32978332721261,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 21.813225952943625,
+          "mae": 3.0304803198910966,
+          "biasPct": -15.23664810333746,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 20.794774831835554,
+          "mae": 2.888988360565725,
+          "biasPct": -12.911065158960952,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 20.81560586016071,
+          "mae": 2.891882385572327,
+          "biasPct": -11.412254080241262,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 21.322380734931766,
+          "mae": 2.962287894960163,
+          "biasPct": -8.330579256519862,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 18.813810950332073,
+          "mae": 2.613775878456849,
+          "biasPct": -8.145741126246648,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 19.37608501009876,
+          "mae": 2.6918918103315774,
+          "biasPct": -7.300662732150702,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 21.120730929446676,
+          "mae": 2.9342729755552703,
+          "biasPct": -5.681380222107928,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 18.30863337714164,
+          "mae": 2.543592279895749,
+          "biasPct": -4.276166924799389,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 19.19581428408954,
+          "mae": 2.666847055896725,
+          "biasPct": -4.133489906259405,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 21.704115241454836,
+          "mae": 3.0153217246164035,
+          "biasPct": -4.022845518463294,
+          "meanActual": 13.892857142857142
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 27.009322060028232,
+          "mae": 3.7523665290539223,
+          "biasPct": -24.657263961465553,
+          "meanActual": 13.892857142857142
+        }
+      ]
+    },
+    {
+      "sku": "SKU-109",
+      "productName": "Shakar Paray (250g)",
+      "actualUnits": 379,
+      "rows": [
+        {
+          "key": "M1_seasonal_naive",
+          "n": 28,
+          "wapePct": 39.31398416886544,
+          "mae": 5.321428571428571,
+          "biasPct": -11.87335092348285,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M2_ma7",
+          "n": 28,
+          "wapePct": 41.16094986807388,
+          "mae": 5.571428571428571,
+          "biasPct": -15.228043724085943,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M3_velocity14",
+          "n": 28,
+          "wapePct": 41.95250659630606,
+          "mae": 5.678571428571428,
+          "biasPct": -20.542781756502094,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M4_hw_grid",
+          "n": 28,
+          "wapePct": 52.6749908884199,
+          "mae": 7.12993626668255,
+          "biasPct": -31.63991855960727,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.2_g0.2",
+          "n": 28,
+          "wapePct": 55.364443344900025,
+          "mae": 7.493972867041824,
+          "biasPct": -42.23924295391062,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.2_g0.3",
+          "n": 28,
+          "wapePct": 54.049561722752735,
+          "mae": 7.315994247472602,
+          "biasPct": -38.83265012076159,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.2_g0.5",
+          "n": 28,
+          "wapePct": 53.08389041998847,
+          "mae": 7.185283738991297,
+          "biasPct": -32.59114765842668,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.3_g0.2",
+          "n": 28,
+          "wapePct": 56.47856954117326,
+          "mae": 7.644777805751666,
+          "biasPct": -38.75745940414411,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.3_g0.3",
+          "n": 28,
+          "wapePct": 55.595548408359406,
+          "mae": 7.525254588131506,
+          "biasPct": -35.92331173972545,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.3_g0.5",
+          "n": 28,
+          "wapePct": 54.38392903883026,
+          "mae": 7.361253252041668,
+          "biasPct": -30.566969739120385,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.5_g0.2",
+          "n": 28,
+          "wapePct": 59.26065530726137,
+          "mae": 8.021352986232879,
+          "biasPct": -37.320783635756165,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.5_g0.3",
+          "n": 28,
+          "wapePct": 59.305725880479535,
+          "mae": 8.027453610250623,
+          "biasPct": -35.42876879185892,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M5_hw_a0.5_g0.5",
+          "n": 28,
+          "wapePct": 59.05037624155156,
+          "mae": 7.992890212695729,
+          "biasPct": -31.65189491823706,
+          "meanActual": 13.535714285714286
+        },
+        {
+          "key": "M6_weekday_profile",
+          "n": 28,
+          "wapePct": 37.30944754173489,
+          "mae": 5.050100220827687,
+          "biasPct": -13.435397129095039,
+          "meanActual": 13.535714285714286
+        }
+      ]
+    }
+  ],
+  "bootstrap": [
+    {
+      "key": "M2_ma7",
+      "meanDiffUnits": -1.5897959183673447,
+      "ci95": [
+        -1.9668783068783071,
+        -1.2191666666666667
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 892,
+      "losses": 481,
+      "coarse": true
+    },
+    {
+      "key": "M3_velocity14",
+      "meanDiffUnits": -1.6926020408163274,
+      "ci95": [
+        -2.0686243386243386,
+        -1.303642857142857
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 932,
+      "losses": 456,
+      "coarse": true
+    },
+    {
+      "key": "M4_hw_grid",
+      "meanDiffUnits": -0.13817642269399238,
+      "ci95": [
+        -0.5443056588175074,
+        0.22313479857683116
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 722,
+      "losses": 678,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.2_g0.2",
+      "meanDiffUnits": -0.2518437181379097,
+      "ci95": [
+        -0.7938912461601393,
+        0.23616503300041908
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 755,
+      "losses": 645,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.2_g0.3",
+      "meanDiffUnits": -0.37100163265874253,
+      "ci95": [
+        -0.8831918830967523,
+        0.04008497093455941
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 768,
+      "losses": 632,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.2_g0.5",
+      "meanDiffUnits": -0.4183998379092821,
+      "ci95": [
+        -0.8414814883351257,
+        -0.12586701789537225
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 787,
+      "losses": 613,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.3_g0.2",
+      "meanDiffUnits": -0.25010523214274744,
+      "ci95": [
+        -0.7126896936678596,
+        0.20794315555494222
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 740,
+      "losses": 660,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.3_g0.3",
+      "meanDiffUnits": -0.3650353273110007,
+      "ci95": [
+        -0.7948840249414921,
+        0.03379372669353668
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 751,
+      "losses": 649,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.3_g0.5",
+      "meanDiffUnits": -0.43397097461746165,
+      "ci95": [
+        -0.8078820931382752,
+        -0.13316019453265385
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 778,
+      "losses": 622,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.5_g0.2",
+      "meanDiffUnits": 0.00303172317538263,
+      "ci95": [
+        -0.36611423852801056,
+        0.39055482319972673
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 713,
+      "losses": 687,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.5_g0.3",
+      "meanDiffUnits": -0.1273409934780689,
+      "ci95": [
+        -0.4685942873410598,
+        0.2334205929022302
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 726,
+      "losses": 674,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.5_g0.5",
+      "meanDiffUnits": -0.24794214119368999,
+      "ci95": [
+        -0.5462740330119713,
+        0.07219164096695088
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 742,
+      "losses": 658,
+      "coarse": true
+    },
+    {
+      "key": "M6_weekday_profile",
+      "meanDiffUnits": -1.771380114456438,
+      "ci95": [
+        -2.0845002465171234,
+        -1.397824109638944
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 930,
+      "losses": 470,
+      "coarse": true
+    }
+  ],
+  "bootstrapVsIncumbent": [
+    {
+      "key": "M1_seasonal_naive",
+      "meanDiffUnits": 1.6926020408163274,
+      "ci95": [
+        1.303642857142857,
+        2.067950310559006
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 456,
+      "losses": 932,
+      "coarse": true
+    },
+    {
+      "key": "M2_ma7",
+      "meanDiffUnits": 0.10280612244897944,
+      "ci95": [
+        0.06626984126984123,
+        0.14137755102040808
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 652,
+      "losses": 723,
+      "coarse": true
+    },
+    {
+      "key": "M4_hw_grid",
+      "meanDiffUnits": 1.5544256181223337,
+      "ci95": [
+        1.2593528866454282,
+        1.7563156993628029
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 494,
+      "losses": 906,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.2_g0.2",
+      "meanDiffUnits": 1.4407583226784186,
+      "ci95": [
+        0.9479538134827231,
+        1.791870474038713
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 485,
+      "losses": 915,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.2_g0.3",
+      "meanDiffUnits": 1.3216004081575832,
+      "ci95": [
+        0.8317059316441094,
+        1.6557472482581312
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 515,
+      "losses": 885,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.2_g0.5",
+      "meanDiffUnits": 1.2742022029070414,
+      "ci95": [
+        0.822115768039474,
+        1.598849341929706
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 516,
+      "losses": 884,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.3_g0.2",
+      "meanDiffUnits": 1.4424968086735785,
+      "ci95": [
+        1.0091873556083697,
+        1.7621207576760276
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 494,
+      "losses": 906,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.3_g0.3",
+      "meanDiffUnits": 1.3275667135053275,
+      "ci95": [
+        0.8885363179296498,
+        1.6403555811096298
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 512,
+      "losses": 888,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.3_g0.5",
+      "meanDiffUnits": 1.2586310661988642,
+      "ci95": [
+        0.8078208284513133,
+        1.5918907350595142
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 526,
+      "losses": 874,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.5_g0.2",
+      "meanDiffUnits": 1.6956337639917092,
+      "ci95": [
+        1.3448316743500381,
+        1.942069429328021
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 507,
+      "losses": 893,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.5_g0.3",
+      "meanDiffUnits": 1.5652610473382573,
+      "ci95": [
+        1.1870266242012892,
+        1.8237401033559495
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 513,
+      "losses": 887,
+      "coarse": true
+    },
+    {
+      "key": "M5_hw_a0.5_g0.5",
+      "meanDiffUnits": 1.4446598996226367,
+      "ci95": [
+        1.0034027821893323,
+        1.752190882663337
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 525,
+      "losses": 875,
+      "coarse": true
+    },
+    {
+      "key": "M6_weekday_profile",
+      "meanDiffUnits": -0.07877807364011118,
+      "ci95": [
+        -0.22207296238618057,
+        0.04593128536420245
+      ],
+      "includesZero": true,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 724,
+      "losses": 676,
+      "coarse": true
+    }
+  ],
+  "selection": {
+    "rule": "Pick the method with the lowest pooled WAPE over the 7 expanding-window dev folds. Accept it only if its paired per-SKU-day absolute error minus M1 seasonal naive has a 95% block-bootstrap interval (calendar-day blocks) entirely below 0, i.e. it is reliably better. Otherwise record \"no reliable improvement\" and keep FORECAST_ENGINE = velocity. No preset, window or parameter is changed after these numbers are seen.",
+    "winnerKey": "M6_weekday_profile",
+    "winnerLabel": "M6 store weekday profile x SKU level",
+    "winnerWapePct": 30.8227,
+    "baselineKey": "M1_seasonal_naive",
+    "baselineWapePct": 45.7083,
+    "relativeImprovementPct": 32.5664,
+    "pairedVsBaseline": {
+      "key": "M6_weekday_profile",
+      "meanDiffUnits": -1.771380114456438,
+      "ci95": [
+        -2.0845002465171234,
+        -1.397824109638944
+      ],
+      "includesZero": false,
+      "observations": 1400,
+      "blocks": 7,
+      "blockUnit": "calendar day",
+      "blockSizes": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        300,
+        350
+      ],
+      "draws": 2000,
+      "seed": 20260917,
+      "wins": 930,
+      "losses": 470,
+      "coarse": true
+    },
+    "reliable": true,
+    "verdict": "M6_weekday_profile beats M1_seasonal_naive with a 95% interval below zero",
+    "engineRecommendation": "velocity",
+    "engineDecision": {
+      "incumbentKey": "M3_velocity14",
+      "incumbentWapePct": 31.4847,
+      "holtWintersKey": "M4_hw_grid",
+      "holtWintersWapePct": 44.5471,
+      "winnerIsHwEngine": false,
+      "holtWintersVsIncumbent": {
+        "key": "M4_hw_grid",
+        "meanDiffUnits": 1.5544256181223337,
+        "ci95": [
+          1.2593528866454282,
+          1.7563156993628029
+        ],
+        "includesZero": false,
+        "observations": 1400,
+        "blocks": 7,
+        "blockUnit": "calendar day",
+        "blockSizes": [
+          50,
+          100,
+          150,
+          200,
+          250,
+          300,
+          350
+        ],
+        "draws": 2000,
+        "seed": 20260917,
+        "wins": 494,
+        "losses": 906,
+        "coarse": true
+      },
+      "switchEngine": false,
+      "reason": "the lowest-WAPE method (M6_weekday_profile) is not a shipped engine; Holt-Winters does not beat the incumbent velocity baseline, so FORECAST_ENGINE stays velocity"
+    }
+  },
+  "input": "C:\\Users\\Nofal Zia\\Desktop\\FYP Test files\\Real London Bakers 5 Week Performance.xlsx",
+  "outputSuffix": "",
+  "parametersPicked": [
+    {
+      "triple": "a0.1_b0_g0.7",
+      "count": 48
+    },
+    {
+      "triple": "a0.1_b0_g0.3",
+      "count": 29
+    },
+    {
+      "triple": "a0.1_b0_g0.6",
+      "count": 26
+    },
+    {
+      "triple": "a0.1_b0_g0.4",
+      "count": 25
+    },
+    {
+      "triple": "a0.1_b0_g0.2",
+      "count": 21
+    },
+    {
+      "triple": "a0.1_b0_g0.1",
+      "count": 16
+    },
+    {
+      "triple": "a0.1_b0_g0.5",
+      "count": 16
+    },
+    {
+      "triple": "a0.2_b0.2_g0.7",
+      "count": 14
+    },
+    {
+      "triple": "a0.5_b0_g0.7",
+      "count": 11
+    },
+    {
+      "triple": "a0.1_b0.2_g0.4",
+      "count": 10
+    },
+    {
+      "triple": "a0.2_b0_g0.7",
+      "count": 8
+    },
+    {
+      "triple": "a0.1_b0.2_g0.1",
+      "count": 8
+    },
+    {
+      "triple": "a0.1_b0.2_g0.7",
+      "count": 7
+    },
+    {
+      "triple": "a0.3_b0_g0.7",
+      "count": 6
+    },
+    {
+      "triple": "a0.3_b0_g0.4",
+      "count": 6
+    },
+    {
+      "triple": "a0.2_b0_g0.5",
+      "count": 6
+    },
+    {
+      "triple": "a0.2_b0_g0.3",
+      "count": 5
+    },
+    {
+      "triple": "a0.4_b0_g0.1",
+      "count": 5
+    },
+    {
+      "triple": "a0.1_b0.2_g0.3",
+      "count": 5
+    },
+    {
+      "triple": "a0.3_b0.2_g0.2",
+      "count": 4
+    },
+    {
+      "triple": "a0.2_b0_g0.4",
+      "count": 4
+    },
+    {
+      "triple": "a0.1_b0.2_g0.5",
+      "count": 4
+    },
+    {
+      "triple": "a0.4_b0_g0.5",
+      "count": 3
+    },
+    {
+      "triple": "a0.1_b0.2_g0.2",
+      "count": 3
+    },
+    {
+      "triple": "a0.7_b0_g0.1",
+      "count": 3
+    },
+    {
+      "triple": "a0.5_b0_g0.6",
+      "count": 3
+    },
+    {
+      "triple": "a0.2_b0_g0.1",
+      "count": 3
+    },
+    {
+      "triple": "a0.3_b0.2_g0.1",
+      "count": 3
+    },
+    {
+      "triple": "a0.1_b0.05_g0.4",
+      "count": 3
+    },
+    {
+      "triple": "a0.8_b0_g0.1",
+      "count": 3
+    },
+    {
+      "triple": "a0.2_b0.2_g0.3",
+      "count": 3
+    },
+    {
+      "triple": "a0.2_b0_g0.2",
+      "count": 3
+    },
+    {
+      "triple": "a0.1_b0.1_g0.5",
+      "count": 3
+    },
+    {
+      "triple": "a0.3_b0_g0.5",
+      "count": 2
+    },
+    {
+      "triple": "a0.4_b0_g0.6",
+      "count": 2
+    },
+    {
+      "triple": "a0.1_b0.1_g0.7",
+      "count": 2
+    },
+    {
+      "triple": "a0.4_b0_g0.7",
+      "count": 2
+    },
+    {
+      "triple": "a0.1_b0.1_g0.4",
+      "count": 2
+    },
+    {
+      "triple": "a0.2_b0.1_g0.3",
+      "count": 2
+    },
+    {
+      "triple": "a0.2_b0.1_g0.1",
+      "count": 2
+    },
+    {
+      "triple": "a0.1_b0.05_g0.5",
+      "count": 1
+    },
+    {
+      "triple": "a0.1_b0.05_g0.1",
+      "count": 1
+    },
+    {
+      "triple": "a0.3_b0.05_g0.7",
+      "count": 1
+    },
+    {
+      "triple": "a0.4_b0_g0.2",
+      "count": 1
+    },
+    {
+      "triple": "a0.2_b0.2_g0.5",
+      "count": 1
+    },
+    {
+      "triple": "a0.4_b0_g0.3",
+      "count": 1
+    },
+    {
+      "triple": "a0.6_b0_g0.1",
+      "count": 1
+    },
+    {
+      "triple": "a0.2_b0.2_g0.2",
+      "count": 1
+    },
+    {
+      "triple": "a0.1_b0.1_g0.1",
+      "count": 1
+    },
+    {
+      "triple": "a0.3_b0_g0.1",
+      "count": 1
+    },
+    {
+      "triple": "a0.1_b0.2_g0.6",
+      "count": 1
+    },
+    {
+      "triple": "a0.2_b0.2_g0.1",
+      "count": 1
+    },
+    {
+      "triple": "a0.2_b0.1_g0.4",
+      "count": 1
+    },
+    {
+      "triple": "a0.4_b0.05_g0.3",
+      "count": 1
+    },
+    {
+      "triple": "a0.3_b0.1_g0.1",
+      "count": 1
+    },
+    {
+      "triple": "a0.4_b0.1_g0.3",
+      "count": 1
+    },
+    {
+      "triple": "a0.2_b0.05_g0.7",
+      "count": 1
+    },
+    {
+      "triple": "a0.2_b0.05_g0.3",
+      "count": 1
+    },
+    {
+      "triple": "a0.2_b0.1_g0.7",
+      "count": 1
+    }
+  ]
+}

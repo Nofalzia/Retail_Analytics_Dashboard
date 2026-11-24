@@ -222,7 +222,7 @@ export default function LoginScreen() {
           </div>
           <div className="leading-tight">
             <p className="text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-              Retail Analytics
+              HisaabIQ
             </p>
             <p className="text-xs" style={{ color: PALETTE.charcoalMuted }}>
               Store Intelligence Platform

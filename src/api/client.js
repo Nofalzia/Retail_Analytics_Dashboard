@@ -16,6 +16,15 @@ export const getToken  = ()      => localStorage.getItem(TOKEN_KEY);
 export const setToken  = (token) => localStorage.setItem(TOKEN_KEY, token);
 export const clearToken = ()     => localStorage.removeItem(TOKEN_KEY);
 
+const getActiveTenantId = () => {
+  try {
+    const session = JSON.parse(localStorage.getItem('rad_session') || 'null');
+    return typeof session?.tenantId === 'string' ? session.tenantId : null;
+  } catch {
+    return null;
+  }
+};
+
 // Emitted whenever an authenticated request comes back 401 — the auth provider
 // listens for this and returns the user to the login screen (session expiry).
 const notifyUnauthorized = () => {
@@ -28,12 +37,14 @@ const notifyUnauthorized = () => {
 
 async function apiFetch(path, options = {}) {
   const token = getToken();
+  const tenantId = getActiveTenantId();
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
       ...(options.headers || {}),
     },
   });
@@ -110,6 +121,7 @@ export const api = {
    */
   uploadFile: (storeId, file, onProgress) => {
     const token = getToken();
+    const tenantId = getActiveTenantId();
     const form  = new FormData();
     form.append('storeId', storeId);
     form.append('file', file);
@@ -118,6 +130,7 @@ export const api = {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_BASE}/api/upload`);
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      if (tenantId) xhr.setRequestHeader('x-tenant-id', tenantId);
 
       // Real upload progress (unavailable on fetch). Safely a no-op where the
       // browser lacks XMLHttpRequestUploadEvents — callers should poll the job.

@@ -3,11 +3,9 @@
  * ──────────────────────────────────────────────────────────────────────────────
  * Enforces multi-tenant data isolation.
  *
- * This middleware runs after requireAuth and does two things:
- *   1. Sets req.tenantId from the verified JWT payload (NOT from a request
- *      header — a client cannot claim to be a different tenant this way).
- *   2. For system_admin users, allows an optional x-tenant-id header override
- *      so admins can view/manage any tenant's data via the DataIngestionHub.
+ * The active tenant header is sent for every authenticated API request. Regular
+ * users may only request the tenant in their verified JWT; system administrators
+ * may select another active tenant after its existence is checked.
  *
  * Every route handler MUST use req.tenantId in all database queries.
  * There must be no route that queries business data without this filter.
@@ -28,16 +26,19 @@ import { query } from '../db/pool.js';
 export async function resolveTenant(req, res, next) {
   try {
     const { role, tenantId: jwtTenantId } = req.user;
+    const requestedTenantId = req.headers['x-tenant-id'];
 
-    // System administrators can operate across tenants by supplying a header.
-    // This is used by the DataIngestionHub to manage tenant data.
-    if (role === 'system_admin' && req.headers['x-tenant-id']) {
-      const overrideTenantId = req.headers['x-tenant-id'];
+    if (requestedTenantId && requestedTenantId !== jwtTenantId) {
+      if (role !== 'system_admin') {
+        return res.status(403).json({
+          error: 'TENANT_MISMATCH',
+          message: 'The requested tenant is not available to this account.',
+        });
+      }
 
-      // Verify the override tenant actually exists — don't trust the header blindly.
       const { rows } = await query(
         'SELECT id FROM tenants WHERE id = $1 AND is_active = TRUE',
-        [overrideTenantId],
+        [requestedTenantId],
       );
 
       if (rows.length === 0) {
@@ -47,7 +48,7 @@ export async function resolveTenant(req, res, next) {
         });
       }
 
-      req.tenantId = overrideTenantId;
+      req.tenantId = requestedTenantId;
       return next();
     }
 

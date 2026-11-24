@@ -38,9 +38,12 @@ already sells (import its sales history first) before uploading a filled-in coun
 - Up to `MAX_FILE_SIZE_MB` (default **60**). XLSX/XLS workbooks are read into memory by SheetJS, so
   the cap is the real guard rail for workbook size; CSV is streamed.
 - Uploaded through `POST /api/upload` with the target store. The **store is not read from the file**;
-  a `store` / `branch` / `location` column is recognised and ignored.
-- Each file is deduplicated per store by SHA-256 hash, so re-uploading the same bytes returns `409`
-  instead of importing twice.
+  a `store` / `branch` / `location` column is recognised and ignored. The authenticated active
+  tenant is attached by the client and checked against the JWT by the API.
+- Re-upload uses a tenant/store/product/date key, or a provided transaction identifier, to update
+  changed facts rather than append duplicates. Without a transaction identifier, the same source
+  filename and row also let a corrected date update its existing sale. Identical rows are counted
+  as skipped.
 
 ## How headers are matched
 
@@ -68,6 +71,12 @@ A requirement is reported missing only when **nothing** matched it.
 | A quantity | `quantity_sold` |
 | A price | `unit_price` **or** `total_revenue` |
 | A product identity | `sku` **or** `product_name` |
+
+### Optional transaction identifier
+
+`transaction_id`, `order_id`, `invoice_id`, `receipt_id`, or `reference_id` may identify a source
+transaction. When present it is used with the product identity for stable upserts, so changing a
+transaction's date or amounts updates the same stored row.
 
 ### Aliases
 

@@ -50,8 +50,8 @@
  * The route now accepts TWO file kinds. detectFileKind() (utils/validators.js)
  * reads the header row and answers 'sales' or 'inventory'; sales wins when a file
  * satisfies both contracts. A stock-count file streams through exactly the same
- * machinery — 1,000-row chunks, the same file-hash dedup, the same job record,
- * the same automatic analysis afterwards — and differs only in what it writes:
+ * machinery — 1,000-row chunks, row-keyed upserts, the same job record, and the
+ * same automatic analysis afterwards — and differs only in what it writes:
  *
  *   • inventory_logs instead of sale_transactions, so latest_inventory_per_product
  *     has rows and Stockout Watch can compute days of inventory left;
@@ -76,7 +76,7 @@ import csvParser          from 'csv-parser';
 import XLSX               from 'xlsx';
 import { requireAuth }    from '../middleware/auth.js';
 import { resolveTenant }  from '../middleware/tenant.js';
-import { query, getClient } from '../db/pool.js';
+import { getClient, query } from '../db/pool.js';
 import {
   buildColumnMap,
   buildInventoryColumnMap,
@@ -85,6 +85,8 @@ import {
   validateRow,
 } from '../utils/validators.js';
 import { runAnalysis }    from '../services/analysisRunner.js';
+import { computeProgressPct } from '../utils/uploadProgress.js';
+import { invalidateForecastCache } from '../services/forecastCache.js';
 
 const router = Router();
 
@@ -120,11 +122,22 @@ const upload = multer({
 // need fewer statements. Three levers: larger chunks, product ids cached per
 // job, and a progress counter that is no longer written on every single chunk.
 const CHUNK_ROWS = 1000;            // rows per database INSERT batch
-const PROGRESS_EVERY_N_CHUNKS = 5;  // how often ingestion_jobs.rows_processed is refreshed
 
-const SALE_INSERT_PARAMS_PER_ROW    = 8; // sale_transactions binds 8 columns per row
+const SALE_ROW_PARAM_TYPES = [
+  'uuid', 'uuid', 'uuid', 'uuid', 'integer', 'numeric(15,2)', 'numeric(15,2)',
+  'date', 'varchar(255)', 'varchar(64)', 'varchar(64)',
+];
+const INVENTORY_ROW_PARAM_TYPES = [
+  'uuid', 'uuid', 'uuid', 'uuid', 'integer', 'date', 'varchar(64)', 'varchar(64)',
+];
+const SALE_INSERT_PARAMS_PER_ROW    = SALE_ROW_PARAM_TYPES.length;
 const PRODUCT_INSERT_PARAMS_PER_ROW = 3; // products binds 3 columns per row (+ tenant_id)
 const PG_MAX_PARAMS                 = 65535; // PostgreSQL wire-protocol parameter limit
+
+function typedValuesRow(firstParameter, types) {
+  const placeholders = types.map((type, offset) => `$${firstParameter + offset}::${type}`);
+  return `(${placeholders.join(', ')})`;
+}
 
 // Guard rail: a chunk must never exceed the Postgres parameter limit, or the
 // insert dies at runtime with "bind message supplies N parameters". These are
@@ -184,26 +197,14 @@ router.post(
     const fileExt  = path.extname(file.originalname).toLowerCase().replace('.', '');
     const fileType = fileExt === 'csv' ? 'csv' : 'xlsx';
 
-    // ── File-level dedup ──────────────────────────────────────────────────────
-    // sale_transactions has no natural unique key, so re-uploading the same file
-    // would duplicate every row. We hash the bytes on disk (streamed — never read
-    // fully into memory) and reject a file already imported for this store.
+    // Keep a streamed digest for audit/correlation. Re-imports are resolved
+    // row-by-row by source_record_key rather than rejected by file hash.
     let fileHash;
     try {
       fileHash = await computeFileHash(file.path);
-    } catch (err) {
+    } catch {
       fs.unlinkSync(file.path);
       return res.status(500).json({ error: 'HASH_FAILED', message: 'Could not read the uploaded file.' });
-    }
-
-    const priorJob = await findExistingJob(tenantId, storeId, fileHash);
-    if (priorJob) {
-      fs.unlinkSync(file.path);
-      return res.status(409).json({
-        error: 'DUPLICATE_FILE',
-        message: `This file was already imported on ${formatJobDate(priorJob)}.`,
-        existingJobId: priorJob.id,
-      });
     }
 
     // ── Create ingestion job record ───────────────────────────────────────────
@@ -213,28 +214,18 @@ router.post(
     try {
       const { rows: [created] } = await query(
         `INSERT INTO ingestion_jobs (tenant_id, store_id, uploaded_by, original_filename, file_type, status, file_hash)
-         VALUES ($1, $2, $3, $4, $5, 'validating', $6)
+         VALUES ($1, $2, $3, $4, $5, 'queued', $6)
          RETURNING id`,
         [tenantId, storeId, req.user.id, file.originalname, fileType, fileHash],
       );
       job = created;
     } catch (err) {
-      // 23505 = unique_violation on uq_ingestion_file_per_store. A concurrent
-      // upload of the same file won the race — treat it exactly like the pre-check.
-      if (err.code === '23505') {
-        fs.unlinkSync(file.path);
-        const conflict = await findExistingJob(tenantId, storeId, fileHash);
-        return res.status(409).json({
-          error: 'DUPLICATE_FILE',
-          message: `This file was already imported on ${formatJobDate(conflict)}.`,
-          existingJobId: conflict ? conflict.id : null,
-        });
-      }
+      fs.unlinkSync(file.path);
       throw err;
     }
 
     // Respond immediately so the client has the jobId to poll.
-    res.status(202).json({ jobId: job.id, status: 'validating' });
+    res.status(202).json({ jobId: job.id, status: 'queued' });
 
     // ── Run the rest of the pipeline asynchronously ───────────────────────────
     // We don't await this — it runs after the response is sent.
@@ -261,7 +252,8 @@ router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
   const { jobId }    = req.params;
 
   const { rows } = await query(
-    `SELECT id, status, total_rows, rows_processed, rows_failed, error_log, column_map,
+    `SELECT id, status, total_rows, rows_processed, rows_failed,
+            rows_inserted, rows_updated, rows_skipped, rows_rejected, error_log, column_map,
             started_at, completed_at
      FROM ingestion_jobs
      WHERE id = $1 AND tenant_id = $2`,
@@ -273,15 +265,24 @@ router.get('/:jobId/status', requireAuth, resolveTenant, async (req, res) => {
   }
 
   const job = rows[0];
-  const progressPct = job.total_rows
-    ? Math.round((job.rows_processed / job.total_rows) * 100)
-    : null;
 
   // The assumptions the import had to make and the rows its status filter
   // ignored are stored beside the column mapping under reserved keys (T12a).
+  // They are read before the percentage because skipped rows count towards it.
   const storedMap   = job.column_map && typeof job.column_map === 'object' ? job.column_map : {};
   const assumptions = Array.isArray(storedMap._assumptions) ? storedMap._assumptions : [];
   const skippedByStatus = Number(storedMap._skippedByStatus) || 0;
+
+  // Rows skipped by the status filter were never written and never failed, so
+  // they are invisible to rows_processed / rows_failed. Counting them here is
+  // what stops a finished import from reporting e.g. 69 % (see utils/uploadProgress.js).
+  const progressPct = computeProgressPct({
+    status:          job.status,
+    totalRows:       job.total_rows,
+    rowsProcessed:   job.rows_processed,
+    rowsFailed:      job.rows_failed,
+    rowsSkipped:     job.rows_skipped,
+  });
 
   return res.json({
     ...job,
@@ -424,10 +425,11 @@ router.get('/:jobId/summary', requireAuth, resolveTenant, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
   const cleanup = () => {
-    try { fs.unlinkSync(file.path); } catch (_) { /* already deleted */ }
+    try { fs.unlinkSync(file.path); } catch { /* already deleted */ }
   };
 
   try {
+    await query("UPDATE ingestion_jobs SET status = 'parsing' WHERE id = $1", [jobId]);
     // ── Step 1: Locate the columns ────────────────────────────────────────────
     // CSV: read the first row. XLSX: inspect every sheet's header row and keep
     // the first sheet whose requirements all map (T12b) — the old code only
@@ -497,15 +499,20 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     // rides along under a reserved _-prefixed key (T12e), so a job's shape is
     // self-describing without a schema migration.
     await query(
-      `UPDATE ingestion_jobs SET status = 'processing', column_map = $1::jsonb WHERE id = $2`,
+      `UPDATE ingestion_jobs SET status = 'importing', column_map = $1::jsonb WHERE id = $2`,
       [JSON.stringify({ ...columnMap, _kind: fileKind }), jobId],
     );
 
     // ── Step 2: Stream + parse rows ───────────────────────────────────────────
-    const errors          = [];
-    let rowIndex          = 0;
-    let rowsProcessed     = 0;
-    let chunk             = [];
+    const errors            = [];
+    const changedProductIds = new Set();
+    let rowIndex            = 0;
+    let rowsProcessed       = 0;
+    let rowsInserted        = 0;
+    let rowsUpdated         = 0;
+    let rowsSkipped         = 0;
+    let acceptedRows        = 0;
+    let chunk               = [];
 
     // T12a: rows filtered out by their status are counted on their own — they
     // are not failures — and every assumption the import had to make is kept in
@@ -520,84 +527,158 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     // T12e: SKUs a stock-count file asked about that this tenant does not have.
     // Remembering the miss stops every later chunk from re-asking about a typo.
     const unknownSkus       = new Set();
-    let chunkIndex          = 0;
-    let queryCount          = 0; // database queries charged to the chunk being flushed
-    let chunksSinceProgress = 0;
+    let chunkIndex = 0;
+    let queryCount = 0;
 
     const flushChunk = async (rows) => {
       if (rows.length === 0) return;
       chunkIndex += 1;
       queryCount = 0;
+      const byIdentity = new Map();
+      rows.forEach((row) => {
+        const identity = row.source_transaction_id
+          ? `transaction:${row.sku}\u0000${row.source_transaction_id}`
+          : `date:${row.sku}\u0000${row.sale_date}`;
+        if (byIdentity.has(identity)) rowsSkipped += 1;
+        byIdentity.set(identity, row);
+      });
 
-      // Only SKUs we have never resolved in this job need a database trip.
-      // upsertProducts() still batches them into a single statement.
-      const newSkus = [...new Set(rows.map((r) => r.sku))]
-        .filter((sku) => !productIdBySku.has(sku));
-
-      if (newSkus.length > 0) {
-        const resolved = await upsertProducts(tenantId, rows, newSkus);
-        queryCount += 2; // products: INSERT ... ON CONFLICT + SELECT ids
-        // A SKU missing from `resolved` stays uncached, so the next chunk
-        // retries it — and its rows are skipped, exactly as before.
-        for (const [sku, id] of Object.entries(resolved)) productIdBySku.set(sku, id);
-      }
-
-      // Build multi-row INSERT for sale_transactions
-      const values  = [];
-      const params  = [];
-      let   pIdx    = 1;
-
-      for (const row of rows) {
-        const productId = productIdBySku.get(row.sku);
-        if (!productId) continue; // skip rows whose product could not be resolved
-
-        values.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`);
-        params.push(
-          tenantId,
-          storeId,
-          productId,
-          jobId,
-          row.quantity_sold,
-          row.unit_price,
-          row.unit_cost,
-          row.sale_date,
-        );
-      }
-
-      if (values.length > 0) {
-        // Plain INSERT — this pipeline performs FILE-level dedup (see the upload
-        // route), not row-level dedup. sale_transactions has no unique key, so
-        // ON CONFLICT DO NOTHING here would have been a silent no-op.
-        await query(
-          `INSERT INTO sale_transactions
-             (tenant_id, store_id, product_id, ingestion_job_id,
-              quantity_sold, unit_price_at_sale, cost_price_at_sale, sale_date)
-           VALUES ${values.join(', ')}`,
-          params,
-        );
-        rowsProcessed += rows.length;
-        queryCount += 1; // sale_transactions multi-row INSERT
-
-        // Refresh the progress counter that status polling reads — but not on
-        // every chunk. At ~150 ms per round-trip this write used to cost about as
-        // much as the insert it was reporting on. The run's final UPDATE (step 3)
-        // guarantees the last value always lands, whatever this interval is.
-        chunksSinceProgress += 1;
-        if (chunksSinceProgress >= PROGRESS_EVERY_N_CHUNKS) {
-          await query(
-            'UPDATE ingestion_jobs SET rows_processed = $1 WHERE id = $2',
-            [rowsProcessed, jobId],
-          );
-          queryCount += 1; // ingestion_jobs progress UPDATE
-          chunksSinceProgress = 0;
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const uniqueRows = [...byIdentity.values()];
+        const newSkus = [...new Set(uniqueRows.map((row) => row.sku))]
+          .filter((sku) => !productIdBySku.has(sku));
+        if (newSkus.length > 0) {
+          const resolved = await upsertProducts(client, tenantId, uniqueRows, newSkus);
+          for (const [sku, id] of Object.entries(resolved)) productIdBySku.set(sku, id);
+          queryCount += 2;
         }
+
+        const values = [];
+        const params = [];
+        let pIdx = 1;
+        let rejectedRows = 0;
+        for (const row of uniqueRows) {
+          const productId = productIdBySku.get(row.sku);
+          if (!productId) {
+            errors.push({ row: row.rowIndex, error: `row ${row.rowIndex}: product "${row.sku}" could not be resolved` });
+            rejectedRows += 1;
+            continue;
+          }
+          const sourceRecordKey = createSourceRecordKey(
+            'sale',
+            productId,
+            row.source_transaction_id || row.sale_date,
+            Boolean(row.source_transaction_id),
+          );
+          const sourceRowKey = row.source_transaction_id
+            ? null
+            : createSourceRowKey(productId, file.originalname, row.rowIndex);
+          values.push(typedValuesRow(pIdx, SALE_ROW_PARAM_TYPES));
+          pIdx += SALE_ROW_PARAM_TYPES.length;
+          params.push(
+            tenantId, storeId, productId, jobId, row.quantity_sold,
+            row.unit_price, row.unit_cost, row.sale_date,
+            row.source_transaction_id, sourceRecordKey, sourceRowKey,
+          );
+        }
+
+        if (values.length > 0) {
+          const { rows: savedRows } = await client.query(
+            `WITH incoming
+               (tenant_id, store_id, product_id, ingestion_job_id,
+                quantity_sold, unit_price_at_sale, cost_price_at_sale, sale_date,
+                source_transaction_id, source_record_key, source_row_key) AS (
+                 VALUES ${values.join(', ')}
+               ),
+               updated AS (
+                 UPDATE sale_transactions AS existing
+                    SET ingestion_job_id = incoming.ingestion_job_id,
+                        quantity_sold = incoming.quantity_sold,
+                        unit_price_at_sale = incoming.unit_price_at_sale,
+                        cost_price_at_sale = incoming.cost_price_at_sale,
+                        sale_date = incoming.sale_date,
+                        source_record_key = incoming.source_record_key
+                   FROM incoming
+                  WHERE incoming.source_row_key IS NOT NULL
+                    AND existing.tenant_id = incoming.tenant_id
+                    AND existing.store_id = incoming.store_id
+                    AND existing.source_row_key = incoming.source_row_key
+                    AND (existing.quantity_sold, existing.unit_price_at_sale,
+                         existing.cost_price_at_sale, existing.sale_date)
+                      IS DISTINCT FROM
+                        (incoming.quantity_sold, incoming.unit_price_at_sale,
+                         incoming.cost_price_at_sale, incoming.sale_date)
+                 RETURNING existing.product_id, FALSE AS inserted
+               ),
+               fresh AS (
+                 SELECT incoming.*
+                   FROM incoming
+                  WHERE incoming.source_row_key IS NULL
+                     OR NOT EXISTS (
+                       SELECT 1 FROM sale_transactions AS existing
+                        WHERE existing.tenant_id = incoming.tenant_id
+                          AND existing.store_id = incoming.store_id
+                          AND existing.source_row_key = incoming.source_row_key
+                     )
+               ),
+               saved AS (
+                 INSERT INTO sale_transactions
+                   (tenant_id, store_id, product_id, ingestion_job_id,
+                    quantity_sold, unit_price_at_sale, cost_price_at_sale, sale_date,
+                    source_transaction_id, source_record_key, source_row_key)
+                 SELECT tenant_id, store_id, product_id, ingestion_job_id,
+                        quantity_sold, unit_price_at_sale, cost_price_at_sale, sale_date,
+                        source_transaction_id, source_record_key, source_row_key
+                   FROM fresh
+                 ON CONFLICT (tenant_id, store_id, source_record_key)
+                   WHERE source_record_key IS NOT NULL
+                 DO UPDATE SET
+                   ingestion_job_id = EXCLUDED.ingestion_job_id,
+                   quantity_sold = EXCLUDED.quantity_sold,
+                   unit_price_at_sale = EXCLUDED.unit_price_at_sale,
+                   cost_price_at_sale = EXCLUDED.cost_price_at_sale,
+                   sale_date = EXCLUDED.sale_date,
+                   source_transaction_id = EXCLUDED.source_transaction_id,
+                   source_row_key = EXCLUDED.source_row_key
+                 WHERE (sale_transactions.quantity_sold, sale_transactions.unit_price_at_sale,
+                        sale_transactions.cost_price_at_sale, sale_transactions.sale_date)
+                   IS DISTINCT FROM
+                       (EXCLUDED.quantity_sold, EXCLUDED.unit_price_at_sale,
+                        EXCLUDED.cost_price_at_sale, EXCLUDED.sale_date)
+                 RETURNING product_id, (xmax = 0) AS inserted
+               )
+             SELECT product_id, inserted FROM updated
+             UNION ALL
+             SELECT product_id, inserted FROM saved`,
+            params,
+          );
+          rowsInserted += savedRows.filter((saved) => saved.inserted).length;
+          rowsUpdated += savedRows.filter((saved) => !saved.inserted).length;
+          rowsSkipped += uniqueRows.length - rejectedRows - savedRows.length;
+          savedRows.forEach((saved) => changedProductIds.add(saved.product_id));
+          queryCount += 1;
+        }
+
+        rowsProcessed = rowsInserted + rowsUpdated;
+        await client.query(
+          `UPDATE ingestion_jobs
+              SET rows_processed = $1, rows_failed = $2, rows_inserted = $3,
+                  rows_updated = $4, rows_skipped = $5, rows_rejected = $2
+            WHERE id = $6`,
+          [rowsProcessed, errors.length, rowsInserted, rowsUpdated, rowsSkipped, jobId],
+        );
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
       }
 
       if (INGEST_DEBUG) {
-        console.log(
-          `[ingest] chunk ${chunkIndex}: ${rows.length} rows, ${newSkus.length} new skus, ` +
-          `${queryCount} queries, rowsProcessed=${rowsProcessed}`,
-        );
+        console.log(`[ingest] chunk ${chunkIndex}: inserted=${rowsInserted}, updated=${rowsUpdated}, skipped=${rowsSkipped}, queries=${queryCount}`);
       }
     };
 
@@ -609,73 +690,135 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
       if (rows.length === 0) return;
       chunkIndex += 1;
       queryCount = 0;
+      const byIdentity = new Map();
+      rows.forEach((row) => {
+        const identity = `${row.sku}\u0000${row.count_date}`;
+        if (byIdentity.has(identity)) rowsSkipped += 1;
+        byIdentity.set(identity, row);
+      });
 
-      const unresolvedSkus = [...new Set(rows.map((row) => row.sku))]
-        .filter((sku) => !productIdBySku.has(sku) && !unknownSkus.has(sku));
-
-      if (unresolvedSkus.length > 0) {
-        // One SELECT for the whole chunk. A SKU that comes back missing does not
-        // exist for this tenant and is never inserted — unlike the sales path,
-        // which upserts unknown SKUs because a sale proves the product exists.
-        const { rows: productRows } = await query(
-          'SELECT id, sku FROM products WHERE tenant_id = $1 AND sku = ANY($2)',
-          [tenantId, unresolvedSkus],
-        );
-        queryCount += 1; // products SELECT
-
-        for (const product of productRows) productIdBySku.set(product.sku, product.id);
-        for (const sku of unresolvedSkus) {
-          if (!productIdBySku.has(sku)) unknownSkus.add(sku);
-        }
-      }
-
-      const values = [];
-      const params = [];
-      let   pIdx   = 1;
-
-      for (const row of rows) {
-        const productId = productIdBySku.get(row.sku);
-        if (!productId) {
-          errors.push({
-            row:   row.rowIndex,
-            error: `row ${row.rowIndex}: unknown SKU "${row.sku}" — a stock count never creates products; `
-              + 'import the sales history that contains it first.',
-          });
-          continue;
-        }
-
-        values.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`);
-        params.push(tenantId, storeId, productId, jobId, row.quantity_on_hand, row.count_date);
-      }
-
-      if (values.length > 0) {
-        await query(
-          `INSERT INTO inventory_logs
-             (tenant_id, store_id, product_id, ingestion_job_id, quantity_on_hand, log_date)
-           VALUES ${values.join(', ')}`,
-          params,
-        );
-        // Count what was actually written: rows dropped for an unknown SKU are
-        // failures, not processed rows.
-        rowsProcessed += values.length;
-        queryCount += 1; // inventory_logs multi-row INSERT
-
-        chunksSinceProgress += 1;
-        if (chunksSinceProgress >= PROGRESS_EVERY_N_CHUNKS) {
-          await query(
-            'UPDATE ingestion_jobs SET rows_processed = $1 WHERE id = $2',
-            [rowsProcessed, jobId],
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const uniqueRows = [...byIdentity.values()];
+        const unresolvedSkus = [...new Set(uniqueRows.map((row) => row.sku))]
+          .filter((sku) => !productIdBySku.has(sku) && !unknownSkus.has(sku));
+        if (unresolvedSkus.length > 0) {
+          const { rows: productRows } = await client.query(
+            'SELECT id, sku FROM products WHERE tenant_id = $1 AND sku = ANY($2)',
+            [tenantId, unresolvedSkus],
           );
-          queryCount += 1; // ingestion_jobs progress UPDATE
-          chunksSinceProgress = 0;
+          for (const product of productRows) productIdBySku.set(product.sku, product.id);
+          for (const sku of unresolvedSkus) {
+            if (!productIdBySku.has(sku)) unknownSkus.add(sku);
+          }
+          queryCount += 1;
         }
+
+        const values = [];
+        const params = [];
+        let pIdx = 1;
+        let rejectedRows = 0;
+        for (const row of uniqueRows) {
+          const productId = productIdBySku.get(row.sku);
+          if (!productId) {
+            errors.push({
+              row: row.rowIndex,
+              error: `row ${row.rowIndex}: unknown SKU "${row.sku}" — a stock count never creates products; import the sales history that contains it first.`,
+            });
+            rejectedRows += 1;
+            continue;
+          }
+          const sourceRecordKey = createSourceRecordKey('inventory', productId, row.count_date);
+          const sourceRowKey = createSourceRowKey(productId, file.originalname, row.rowIndex);
+          values.push(typedValuesRow(pIdx, INVENTORY_ROW_PARAM_TYPES));
+          pIdx += INVENTORY_ROW_PARAM_TYPES.length;
+          params.push(
+            tenantId, storeId, productId, jobId, row.quantity_on_hand,
+            row.count_date, sourceRecordKey, sourceRowKey,
+          );
+        }
+
+        if (values.length > 0) {
+          const { rows: savedRows } = await client.query(
+            `WITH incoming
+               (tenant_id, store_id, product_id, ingestion_job_id,
+                quantity_on_hand, log_date, source_record_key, source_row_key) AS (
+                 VALUES ${values.join(', ')}
+               ),
+               updated AS (
+                 UPDATE inventory_logs AS existing
+                    SET ingestion_job_id = incoming.ingestion_job_id,
+                        quantity_on_hand = incoming.quantity_on_hand,
+                        log_date = incoming.log_date,
+                        source_record_key = incoming.source_record_key
+                   FROM incoming
+                  WHERE existing.tenant_id = incoming.tenant_id
+                    AND existing.store_id = incoming.store_id
+                    AND existing.source_row_key = incoming.source_row_key
+                    AND (existing.quantity_on_hand, existing.log_date)
+                      IS DISTINCT FROM
+                        (incoming.quantity_on_hand, incoming.log_date)
+                 RETURNING existing.product_id, FALSE AS inserted
+               ),
+               fresh AS (
+                 SELECT incoming.*
+                   FROM incoming
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM inventory_logs AS existing
+                     WHERE existing.tenant_id = incoming.tenant_id
+                       AND existing.store_id = incoming.store_id
+                       AND existing.source_row_key = incoming.source_row_key
+                  )
+               ),
+               saved AS (
+                 INSERT INTO inventory_logs
+                   (tenant_id, store_id, product_id, ingestion_job_id,
+                    quantity_on_hand, log_date, source_record_key, source_row_key)
+                 SELECT tenant_id, store_id, product_id, ingestion_job_id,
+                        quantity_on_hand, log_date, source_record_key, source_row_key
+                   FROM fresh
+                 ON CONFLICT (tenant_id, store_id, source_record_key)
+                   WHERE source_record_key IS NOT NULL
+                 DO UPDATE SET
+                   ingestion_job_id = EXCLUDED.ingestion_job_id,
+                   quantity_on_hand = EXCLUDED.quantity_on_hand,
+                   log_date = EXCLUDED.log_date,
+                   source_row_key = EXCLUDED.source_row_key
+                 WHERE (inventory_logs.quantity_on_hand, inventory_logs.log_date)
+                   IS DISTINCT FROM (EXCLUDED.quantity_on_hand, EXCLUDED.log_date)
+                 RETURNING product_id, (xmax = 0) AS inserted
+               )
+             SELECT product_id, inserted FROM updated
+             UNION ALL
+             SELECT product_id, inserted FROM saved`,
+            params,
+          );
+          rowsInserted += savedRows.filter((saved) => saved.inserted).length;
+          rowsUpdated += savedRows.filter((saved) => !saved.inserted).length;
+          rowsSkipped += uniqueRows.length - rejectedRows - savedRows.length;
+          savedRows.forEach((saved) => changedProductIds.add(saved.product_id));
+          queryCount += 1;
+        }
+
+        rowsProcessed = rowsInserted + rowsUpdated;
+        await client.query(
+          `UPDATE ingestion_jobs
+              SET rows_processed = $1, rows_failed = $2, rows_inserted = $3,
+                  rows_updated = $4, rows_skipped = $5, rows_rejected = $2
+            WHERE id = $6`,
+          [rowsProcessed, errors.length, rowsInserted, rowsUpdated, rowsSkipped, jobId],
+        );
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
       }
 
       if (INGEST_DEBUG) {
-        console.log(
-          `[ingest] inventory chunk ${chunkIndex}: ${rows.length} rows, ` +
-          `${unresolvedSkus.length} skus looked up, ${queryCount} queries, rowsProcessed=${rowsProcessed}`,
-        );
+        console.log(`[ingest] inventory chunk ${chunkIndex}: inserted=${rowsInserted}, updated=${rowsUpdated}, skipped=${rowsSkipped}, queries=${queryCount}`);
       }
     };
 
@@ -694,6 +837,7 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
         }
 
         for (const assumption of rowAssumptions) assumptionLog.add(assumption);
+        acceptedRows += 1;
 
         // The row number travels with the row so an unknown SKU can still be
         // reported against the line it came from at flush time.
@@ -713,6 +857,7 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
       // rows_failed or the error log.
       if (skipped) {
         rowsSkippedByStatus += 1;
+        rowsSkipped += 1;
         return;
       }
 
@@ -723,7 +868,8 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
 
       for (const assumption of rowAssumptions) assumptionLog.add(assumption);
 
-      chunk.push(data);
+      acceptedRows += 1;
+      chunk.push({ ...data, rowIndex });
 
       if (chunk.length >= CHUNK_ROWS) {
         await flushChunk(chunk);
@@ -738,10 +884,10 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     }
 
     // ── Step 2b: Analyse the store with the rows just written (T12d) ─────────
-    // The manual "Run Detection" button and this import run the SAME sequence
+    // The manual "Run Detection" button and this import run the same sequence
     // (services/analysisRunner.js): detect, then recommend. Doing it before the
-    // job is marked completed means a client polling the status keeps seeing
-    // "processing" until the advice actually exists — no new status value.
+    // job is marked completed means a client polling sees "importing" until the
+    // advice actually exists.
     //
     // T12e runs it for stock-count imports too: they write no sales rows, but the
     // detectors read latest_inventory_per_product, so a fresh count is exactly
@@ -751,8 +897,9 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
     // losing an import because a detector tripped would be the worse outcome,
     // so the error goes into column_map._analysis and the job still completes.
     let analysisRecord = null;
-    if (rowsProcessed > 0) {
+    if (acceptedRows > 0 && (rowsProcessed > 0 || rowsSkipped > 0)) {
       try {
+        await reconcileChangedProducts(tenantId, storeId, [...changedProductIds]);
         const outcome = await runAnalysis(tenantId, storeId);
         analysisRecord = {
           alertsCreated:          outcome.alertsCreated,
@@ -783,7 +930,7 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
       _assumptions:     [...assumptionLog],
       _skippedByStatus: rowsSkippedByStatus,
     };
-    // Only an import that wrote rows has an analysis to report.
+    // The automatic analysis is recorded beside the mapping when it ran.
     if (analysisRecord) columnMapRecord._analysis = analysisRecord;
 
     await query(
@@ -792,20 +939,37 @@ async function parsePipeline(jobId, file, fileType, tenantId, storeId) {
            total_rows   = $2,
            rows_processed = $3,
            rows_failed  = $4,
-           error_log    = $5::jsonb,
-           column_map   = $6::jsonb,
+           rows_inserted = $5,
+           rows_updated = $6,
+           rows_skipped = $7,
+           rows_rejected = $4,
+           error_log    = $8::jsonb,
+           column_map   = $9::jsonb,
            completed_at = NOW()
-       WHERE id = $7`,
+       WHERE id = $10`,
       [
-        errors.length > 0 && rowsProcessed === 0 ? 'failed' : 'completed',
+        errors.length > 0 && rowsProcessed === 0 && rowsSkipped === 0 ? 'failed' : 'completed',
         rowIndex,
         rowsProcessed,
         errors.length,
-        JSON.stringify(errors.slice(0, 100)), // cap stored errors at 100
+        rowsInserted,
+        rowsUpdated,
+        rowsSkipped,
+        JSON.stringify(errors),
         JSON.stringify(columnMapRecord),
         jobId,
       ],
     );
+
+    // ── Invalidate cached forecasts for this store ────────────────────────────
+    // The rows just written are the input a forecast is computed from, so any
+    // forecast cached for this store before this import is now stale. Dropping it
+    // here (rather than waiting out the cache TTL) means the next dashboard poll
+    // reflects the import immediately. A no-op when nothing was cached.
+    const droppedForecasts = invalidateForecastCache(tenantId, storeId);
+    if (droppedForecasts > 0) {
+      console.log(`[upload] Job ${jobId}: invalidated ${droppedForecasts} cached forecast(s)`);
+    }
 
   } catch (err) {
     await query(
@@ -978,32 +1142,53 @@ function computeFileHash(filePath) {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// findExistingJob(tenantId, storeId, fileHash)
-// Returns the newest non-failed ingestion job for a (tenant, store, hash) tuple,
-// or null. Matches the uq_ingestion_file_per_store partial index predicate.
-// ─────────────────────────────────────────────────────────────────────────────
-async function findExistingJob(tenantId, storeId, fileHash) {
-  const { rows } = await query(
-    `SELECT id, completed_at, started_at
-       FROM ingestion_jobs
-      WHERE tenant_id = $1 AND store_id = $2 AND file_hash = $3 AND status <> 'failed'
-      ORDER BY started_at DESC
-      LIMIT 1`,
-    [tenantId, storeId, fileHash],
-  );
-  return rows[0] || null;
+function createSourceRecordKey(kind, productId, identity, hasTransactionId = false) {
+  if (!hasTransactionId) {
+    return createHash('md5')
+      .update(`${productId}|${identity}`)
+      .digest('hex');
+  }
+
+  return createHash('sha256')
+    .update(JSON.stringify([kind, productId, identity]))
+    .digest('hex');
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// formatJobDate(job)
-// YYYY-MM-DD of a job's completion (or start) date, for the DUPLICATE_FILE
-// message. Falls back to today if the timestamp is somehow missing.
-// ─────────────────────────────────────────────────────────────────────────────
-function formatJobDate(job) {
-  const when = job && (job.completed_at || job.started_at);
-  const d    = when ? new Date(when) : new Date();
-  return d.toISOString().slice(0, 10);
+function createSourceRowKey(productId, filename, rowNumber) {
+  return createHash('sha256')
+    .update(JSON.stringify([productId, path.basename(filename).toLowerCase(), rowNumber]))
+    .digest('hex');
+}
+
+async function reconcileChangedProducts(tenantId, storeId, productIds) {
+  if (productIds.length === 0) return;
+  const alertTypes = ['sales_spike', 'sales_drop', 'stockout_risk', 'low_stock'];
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM recommendations
+        WHERE tenant_id = $1 AND store_id = $2
+          AND alert_id IN (
+            SELECT id FROM anomaly_alerts
+             WHERE tenant_id = $1 AND store_id = $2
+               AND product_id = ANY($3::uuid[]) AND alert_type = ANY($4::text[])
+          )`,
+      [tenantId, storeId, productIds, alertTypes],
+    );
+    await client.query(
+      `DELETE FROM anomaly_alerts
+        WHERE tenant_id = $1 AND store_id = $2
+          AND product_id = ANY($3::uuid[]) AND alert_type = ANY($4::text[])`,
+      [tenantId, storeId, productIds, alertTypes],
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1013,7 +1198,7 @@ function formatJobDate(job) {
 // Uses INSERT ... ON CONFLICT DO NOTHING to avoid race conditions on concurrent
 // uploads of the same product from different files.
 // ─────────────────────────────────────────────────────────────────────────────
-async function upsertProducts(tenantId, rows, skus) {
+async function upsertProducts(client, tenantId, rows, skus) {
   if (skus.length === 0) return {};
 
   // Build a lookup: sku → first row that mentions it (for product_name)
@@ -1022,7 +1207,7 @@ async function upsertProducts(tenantId, rows, skus) {
     if (!skuRowMap[row.sku]) skuRowMap[row.sku] = row;
   }
 
-  // Insert new SKUs; ignore conflicts (already exist)
+  // Keep the product catalogue in step with the latest uploaded product data.
   const insertValues = skus.map((_, i) => `($1, $${i * 3 + 2}, $${i * 3 + 3}, $${i * 3 + 4})`).join(', ');
   const insertParams = [tenantId];
   for (const sku of skus) {
@@ -1030,15 +1215,17 @@ async function upsertProducts(tenantId, rows, skus) {
     insertParams.push(sku, row.product_name, row.unit_price);
   }
 
-  await query(
+  await client.query(
     `INSERT INTO products (tenant_id, sku, name, standard_unit_price)
      VALUES ${insertValues}
-     ON CONFLICT (tenant_id, sku) DO NOTHING`,
+     ON CONFLICT (tenant_id, sku) DO UPDATE SET
+       name = EXCLUDED.name,
+       standard_unit_price = EXCLUDED.standard_unit_price`,
     insertParams,
   );
 
   // Fetch all matching product IDs in one query
-  const { rows: productRows } = await query(
+  const { rows: productRows } = await client.query(
     `SELECT id, sku FROM products WHERE tenant_id = $1 AND sku = ANY($2)`,
     [tenantId, skus],
   );

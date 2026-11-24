@@ -375,10 +375,10 @@ export default function CashierWorkspace() {
           </div>
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-semibold" style={{ color: PALETTE.charcoal }}>
-              {tenant?.name ?? 'Retail Analytics'}
+              {tenant?.name ?? 'HisaabIQ'}
             </p>
             <p className="truncate text-xs" style={{ color: PALETTE.charcoalMuted }}>
-              {tenant ? 'Retail Analytics' : 'Store Intelligence'}
+              {tenant ? 'HisaabIQ' : 'Store Intelligence'}
             </p>
           </div>
         </div>

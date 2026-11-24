@@ -43,7 +43,7 @@ function AppContent() {
   return (
     <DashboardShell initialRole={ROLE_LABELS[role] ?? 'Owner'}>
       {(activeView, activeRole, dataMode, onOpenView) => {
-        const hasData = dataMode !== 'empty';
+        const hasData = true;
         // T9: the preview switcher only offers Owner and Manager, so there is no
         // System Administrator route left. Stockout Watch and Recommendations
         // remain operational views open to every role.

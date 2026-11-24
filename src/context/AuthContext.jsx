@@ -5,6 +5,7 @@
  * Token persists in localStorage across page refreshes.
  * ──────────────────────────────────────────────────────────────────────────────
  */
+/* oxlint-disable react/only-export-components */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { api, getToken, setToken, clearToken } from '../api/client.js';

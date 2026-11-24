@@ -12,10 +12,9 @@
 --      No "bakery", "grocery", or "apparel" anywhere. SaaS sells to all of them.
 --      A "product" is a product. A "category" is a category.
 --
---   3. Immutable transaction log.
---      sale_transactions rows are never UPDATEd or DELETEd after insert.
---      To correct an error, ingest a new job with the corrected file.
---      This keeps the audit trail clean and Phase 5 research validation honest.
+--   3. Auditable transaction facts.
+--      Every row retains its ingestion job. Re-imports update a stable source
+--      record key so corrected files replace facts instead of double-counting.
 --
 --   4. Separate inventory log from transactions.
 --      Sales tell you what moved. Inventory logs tell you what was on hand.
@@ -206,20 +205,23 @@ CREATE TABLE ingestion_jobs (
   original_filename VARCHAR(500) NOT NULL,
   file_type       VARCHAR(10)   NOT NULL              -- 'csv' | 'xlsx'
                   CHECK (file_type IN ('csv', 'xlsx')),
-  status          VARCHAR(30)   NOT NULL DEFAULT 'pending'
-                  CHECK (status IN ('pending', 'validating', 'processing', 'completed', 'failed')),
+  status          VARCHAR(30)   NOT NULL DEFAULT 'queued'
+                  CHECK (status IN ('queued', 'parsing', 'importing', 'completed', 'failed')),
   total_rows      INTEGER       NULL,                 -- populated after initial scan
   rows_processed  INTEGER       NOT NULL DEFAULT 0,
   rows_failed     INTEGER       NOT NULL DEFAULT 0,
+  rows_inserted   INTEGER       NOT NULL DEFAULT 0,
+  rows_updated    INTEGER       NOT NULL DEFAULT 0,
+  rows_skipped    INTEGER       NOT NULL DEFAULT 0,
+  rows_rejected   INTEGER       NOT NULL DEFAULT 0,
   -- JSON array of validation/parse error messages, e.g.:
   -- [{"row": 14, "col": "unit_price", "error": "expected number, got 'N/A'"}]
   error_log       JSONB         NOT NULL DEFAULT '[]',
   -- Column mapping: how the file's columns map to our standard schema
   -- e.g. {"date": "Sale Date", "sku": "Item Code", "quantity_sold": "Qty"}
   column_map      JSONB         NULL,
-  -- SHA-256 hex digest of the uploaded file. Used for file-level dedup: the same
-  -- file cannot be imported twice for one store (see uq_ingestion_file_per_store).
-  -- NULL for jobs not created from a file upload (e.g. the seed job).
+  -- SHA-256 hex digest for audit/correlation; identical files may be re-imported.
+  -- NULL for jobs not created from a file upload (e.g. a seed job).
   file_hash       VARCHAR(64)   NULL,
   started_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   completed_at    TIMESTAMPTZ   NULL
@@ -229,14 +231,6 @@ CREATE INDEX idx_ingestion_jobs_tenant_id ON ingestion_jobs(tenant_id);
 CREATE INDEX idx_ingestion_jobs_status    ON ingestion_jobs(status);
 CREATE INDEX idx_ingestion_jobs_store_id  ON ingestion_jobs(tenant_id, store_id);
 
--- File-level dedup: a given file (by SHA-256 hash) can be imported at most once
--- per (tenant, store). Partial so seed jobs (file_hash NULL) and failed jobs are
--- excluded — a file that failed to import can always be retried.
-CREATE UNIQUE INDEX uq_ingestion_file_per_store
-  ON ingestion_jobs (tenant_id, store_id, file_hash)
-  WHERE file_hash IS NOT NULL AND status <> 'failed';
-
-
 -- =============================================================================
 -- LAYER 4: TRANSACTIONAL DATA
 -- The main fact tables. These power every chart and KPI on the dashboard.
@@ -245,8 +239,9 @@ CREATE UNIQUE INDEX uq_ingestion_file_per_store
 -- sale_transactions
 -- One row per line item sold. This is the financial heartbeat of the dashboard.
 --
--- Immutability rule: rows are INSERTED, never UPDATE/DELETE.
--- An ingestion_job_id FK on every row lets us trace each sale to its source file.
+-- An ingestion_job_id FK on every row lets us trace each sale to its latest
+-- source file. Re-imports update the row addressed by source_record_key;
+-- source_row_key additionally recognizes date edits at the same file row.
 --
 -- Storing unit_price_at_sale and cost_price_at_sale separately from the
 -- products table captures real historical margin — prices change over time.
@@ -259,13 +254,15 @@ CREATE TABLE sale_transactions (
   quantity_sold       INTEGER         NOT NULL CHECK (quantity_sold > 0),
   unit_price_at_sale  NUMERIC(15, 2)  NOT NULL CHECK (unit_price_at_sale >= 0),
   cost_price_at_sale  NUMERIC(15, 2)  NOT NULL CHECK (cost_price_at_sale >= 0),
+  source_transaction_id VARCHAR(255) NULL,
+  source_record_key  VARCHAR(64)     NULL,
+  source_row_key     VARCHAR(64)     NULL,
   -- Derived: stored for query performance, always = quantity_sold * unit_price_at_sale
   total_revenue       NUMERIC(15, 2)  GENERATED ALWAYS AS (quantity_sold * unit_price_at_sale) STORED,
   -- Derived: stored for query performance, always = quantity_sold * cost_price_at_sale
   total_cost          NUMERIC(15, 2)  GENERATED ALWAYS AS (quantity_sold * cost_price_at_sale) STORED,
   sale_date           DATE            NOT NULL,      -- the date the sale occurred (not ingest date)
-  created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
-  -- No updated_at — this table is append-only
+  created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
 -- Composite index: the single most important index in the whole schema.
@@ -273,6 +270,12 @@ CREATE TABLE sale_transactions (
 CREATE INDEX idx_sale_tx_tenant_store_date ON sale_transactions(tenant_id, store_id, sale_date DESC);
 CREATE INDEX idx_sale_tx_product_date      ON sale_transactions(tenant_id, product_id, sale_date DESC);
 CREATE INDEX idx_sale_tx_ingestion_job     ON sale_transactions(ingestion_job_id);
+CREATE UNIQUE INDEX uq_sale_tx_source_record
+  ON sale_transactions(tenant_id, store_id, source_record_key)
+  WHERE source_record_key IS NOT NULL;
+CREATE UNIQUE INDEX uq_sale_tx_source_row
+  ON sale_transactions(tenant_id, store_id, source_row_key)
+  WHERE source_row_key IS NOT NULL;
 
 
 -- inventory_logs
@@ -290,11 +293,19 @@ CREATE TABLE inventory_logs (
   ingestion_job_id  UUID          NOT NULL REFERENCES ingestion_jobs(id) ON DELETE CASCADE,
   quantity_on_hand  INTEGER       NOT NULL CHECK (quantity_on_hand >= 0),
   log_date          DATE          NOT NULL,          -- the date this stock count was recorded
+  source_record_key VARCHAR(64)   NULL,
+  source_row_key    VARCHAR(64)   NULL,
   created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_inventory_tenant_store_date ON inventory_logs(tenant_id, store_id, log_date DESC);
 CREATE INDEX idx_inventory_product_date      ON inventory_logs(tenant_id, product_id, log_date DESC);
+CREATE UNIQUE INDEX uq_inventory_source_record
+  ON inventory_logs(tenant_id, store_id, source_record_key)
+  WHERE source_record_key IS NOT NULL;
+CREATE UNIQUE INDEX uq_inventory_source_row
+  ON inventory_logs(tenant_id, store_id, source_row_key)
+  WHERE source_row_key IS NOT NULL;
 
 
 -- =============================================================================

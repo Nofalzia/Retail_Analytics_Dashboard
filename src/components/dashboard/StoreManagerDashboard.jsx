@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+/* oxlint-disable react/only-export-components */
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AdminRestrictedAccess,
   EmptyState,
@@ -373,7 +375,7 @@ const AllClearState = () => {
 };
 
 const RunDetectionButton = ({ storeId, onComplete }) => {
-  const { ACCENTS, PALETTE, PANEL_SURFACE } = useDesignTokens();
+  const { ACCENTS, PALETTE } = useDesignTokens();
   const [status, setStatus] = useState('idle');
   const [runSummary, setRunSummary] = useState(null);
 
@@ -908,8 +910,26 @@ const StoreManagerDashboard = ({
   const [alertsError, setAlertsError] = useState(false);
   const [alertsLoaded, setAlertsLoaded] = useState(!isLive);
   const [retryTick, setRetryTick] = useState(0);
+  const [salesDataState, setSalesDataState] = useState({ loading: isLive, hasData: false, error: false });
 
-  const fetchAlerts = () => {
+  useEffect(() => {
+    if (!isLive) {
+      setSalesDataState({ loading: false, hasData: true, error: false });
+      return undefined;
+    }
+    if (!storeId) return undefined;
+    setSalesDataState((state) => ({ ...state, loading: true, error: false }));
+    api.getOverview({ storeId })
+      .then((data) => setSalesDataState({
+        loading: false,
+        hasData: (Number(data?.kpi?.total_transactions) || 0) > 0,
+        error: false,
+      }))
+      .catch(() => setSalesDataState({ loading: false, hasData: false, error: true }));
+    return undefined;
+  }, [dataMode, isLive, retryTick, storeId]);
+
+  const fetchAlerts = useCallback(() => {
     if (dataMode !== 'live') {
       setAlerts(dataMode === 'struggling' ? STRUGGLING_ALERTS : INITIAL_ALERTS);
       setAlertsError(false);
@@ -945,11 +965,11 @@ const StoreManagerDashboard = ({
       })
       .catch(() => setAlertsError(true))
       .finally(() => setAlertsLoaded(true));
-  };
+  }, [dataMode, storeId]);
 
   useEffect(() => {
     fetchAlerts();
-  }, [dataMode, retryTick, storeId]);
+  }, [fetchAlerts, retryTick]);
 
   // T12d: an import now runs detection itself and announces it on
   // 'rad:data-refreshed'. Bump the retry counter so the alerts list refetches
@@ -971,6 +991,23 @@ const StoreManagerDashboard = ({
       <EmptyState
         title="No analytics to show yet"
         description="Anomaly detection and scenario simulations need at least a few days of sales history to work with — check back once data starts flowing in."
+        actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
+        onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
+      />
+    );
+  }
+
+  if (isLive && salesDataState.loading) {
+    return <LoadingState label="Loading store data…" />;
+  }
+  if (isLive && salesDataState.error) {
+    return <ApiErrorNotice onRetry={() => setRetryTick((tick) => tick + 1)} />;
+  }
+  if (isLive && !salesDataState.hasData) {
+    return (
+      <EmptyState
+        title="No analytics to show yet"
+        description="Import data to see store trends, threshold alerts and recommendations based on your activity."
         actionLabel={onOpenView ? 'Go to Data Ingestion' : undefined}
         onAction={onOpenView ? () => onOpenView('data-ingestion') : undefined}
       />

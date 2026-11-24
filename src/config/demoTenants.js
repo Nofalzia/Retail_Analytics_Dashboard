@@ -29,7 +29,7 @@
 /** @type {DemoTenant[]} */
 export const DEMO_TENANTS = [
   {
-    label: 'Demo Kiryana Store',
+    label: 'Healthy Store',
     slug: 'demo-kiryana',
     email: 'owner@demo.com',
     users: [
@@ -38,7 +38,7 @@ export const DEMO_TENANTS = [
     ],
   },
   {
-    label: 'London Bakers I-10',
+    label: 'London Bakers',
     slug: 'london-bakers-i10',
     email: 'owner@londonbakers.demo',
     users: [
@@ -48,10 +48,9 @@ export const DEMO_TENANTS = [
     ],
   },
   {
-    // Blank by design: seeded by backend/scripts/demo/seedEmptyTenant.js and
-    // emptied again by backend/scripts/demo/resetTenantData.js. The live demo is
-    // "onboard a new store": sign in here, upload a file, watch the analysis.
-    label: 'New Store (Demo)',
+    // This is a real tenant with its own store and sign-in, provisioned by the
+    // idempotent demo tenant migration and onboarding seed script.
+    label: 'New Tenant (No Data)',
     slug: 'demo-onboarding',
     email: 'owner@onboarding.demo',
     users: [
@@ -61,11 +60,7 @@ export const DEMO_TENANTS = [
   },
 ];
 
-/**
- * The tenant the mocked preview states (Healthy Store / Struggling Store /
- * New Tenant) were written against. Those mock datasets only describe the
- * seeded demo store, so every other tenant always shows live data.
- */
+/** The original populated demo tenant. */
 export const PRIMARY_DEMO_SLUG = DEMO_TENANTS[0].slug;
 
 /**

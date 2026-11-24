@@ -1,0 +1,141 @@
+sku,product_name,actual_units,method,n,wape_pct,mae,bias_pct
+SKU-111,Sugar-Free Jalebi (250g),461,M1_seasonal_naive,28,25.1627,4.1429,-0.4338
+SKU-111,Sugar-Free Jalebi (250g),461,M2_ma7,28,17.1367,2.8214,-4.7412
+SKU-111,Sugar-Free Jalebi (250g),461,M3_velocity14,28,16.6408,2.7398,-4.7412
+SKU-111,Sugar-Free Jalebi (250g),461,M4_hw_grid,28,25.8698,4.2593,10.8958
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.2_g0.2,28,34.5682,5.6914,8.1645
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.2_g0.3,28,32.1301,5.29,9.1195
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.2_g0.5,28,28.22,4.6462,10.6745
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.3_g0.2,28,36.5956,6.0252,5.4624
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.3_g0.3,28,34.4322,5.669,6.6091
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.3_g0.5,28,30.5303,5.0266,8.6866
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.5_g0.2,28,40.1047,6.603,1.5254
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.5_g0.3,28,38.7793,6.3847,2.6068
+SKU-111,Sugar-Free Jalebi (250g),461,M5_hw_a0.5_g0.5,28,36.1147,5.946,4.733
+SKU-111,Sugar-Free Jalebi (250g),461,M6_weekday_profile,28,21.2642,3.501,-7.5508
+SKU-149,Almond Milk,445,M1_seasonal_naive,28,59.3258,9.4286,-15.2809
+SKU-149,Almond Milk,445,M2_ma7,28,40.7705,6.4796,-14.382
+SKU-149,Almond Milk,445,M3_velocity14,28,39.2456,6.2372,-14.6228
+SKU-149,Almond Milk,445,M4_hw_grid,28,53.5314,8.5077,-9.3635
+SKU-149,Almond Milk,445,M5_hw_a0.2_g0.2,28,52.7581,8.3848,-11.033
+SKU-149,Almond Milk,445,M5_hw_a0.2_g0.3,28,52.3189,8.315,-11.352
+SKU-149,Almond Milk,445,M5_hw_a0.2_g0.5,28,52.5421,8.3504,-12.2032
+SKU-149,Almond Milk,445,M5_hw_a0.3_g0.2,28,54.6435,8.6844,-15.4267
+SKU-149,Almond Milk,445,M5_hw_a0.3_g0.3,28,54.0157,8.5846,-15.7183
+SKU-149,Almond Milk,445,M5_hw_a0.3_g0.5,28,53.9292,8.5709,-16.2287
+SKU-149,Almond Milk,445,M5_hw_a0.5_g0.2,28,57.8152,9.1885,-19.947
+SKU-149,Almond Milk,445,M5_hw_a0.5_g0.3,28,57.1205,9.0781,-20.1612
+SKU-149,Almond Milk,445,M5_hw_a0.5_g0.5,28,56.6229,8.999,-20.4158
+SKU-149,Almond Milk,445,M6_weekday_profile,28,35.8591,5.699,-20.6098
+SKU-102,Multigrain Bread,425,M1_seasonal_naive,28,26.3529,4,-15.0588
+SKU-102,Multigrain Bread,425,M2_ma7,28,30.9244,4.6939,-7.4622
+SKU-102,Multigrain Bread,425,M3_velocity14,28,34.5882,5.25,-21.7479
+SKU-102,Multigrain Bread,425,M4_hw_grid,28,25.1662,3.8199,-14.3934
+SKU-102,Multigrain Bread,425,M5_hw_a0.2_g0.2,28,22.3592,3.3938,-9.5303
+SKU-102,Multigrain Bread,425,M5_hw_a0.2_g0.3,28,22.3497,3.3924,-9.8351
+SKU-102,Multigrain Bread,425,M5_hw_a0.2_g0.5,28,22.767,3.4557,-9.948
+SKU-102,Multigrain Bread,425,M5_hw_a0.3_g0.2,28,22.4823,3.4125,-4.7284
+SKU-102,Multigrain Bread,425,M5_hw_a0.3_g0.3,28,21.4536,3.2564,-5.3757
+SKU-102,Multigrain Bread,425,M5_hw_a0.3_g0.5,28,21.8952,3.3234,-6.4642
+SKU-102,Multigrain Bread,425,M5_hw_a0.5_g0.2,28,23.5285,3.5713,1.2736
+SKU-102,Multigrain Bread,425,M5_hw_a0.5_g0.3,28,22.3163,3.3873,0.5402
+SKU-102,Multigrain Bread,425,M5_hw_a0.5_g0.5,28,20.9475,3.1795,-0.9665
+SKU-102,Multigrain Bread,425,M6_weekday_profile,28,31.2326,4.7407,-21.3511
+SKU-110,Jalebi (250g),417,M1_seasonal_naive,28,32.1343,4.7857,11.0312
+SKU-110,Jalebi (250g),417,M2_ma7,28,19.1161,2.8469,11.0997
+SKU-110,Jalebi (250g),417,M3_velocity14,28,19.0647,2.8393,9.6437
+SKU-110,Jalebi (250g),417,M4_hw_grid,28,38.5925,5.7475,28.6999
+SKU-110,Jalebi (250g),417,M5_hw_a0.2_g0.2,28,36.7603,5.4747,32.1773
+SKU-110,Jalebi (250g),417,M5_hw_a0.2_g0.3,28,36.6867,5.4637,32.1554
+SKU-110,Jalebi (250g),417,M5_hw_a0.2_g0.5,28,37.2096,5.5416,32.5746
+SKU-110,Jalebi (250g),417,M5_hw_a0.3_g0.2,28,36.1091,5.3777,27.8036
+SKU-110,Jalebi (250g),417,M5_hw_a0.3_g0.3,28,36.2395,5.3971,28.1473
+SKU-110,Jalebi (250g),417,M5_hw_a0.3_g0.5,28,36.7882,5.4788,29.1792
+SKU-110,Jalebi (250g),417,M5_hw_a0.5_g0.2,28,37.3297,5.5595,23.0443
+SKU-110,Jalebi (250g),417,M5_hw_a0.5_g0.3,28,37.4568,5.5784,23.3531
+SKU-110,Jalebi (250g),417,M5_hw_a0.5_g0.5,28,37.8017,5.6297,24.0738
+SKU-110,Jalebi (250g),417,M6_weekday_profile,28,16.5124,2.4592,6.1327
+SKU-115,Chicken Cheese Shawarma,402,M1_seasonal_naive,28,40.0498,5.75,-37.5622
+SKU-115,Chicken Cheese Shawarma,402,M2_ma7,28,28.6425,4.1122,-27.5053
+SKU-115,Chicken Cheese Shawarma,402,M3_velocity14,28,38.4328,5.5179,-38.4328
+SKU-115,Chicken Cheese Shawarma,402,M4_hw_grid,28,46.2391,6.6386,-33.2541
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.2_g0.2,28,65.1889,9.3593,-65.1889
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.2_g0.3,28,63.6758,9.142,-63.6758
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.2_g0.5,28,61.0673,8.7675,-61.0673
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.3_g0.2,28,55.9676,8.0353,-54.9578
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.3_g0.3,28,54.5677,7.8344,-54.0587
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.3_g0.5,28,52.9721,7.6053,-52.9721
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.5_g0.2,28,48.8422,7.0123,-43.9592
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.5_g0.3,28,47.6773,6.8451,-43.4984
+SKU-115,Chicken Cheese Shawarma,402,M5_hw_a0.5_g0.5,28,45.9757,6.6008,-42.9377
+SKU-115,Chicken Cheese Shawarma,402,M6_weekday_profile,28,27.9634,4.0147,-27.8544
+SKU-108,Namak Paray (250g),394,M1_seasonal_naive,28,34.5178,4.8571,16.2437
+SKU-108,Namak Paray (250g),394,M2_ma7,28,25.3807,3.5714,11.6751
+SKU-108,Namak Paray (250g),394,M3_velocity14,28,20.0326,2.8189,-1.0696
+SKU-108,Namak Paray (250g),394,M4_hw_grid,28,32.7122,4.6031,21.8544
+SKU-108,Namak Paray (250g),394,M5_hw_a0.2_g0.2,28,29.0632,4.0896,18.7476
+SKU-108,Namak Paray (250g),394,M5_hw_a0.2_g0.3,28,29.4288,4.141,19.0153
+SKU-108,Namak Paray (250g),394,M5_hw_a0.2_g0.5,28,30.5746,4.3023,19.9678
+SKU-108,Namak Paray (250g),394,M5_hw_a0.3_g0.2,28,29.7215,4.1822,19.3485
+SKU-108,Namak Paray (250g),394,M5_hw_a0.3_g0.3,28,29.6229,4.1684,19.2596
+SKU-108,Namak Paray (250g),394,M5_hw_a0.3_g0.5,28,29.9851,4.2193,19.3829
+SKU-108,Namak Paray (250g),394,M5_hw_a0.5_g0.2,28,31.181,4.3876,19.129
+SKU-108,Namak Paray (250g),394,M5_hw_a0.5_g0.3,28,30.2199,4.2524,18.7116
+SKU-108,Namak Paray (250g),394,M5_hw_a0.5_g0.5,28,29.1541,4.1024,17.9636
+SKU-108,Namak Paray (250g),394,M6_weekday_profile,28,17.0535,2.3997,-5.748
+SKU-123,Pizza (Large),392,M1_seasonal_naive,28,35.7143,5,-15.8163
+SKU-123,Pizza (Large),392,M2_ma7,28,33.2726,4.6582,-20.0073
+SKU-123,Pizza (Large),392,M3_velocity14,28,28.4074,3.977,-8.5095
+SKU-123,Pizza (Large),392,M4_hw_grid,28,35.5175,4.9724,-17.4247
+SKU-123,Pizza (Large),392,M5_hw_a0.2_g0.2,28,26.896,3.7654,-11.913
+SKU-123,Pizza (Large),392,M5_hw_a0.2_g0.3,28,28.7063,4.0189,-13.9922
+SKU-123,Pizza (Large),392,M5_hw_a0.2_g0.5,28,32.2333,4.5127,-17.6346
+SKU-123,Pizza (Large),392,M5_hw_a0.3_g0.2,28,28.4714,3.986,-16.5672
+SKU-123,Pizza (Large),392,M5_hw_a0.3_g0.3,28,29.7678,4.1675,-18.3423
+SKU-123,Pizza (Large),392,M5_hw_a0.3_g0.5,28,32.6494,4.5709,-21.6743
+SKU-123,Pizza (Large),392,M5_hw_a0.5_g0.2,28,28.2529,3.9554,-19.9637
+SKU-123,Pizza (Large),392,M5_hw_a0.5_g0.3,28,28.5329,3.9946,-21.236
+SKU-123,Pizza (Large),392,M5_hw_a0.5_g0.5,28,29.6884,4.1564,-23.8635
+SKU-123,Pizza (Large),392,M6_weekday_profile,28,23.0059,3.2208,-5.8008
+SKU-106,Halwa,389,M1_seasonal_naive,28,26.7352,3.7143,-18.509
+SKU-106,Halwa,389,M2_ma7,28,35.549,4.9388,-18.8028
+SKU-106,Halwa,389,M3_velocity14,28,32.9232,4.574,-2.736
+SKU-106,Halwa,389,M4_hw_grid,28,31.2302,4.3388,-13.0003
+SKU-106,Halwa,389,M5_hw_a0.2_g0.2,28,25.5075,3.5437,-3.108
+SKU-106,Halwa,389,M5_hw_a0.2_g0.3,28,25.1373,3.4923,-3.2712
+SKU-106,Halwa,389,M5_hw_a0.2_g0.5,28,25.131,3.4914,-4.1832
+SKU-106,Halwa,389,M5_hw_a0.3_g0.2,28,27.183,3.7765,-9.5771
+SKU-106,Halwa,389,M5_hw_a0.3_g0.3,28,27.1247,3.7684,-9.0164
+SKU-106,Halwa,389,M5_hw_a0.3_g0.5,28,26.6342,3.7003,-8.1721
+SKU-106,Halwa,389,M5_hw_a0.5_g0.2,28,31.9497,4.4387,-16.2146
+SKU-106,Halwa,389,M5_hw_a0.5_g0.3,28,30.8114,4.2806,-15.3183
+SKU-106,Halwa,389,M5_hw_a0.5_g0.5,28,29.1245,4.0462,-13.5048
+SKU-106,Halwa,389,M6_weekday_profile,28,33.5615,4.6626,-0.9417
+SKU-131,Fried Round Sandwich,389,M1_seasonal_naive,28,30.5913,4.25,-3.856
+SKU-131,Fried Round Sandwich,389,M2_ma7,28,19.8311,2.7551,-8.8138
+SKU-131,Fried Round Sandwich,389,M3_velocity14,28,27.3779,3.8036,-24.3298
+SKU-131,Fried Round Sandwich,389,M4_hw_grid,28,21.8132,3.0305,-15.2366
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.2_g0.2,28,20.7948,2.889,-12.9111
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.2_g0.3,28,20.8156,2.8919,-11.4123
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.2_g0.5,28,21.3224,2.9623,-8.3306
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.3_g0.2,28,18.8138,2.6138,-8.1457
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.3_g0.3,28,19.3761,2.6919,-7.3007
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.3_g0.5,28,21.1207,2.9343,-5.6814
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.5_g0.2,28,18.3086,2.5436,-4.2762
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.5_g0.3,28,19.1958,2.6668,-4.1335
+SKU-131,Fried Round Sandwich,389,M5_hw_a0.5_g0.5,28,21.7041,3.0153,-4.0228
+SKU-131,Fried Round Sandwich,389,M6_weekday_profile,28,27.0093,3.7524,-24.6573
+SKU-109,Shakar Paray (250g),379,M1_seasonal_naive,28,39.314,5.3214,-11.8734
+SKU-109,Shakar Paray (250g),379,M2_ma7,28,41.1609,5.5714,-15.228
+SKU-109,Shakar Paray (250g),379,M3_velocity14,28,41.9525,5.6786,-20.5428
+SKU-109,Shakar Paray (250g),379,M4_hw_grid,28,52.675,7.1299,-31.6399
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.2_g0.2,28,55.3644,7.494,-42.2392
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.2_g0.3,28,54.0496,7.316,-38.8327
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.2_g0.5,28,53.0839,7.1853,-32.5911
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.3_g0.2,28,56.4786,7.6448,-38.7575
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.3_g0.3,28,55.5955,7.5253,-35.9233
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.3_g0.5,28,54.3839,7.3613,-30.567
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.5_g0.2,28,59.2607,8.0214,-37.3208
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.5_g0.3,28,59.3057,8.0275,-35.4288
+SKU-109,Shakar Paray (250g),379,M5_hw_a0.5_g0.5,28,59.0504,7.9929,-31.6519
+SKU-109,Shakar Paray (250g),379,M6_weekday_profile,28,37.3094,5.0501,-13.4354
